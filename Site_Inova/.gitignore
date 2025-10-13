@@ -1,0 +1,9 @@
+node_modules/
+config/
+.DS_Store
+*.log
+*.tmp
+*.bak
+*.swp
+*.cache
+.env
