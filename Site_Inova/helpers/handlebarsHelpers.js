@@ -199,7 +199,7 @@ module.exports = {
   },
 
   isNotResolved: function (situacao) {
-      return situacao !== 'Email - Resolvido';
+    return situacao !== 'Email - Resolvido' && situacao !== 'Nenhum';
   },
 
   canEdit: (situacao) => {

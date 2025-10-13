@@ -101,22 +101,71 @@ async function atualizarStatusPedidosSsw(pedidosSsw) {
     }
 }
 
+// services/rastreioService.js
+
 async function verificarEmailsParaPedidosAtrasados() {
-    console.log('[Email Service] Verificando e-mails para pedidos fora do prazo...');
-    const query = `SELECT id, numero_nfe, email_thread_id FROM pedidos_em_rastreamento WHERE data_previsao_entrega < CURRENT_DATE AND data_entrega IS NULL AND situacao_atual <> 'Entregue - Confirmado' AND (email_status IS NULL OR email_status NOT IN ('Email - Resolvido'))`;
-    const { rows: pedidosAtrasados } = await poolInova.query(query);
+    const agora = new Date();
+    const horaAtual = agora.getHours(); // Usa o fuso horário do servidor (America/Sao_Paulo)
+
+    // Regra 1: Só executa a lógica dentro do horário comercial (7h às 17h)
+    if (horaAtual < 7 || horaAtual >= 17) {
+        return;
+    }
+    
+    console.log('[Email Service] Verificando pedidos para envio de e-mail automático...');
+
+    // Regra 2: Busca pedidos com exatamente 3 dias de atraso e que nunca tiveram e-mail enviado
+    // Passo 1: Busca APENAS os pedidos atrasados do banco de dados principal (Inova)
+    const pedidosQuery = `
+        SELECT * FROM pedidos_em_rastreamento
+        WHERE 
+            data_previsao_entrega = CURRENT_DATE - INTERVAL '3 days' 
+            AND data_entrega IS NULL
+            AND situacao_atual <> 'Entregue - Confirmado'
+            AND (email_status IS NULL OR email_status = 'Nenhum')
+    `;
+    const { rows: pedidosAtrasados } = await poolInova.query(pedidosQuery);
+
+    if (pedidosAtrasados.length === 0) {
+        return;
+    }
+
+    console.log(`[Email Service] ${pedidosAtrasados.length} pedido(s) encontrado(s) para envio de cobrança.`);
+
     for (const pedido of pedidosAtrasados) {
         try {
-            await gmailService.processarEmailParaPedido(pedido);
+            // Passo 2: Para CADA pedido atrasado, busca os dados do cliente no banco de monitoramento
+            const nfeDetailsQuery = `
+                SELECT etiqueta_nome, etiqueta_municipio, etiqueta_uf 
+                FROM cached_nfe 
+                WHERE nfe_numero = $1 
+                LIMIT 1
+            `;
+            const nfeDetailsResult = await poolMonitora.query(nfeDetailsQuery, [pedido.numero_nfe]);
+
+            if (nfeDetailsResult.rows.length === 0) {
+                console.warn(`[Email Service] Não foram encontrados detalhes na cached_nfe para a NFe ${pedido.numero_nfe}. Pulando e-mail.`);
+                continue; // Pula para o próximo pedido
+            }
+
+            // Passo 3: Combina os dados do pedido com os detalhes do cliente
+            const dadosCompletosPedido = {
+                ...pedido, // Dados do rastreamento (id, transportadora, etc)
+                ...nfeDetailsResult.rows[0] // Adiciona etiqueta_nome, etiqueta_municipio, etiqueta_uf
+            };
+            
+            // Passo 4: Chama a função de envio com o objeto de dados completo
+            await gmailService.sendPositionRequestEmail(dadosCompletosPedido);
+
         } catch (error) {
-            console.error(`[Email Service] Erro ao processar e-mail para NFE ${pedido.numero_nfe}:`, error);
+            console.error(`[Email Service] Falha ao processar e-mail automático para NFE ${pedido.numero_nfe}:`, error);
         }
     }
 }
 
 async function verificarRespostasDeEmails() {
     console.log('[Email Service] Verificando respostas de e-mails enviados...');
-    const query = `SELECT id, numero_nfe, email_thread_id, transportadora FROM pedidos_em_rastreamento WHERE email_status IN ('Email - Enviado', 'Email - Visto')`;
+    const query = `SELECT id, numero_nfe, email_thread_id, transportadora FROM pedidos_em_rastreamento WHERE email_status IN ('Email - Enviado', 'Email - Visto', 'Email - Em Andamento')`;
     const { rows: pedidosComEmail } = await poolInova.query(query);
     for (const pedido of pedidosComEmail) {
         try {
@@ -190,7 +239,7 @@ async function getConferenciaStatus() {
 }
 
 async function getDistinctTransportadoras() {
-    const query = `SELECT DISTINCT CASE WHEN transportadora = 'I. AMORIN TRANSPORTES EIRELI' THEN 'I AMORIN TRANSPORTES EIRELLI' ELSE transportadora END as transportadora_unificada FROM pedidos_em_rastreamento WHERE transportadora IS NOT NULL AND transportadora <> '' AND transportadora <> 'JEW TRANSPORTES LTDA' ORDER BY transportadora_unificada ASC`;
+    const query = `SELECT DISTINCT CASE WHEN transportadora = 'I. AMORIN TRANSPORTES EIRELI' THEN 'I AMORIN TRANSPORTES EIRELLI' ELSE transportadora END as transportadora_unificada FROM pedidos_em_rastreamento WHERE transportadora IS NOT NULL AND transportadora <> '' ORDER BY transportadora_unificada ASC`;
     const result = await poolInova.query(query);
     return result.rows.map(row => row.transportadora_unificada);
 }

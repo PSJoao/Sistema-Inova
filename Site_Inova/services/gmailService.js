@@ -187,17 +187,17 @@ function getCarrierEmail(transportadora, uf) {
     return emails;
 }
 
-/**
- * Monta e envia o e-mail para a transportadora.
- */
-async function sendPositionRequestEmail(pedido) {
-    const auth = await authorize();
-    const gmail = google.gmail({version: 'v1', auth});
+// services/gmailService.js
 
+async function sendPositionRequestEmail(pedido) {
+    // Validação para garantir que temos os dados necessários
+    if (!pedido || !pedido.transportadora || !pedido.nfe_numero) {
+        throw new Error('Dados insuficientes no pedido para enviar e-mail de cobrança.');
+    }
+    
     const toEmails = getCarrierEmail(pedido.transportadora, pedido.etiqueta_uf);
     if (!toEmails) {
-        console.error(`[Gmail Service] E-mails não encontrados para a transportadora: ${pedido.transportadora}`);
-        return null;
+        throw new Error(`E-mails de destino não configurados para a transportadora: ${pedido.transportadora}`);
     }
 
     const saudaçao = new Date().getHours() < 12 ? 'Bom dia' : 'Boa tarde';
@@ -215,36 +215,45 @@ async function sendPositionRequestEmail(pedido) {
         <p>Atenciosamente,<br>Equipe de Rastreio - Inova Móveis</p>
     `;
 
-    // --- [CORREÇÃO] Codificação do E-mail ---
-    // Cria a string completa do e-mail com os cabeçalhos corretos
-    const emailContent = [
-        `Content-Type: text/html; charset="UTF-8"`,
-        `MIME-Version: 1.0`,
-        `Content-Transfer-Encoding: 7bit`,
-        `To: ${toEmails.join(', ')}`,
-        `Subject: =?utf-8?B?${Buffer.from(emailSubject).toString('base64')}?=`, // Codifica o assunto para UTF-8
-        '',
-        emailBody
-    ].join('\n');
+    // A função 'sendEmail' já existe e faz o envio. Vamos reutilizá-la.
+    const sentMessage = await sendEmail(toEmails, emailSubject, emailBody);
 
-    // Converte a string final para base64 URL-safe
-    const encodedMessage = Buffer.from(emailContent).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    
-    const systemLabelId = await ensureLabelExists(gmail);
+    if (!sentMessage || !sentMessage.threadId) {
+        throw new Error('Falha ao enviar o e-mail pela API do Gmail.');
+    }
 
-    const res = await gmail.users.messages.send({
-        userId: 'me',
-        requestBody: {
-            raw: encodedMessage,
-            // A aplicação do marcador já estava correta. A falha era provavelmente de codificação.
-            labelIds: ['SENT', systemLabelId]
-        },
-    });
+    // --- Lógica de Banco de Dados ---
+    const client = await poolInova.connect();
+    try {
+        await client.query('BEGIN');
 
-    console.log(`[Gmail Service] E-mail de posição enviado para ${pedido.transportadora} referente à NF ${pedido.nfe_numero}. Message ID: ${res.data.id}`);
-    
-    // [CORREÇÃO] Retorna o objeto completo da mensagem enviada para o histórico.
-    return res.data;
+        // 1. Atualiza o pedido principal com o status e a thread do e-mail
+        await client.query(
+            `UPDATE pedidos_em_rastreamento SET email_status = 'Email - Em Andamento', email_thread_id = $1 WHERE id = $2`,
+            [sentMessage.threadId, pedido.id]
+        );
+
+        // 2. Salva o e-mail que acabamos de enviar no histórico
+        const messageDetails = await getMessageDetails(sentMessage.id);
+        const headers = messageDetails.payload.headers;
+        const fromHeader = headers.find(h => h.name.toLowerCase() === 'from');
+        const subjectHeader = headers.find(h => h.name.toLowerCase() === 'subject');
+        await client.query(
+            `INSERT INTO email_history (pedido_rastreamento_id, message_id, thread_id, from_address, subject, snippet, sent_at) VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+            [pedido.id, sentMessage.id, sentMessage.threadId, fromHeader ? fromHeader.value : 'N/D', subjectHeader ? subjectHeader.value : 'N/D', messageDetails.snippet || '']
+        );
+
+        await client.query('COMMIT');
+        console.log(`[Gmail Service] E-mail para NFe ${pedido.nfe_numero} enviado e salvo no histórico.`);
+        return { success: true, message: 'E-mail enviado e registrado com sucesso!' };
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error(`[Gmail Service] Erro na transação do banco de dados para NFe ${pedido.nfe_numero}:`, error);
+        throw error; // Propaga o erro para a função que chamou
+    } finally {
+        client.release();
+    }
 }
 
 async function getThreadDetails(threadId) {
@@ -334,17 +343,44 @@ async function enviarEmailCobrancaManual(pedido) {
 
     // Atualiza o banco de dados com o status e o ID da thread
     await poolInova.query(
-        `UPDATE pedidos_em_rastreamento SET email_status = 'Email - Enviado', email_thread_id = $1 WHERE id = $2`,
+        `UPDATE pedidos_em_rastreamento SET email_status = 'Email - Em Andamento', email_thread_id = $1 WHERE id = $2`,
         [sentMessage.threadId, pedido.id]
     );
+
+    try {
+        const messageDetails = await getMessageDetails(sentMessage.id);
+        const headers = messageDetails.payload.headers;
+        const fromHeader = headers.find(h => h.name.toLowerCase() === 'from');
+        const subjectHeader = headers.find(h => h.name.toLowerCase() === 'subject');
+
+        await poolInova.query(
+            `INSERT INTO email_history 
+            (pedido_rastreamento_id, message_id, thread_id, from_address, subject, snippet, sent_at) 
+            VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+            [
+                pedido.id,
+                sentMessage.id,
+                sentMessage.threadId,
+                fromHeader ? fromHeader.value : 'N/D',
+                subjectHeader ? subjectHeader.value : 'N/D',
+                messageDetails.snippet || ''
+            ]
+        );
+        console.log(`[Gmail Service] E-mail manual para NFe ${pedido.nfe_numero} salvo no histórico.`);
+    } catch (historyError) {
+        console.error(`[Gmail Service] Falha ao salvar e-mail no histórico para NFe ${pedido.nfe_numero}:`, historyError);
+        // Não lança o erro para não quebrar a operação principal, apenas registra o log.
+    }
 
     console.log(`[Gmail Service] E-mail de cobrança MANUAL enviado para a NFe ${pedido.nfe_numero}. Thread ID: ${sentMessage.threadId}`);
     return { message: 'E-mail de cobrança enviado com sucesso!' };
 }
 
+// services/gmailService.js
+
 async function verificarRespostas(pedido) {
     if (!pedido.email_thread_id) {
-        console.log(`[Gmail Service] Pedido ${pedido.numero_nfe} não possui thread de e-mail para verificar.`);
+        //console.log(`[Gmail Service] Pedido ${pedido.numero_nfe} não possui thread de e-mail para verificar.`);
         return;
     }
 
@@ -352,34 +388,74 @@ async function verificarRespostas(pedido) {
         const auth = await authorize();
         const gmail = google.gmail({ version: 'v1', auth });
 
-        // Busca a thread completa pelo ID
         const thread = await gmail.users.threads.get({
             userId: 'me',
             id: pedido.email_thread_id,
         });
 
         const messages = thread.data.messages;
-        if (!messages || messages.length <= 1) {
-            // Nenhuma resposta ainda, apenas a mensagem original enviada
-            return;
+        if (!messages || messages.length === 0) {
+            return; // Nenhuma mensagem na thread
         }
-        
-        // A primeira mensagem (índice 0) é sempre a mais antiga (a que enviamos).
-        // As respostas vêm depois. Vamos checar a última mensagem da conversa.
+
+        // Pega a última mensagem da conversa
         const ultimaMensagem = messages[messages.length - 1];
         const headers = ultimaMensagem.payload.headers;
         const fromHeader = headers.find(header => header.name === 'From');
 
-        // Se o remetente da última mensagem NÃO for a sua própria conta, significa que é uma resposta.
-        if (fromHeader && !fromHeader.value.includes('sacinovamoveis@gmail.com')) { // <-- IMPORTANTE: Troque pelo seu e-mail de envio
-            
-            console.log(`[Gmail Service] Resposta detectada para NFe ${pedido.numero_nfe}.`);
+        // Se o remetente da última mensagem NÃO for a sua própria conta, é uma resposta.
+        if (fromHeader && !fromHeader.value.includes('sacinovamoveis@gmail.com')) { // <-- IMPORTANTE: Use o seu e-mail de envio aqui
 
-            // Atualiza o status no banco de dados para indicar que houve resposta
-            await poolInova.query(
-                `UPDATE pedidos_em_rastreamento SET email_status = 'Email - Respondido', notificado_por_email = false WHERE id = $1`,
-                [pedido.id]
-            );
+            // Verifica se esta resposta específica já foi salva no histórico
+            const checkHistoryQuery = `SELECT 1 FROM email_history WHERE message_id = $1`;
+            const historyResult = await poolInova.query(checkHistoryQuery, [ultimaMensagem.id]);
+
+            // Se a resposta ainda não existe no nosso banco (rowCount === 0), nós a adicionamos.
+            if (historyResult.rowCount === 0) {
+                console.log(`[Gmail Service] Nova resposta detectada para NFe ${pedido.numero_nfe}. Salvando no histórico.`);
+
+                const subjectHeader = headers.find(h => h.name.toLowerCase() === 'subject');
+                const snippet = ultimaMensagem.snippet || '';
+                // Pega a data e hora em que o e-mail foi realmente enviado
+                const sentAt = new Date(parseInt(ultimaMensagem.internalDate, 10));
+
+                const client = await poolInova.connect();
+                try {
+                    // Usa uma transação para garantir que ambas as operações (INSERT e UPDATE) funcionem
+                    await client.query('BEGIN');
+
+                    // 1. Insere a nova resposta no histórico de e-mails
+                    const insertQuery = `
+                        INSERT INTO email_history
+                        (pedido_rastreamento_id, message_id, thread_id, from_address, subject, snippet, sent_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    `;
+                    await client.query(insertQuery, [
+                        pedido.id,
+                        ultimaMensagem.id,
+                        pedido.email_thread_id,
+                        fromHeader.value,
+                        subjectHeader ? subjectHeader.value : 'Sem assunto',
+                        snippet,
+                        sentAt // Salva com a data correta
+                    ]);
+
+                    // 2. Atualiza o status do pedido para 'Respondido'
+                    const updateQuery = `
+                        UPDATE pedidos_em_rastreamento
+                        SET email_status = 'Email - Respondido', notificado_por_email = false
+                        WHERE id = $1
+                    `;
+                    await client.query(updateQuery, [pedido.id]);
+
+                    await client.query('COMMIT'); // Confirma as alterações
+                } catch (e) {
+                    await client.query('ROLLBACK'); // Desfaz em caso de erro
+                    throw e;
+                } finally {
+                    client.release(); // Libera a conexão
+                }
+            }
         }
     } catch (error) {
         console.error(`[Gmail Service] Erro ao verificar respostas para thread ${pedido.email_thread_id}:`, error);

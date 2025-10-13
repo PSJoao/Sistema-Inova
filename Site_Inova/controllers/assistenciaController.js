@@ -206,7 +206,7 @@ exports.getAssistenciasAPI = async (req, res) => {
             let buscaConditions = [];
             const buscaIndex = addParam(buscaLike);
             
-            buscaConditions.push(`a.nf_origem ILIKE ${buscaIndex}`, `a.nome_pedido ILIKE ${buscaIndex}`, `s.nome ILIKE ${buscaIndex}`, `a.fabrica ILIKE ${buscaIndex}`, `a.documento_cliente ILIKE ${buscaIndex}`, `EXISTS (SELECT 1 FROM assistencia_produtos ap WHERE ap.assistencia_id = a.id AND ap.nome_produto ILIKE ${buscaIndex})`);
+            buscaConditions.push(`a.nf_origem ILIKE ${buscaIndex}`, `a.nome_pedido ILIKE ${buscaIndex}`, `s.nome ILIKE ${buscaIndex}`, `a.fabrica ILIKE ${buscaIndex}`, `a.observacoes ILIKE ${buscaIndex}`, `a.documento_cliente ILIKE ${buscaIndex}`, `EXISTS (SELECT 1 FROM assistencia_produtos ap WHERE ap.assistencia_id = a.id AND ap.nome_produto ILIKE ${buscaIndex})`);
 
             if (nfExtraida) {
                 buscaConditions.push(`a.nf_origem = ${addParam(nfExtraida)}`);
@@ -1239,7 +1239,7 @@ exports.exportAssistenciasExcel = async (req, res) => {
                     ELSE a.situacao
                 END as situacao,
                 to_char(a.data_solicitacao, 'DD/MM/YYYY') as data_solicitacao,
-                a.nf_origem, a.nome_pedido, s.nome as solicitante, a.fabrica,
+                a.nf_origem, a.nome_pedido, s.nome as solicitante, a.fabrica, a.coluna_estoque as coluna, a.linha_estoque as linha,
                 (SELECT STRING_AGG(
                     'Produto: ' || ap.nome_produto || 
                     ' | Status: ' || ap.status_volume || 
@@ -1261,6 +1261,8 @@ exports.exportAssistenciasExcel = async (req, res) => {
             'Situação': a.situacao,
             'Data Solic.': a.data_solicitacao,
             'NF Origem': a.nf_origem,
+            'Coluna': a.coluna,
+            'Linha': a.linha,
             'Cliente/Pedido': a.nome_pedido,
             'Solicitante': a.solicitante,
             'Fábrica': a.fabrica,
@@ -1279,6 +1281,8 @@ exports.exportAssistenciasExcel = async (req, res) => {
             { wch: 15 }, // Situação
             { wch: 12 }, // Data Solic.
             { wch: 12 }, // NF Origem
+            { wch: 8 },  // Coluna
+            { wch: 8 },  // Linha
             { wch: 40 }, // Cliente/Pedido
             { wch: 25 }, // Solicitante
             { wch: 25 }, // Fábrica

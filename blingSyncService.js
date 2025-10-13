@@ -476,7 +476,7 @@ async function syncBlingProductsEliane() {
  */
 async function syncNFeLucas() {
     // Bloco de verificação inicial (trava) - Se já estiver rodando, ou produtos sincronizando, ou emissão aberta, a função para aqui.
-    if (isNFeLucasRunning || isProductSyncRunning) return console.log('[LucasSync] Sincronização de NF-e ou produtos já em andamento. Pulando.');
+    if (isNFeLucasRunning || isProductLucasSyncRunning) return console.log('[LucasSync] Sincronização de NF-e ou produtos já em andamento. Pulando.');
     if (isEmissaoPageActive) return console.log('[LucasSync] Página de emissão ativa. Sincronização de NF-e bloqueada.');
 
     isNFeLucasRunning = true;
@@ -718,7 +718,7 @@ async function syncNFeLucas() {
 
 async function syncNFeEliane() {
     // Bloco de verificação inicial (trava)
-    if (isNFeElianeRunning || isProductSyncRunning) return console.log('[ElianeSync] Sincronização já em andamento. Pulando.');
+    if (isNFeElianeRunning || isProductElianeSyncRunning) return console.log('[ElianeSync] Sincronização já em andamento. Pulando.');
     if (isEmissaoPageActive) return console.log('[ElianeSync] Página de emissão ativa. Aguardando...');
 
     isNFeElianeRunning = true;

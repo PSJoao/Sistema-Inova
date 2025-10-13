@@ -92,7 +92,7 @@ const rastreioController = {
                         whereClauses.push(`situacao_atual = 'Fora do Comum'`);
                         break;
                     case 'email_em_andamento':
-                        whereClauses.push(`email_status = 'Email - Em Andamento'`);
+                        whereClauses.push(`email_status IN ('Email - Em Andamento', 'Email - Respondido')`);
                         break;
                     case 'email_resolvido':
                         whereClauses.push(`email_status = 'Email - Resolvido'`);
