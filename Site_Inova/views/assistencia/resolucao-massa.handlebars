@@ -1,0 +1,50 @@
+<link rel="stylesheet" href="/public/styles/relacoes.css"> {{!-- Reutilizando estilo para o layout de colunas --}}
+<link rel="stylesheet" href="/public/styles/assistencia.css">
+
+<div class="content-card">
+    <div class="page-header-actions">
+        <h1 class="page-title">{{title}}</h1>
+        <div class="action-buttons">
+            <a href="/assistencias" class="btn btn-outline-accent"><i class="fas fa-arrow-left"></i> Voltar para Lista</a>
+        </div>
+    </div>
+
+    <div class="bipagem-container mt-4">
+        {{!-- Coluna da Esquerda: Bipagem e Lista de Volumes --}}
+        <div class="bipagem-coluna" id="coluna-bipagem-resolucao">
+            <h4>Bipar Chave de Acesso da NF-e</h4>
+            <div class="input-group mb-3">
+                <input type="text" id="chaveAcessoInput" class="form-control form-control-lg" placeholder="Aguardando bipagem do código de barras..." autocomplete="off">
+            </div>
+
+            <hr class="styled">
+
+            <h4>Volumes a Resolver</h4>
+            <div class="bipagem-list-scroll-wrapper">
+                <ul id="volumesResolvidosList" class="p-0">
+                    {{!-- Itens bipados e selecionados serão adicionados aqui via JS --}}
+                </ul>
+            </div>
+        </div>
+
+        {{!-- Coluna da Direita: Resumo e Ações --}}
+        <div class="bipagem-coluna" id="coluna-resumo-resolucao">
+            <h4>Resumo</h4>
+            <div class="summary-box">
+                <div class="summary-item">
+                    <span>Total de Volumes Selecionados: </span>
+                    <strong id="totalBipadosCount">0</strong>
+                </div>
+            </div>
+             <div class="form-actions" style="margin-top: 20px;">
+                <button type="button" id="btnSalvarResolucoes" class="btn btn-primary w-100" disabled>
+                    <i class="fas fa-save me-2"></i> Salvar Resoluções
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{#section "scripts"}}
+    <script src="/public/scripts/resolucaoMassaManager.js"></script>
+{{/section}}

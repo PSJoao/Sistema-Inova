@@ -1,0 +1,177 @@
+{{! views/relacao/print-relacao.hbs }}
+{{!-- Apenas se a relação NÃO for validada, mostra a marca d'água --}}
+{{#unless is_validated}}
+  <div class="watermark">SEM VALIDADE</div>
+{{/unless}}
+<div class="print-container">
+  {{!-- Botão de Imprimir, só aparece se a relação FOR validada --}}
+  {{#if is_validated}}
+    <div class="print-actions-panel">
+        <button id="printBtn" class="btn btn-accent"><i class="fas fa-print"></i> Imprimir</button>
+
+        {{#if elianeBlingIds.length}}
+        <a href="https://www.bling.com.br/relatorios/danfe.php?idNota1={{elianeBlingIds}}&fechaPopup=N&frenteverso=N" 
+           target="_blank" 
+           class="btn btn-secondary-custom">
+           <i class="fas fa-file-invoice"></i> Imprimir NFs (Eliane)
+        </a>
+      {{/if}}
+
+      {{!-- Botão para imprimir NFs do Lucas --}}
+      {{#if lucasBlingIds.length}}
+        <a href="https://www.bling.com.br/relatorios/danfe.php?idNota1={{lucasBlingIds}}&fechaPopup=N&frenteverso=N" 
+           target="_blank" 
+           class="btn btn-secondary-custom">
+           <i class="fas fa-file-invoice"></i> Imprimir NFs (Lucas)
+        </a>
+      {{/if}}
+
+    </div>
+  {{/if}}
+  
+  <table class="report-table" style="max-width: 900px;">
+    {{!-- Cabeçalho com Assinatura e Título --}}
+    <thead>
+      <tr>
+        <td colspan="13" class="merged-cell signature-box-top" style="text-align: left; font-size: 18px; font-weight: bold;">
+          Assinatura {{transportadoraCompleto}}:
+        </td>
+      </tr>
+      <tr>
+        <td colspan="13" class="merged-cell title-box" style="font-size: 16px;">
+          CONTROLES DE COLETAS E OU SAÍDAS DE MERCADORIAS - {{transportadoraCompleto}}
+        </td>
+      </tr>
+      <tr><td colspan="13" class="empty-row-spacer"></td></tr>
+
+      {{!-- Informações das Empresas e Data --}}
+      <tr class="company-info-row">
+        <td class="label">CLIENTE:</td>
+        <td colspan="4" class="value" style="font-weight: bold;">{{empresaEliane.nome}}</td>
+        <td class="label date-cell">Data: {{dataRelacao}}</td>
+        <td class="divider-cell"></td>
+        <td class="label">CLIENTE:</td>
+        <td colspan="4" class="value" style="font-weight: bold;">{{empresaLucas.nome}}</td>
+        <td class="label date-cell">Data: {{dataRelacao}}</td>
+      </tr>
+      <tr class="company-info-row">
+        <td class="label">CNPJ:</td>
+        <td colspan="5" class="value" style="font-weight: bold;">343211530001/52</td>
+        <td class="divider-cell"></td>
+        <td class="label">CNPJ:</td>
+        <td colspan="5" class="value" style="font-weight: bold;">400622950001/45</td>
+      </tr>
+      <tr><td colspan="13" class="empty-row-spacer"></td></tr>
+
+      {{!-- Cabeçalhos da Tabela de Dados --}}
+      <tr class="data-headers">
+        <th>Notas Fiscais</th><th>Volumes</th>
+        <th>Notas Fiscais</th><th>Volumes</th>
+        <th>Notas Fiscais</th><th>Volumes</th>
+        <th class="divider-cell"></th>
+        <th>Notas Fiscais</th><th>Volumes</th>
+        <th>Notas Fiscais</th><th>Volumes</th>
+        <th>Notas Fiscais</th><th>Volumes</th>
+      </tr>
+    </thead>
+
+    {{!-- Corpo da Tabela de Dados --}}
+    <tbody>
+      {{#each printableRows}}
+        <tr>
+          <td>{{this.elianeNf1}}</td><td>{{this.elianeVol1}}</td>
+          <td>{{this.elianeNf2}}</td><td>{{this.elianeVol2}}</td>
+          <td>{{this.elianeNf3}}</td><td>{{this.elianeVol3}}</td>
+          <td class="divider-cell"></td>
+          <td>{{this.lucasNf1}}</td><td>{{this.lucasVol1}}</td>
+          <td>{{this.lucasNf2}}</td><td>{{this.lucasVol2}}</td>
+          <td>{{this.lucasNf3}}</td><td>{{this.lucasVol3}}</td>
+        </tr>
+      {{/each}}
+      {{!-- Adiciona linhas em branco para chegar até a linha 60 se necessário --}}
+      {{#times numLinhasEmBranco 0}}
+      <tr>
+        {{!-- O &nbsp; é um caractere de espaço que força a célula a ter altura --}}
+        <td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
+        <td class="divider-cell"></td>
+        <td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
+      </tr>
+    {{/times}}
+    </tbody>
+
+    {{!-- Rodapé com Totais e Assinaturas --}}
+    <tfoot>
+      <tr><td colspan="13" class="empty-row-spacer"></td></tr>
+      <tr>
+        <td></td><td></td><td></td><td></td>
+        <td class="label total-geral-label">TOTAL GERAL DE NOTAS FISCAIS</td>
+        <td class="total-geral-value">{{totais.geralNfs}}</td>
+        <td class="divider-cell"></td>
+        <td colspan="6"></td>
+      </tr>
+      <tr>
+        <td></td><td></td><td></td><td></td>
+        <td class="label total-geral-label">TOTAL GERAL DE VOLUMES</td>
+        <td class="total-geral-value">{{totais.geralVols}}</td>
+        <td class="divider-cell"></td>
+        <td colspan="6"></td>
+      </tr>
+      <tr><td colspan="13" class="empty-row-spacer"></td></tr>
+      <tr>
+        <td colspan="3" class="total-company-header">{{totais.eliane.nome}}</td>
+        <td colspan="3"></td><td class="divider-cell"></td>
+        <td colspan="3" class="total-company-header">{{totais.lucas.nome}}</td>
+        <td colspan="3"></td>
+      </tr>
+      <tr>
+        <td colspan="2" class="label">Total de Notas Fiscais</td>
+        <td class="value">{{totais.elianeNfs}}</td>
+        <td colspan="3"></td><td class="divider-cell"></td>
+        <td colspan="2" class="label">Total de Notas Fiscais</td>
+        <td class="value">{{totais.lucasNfs}}</td>
+        <td colspan="3"></td>
+      </tr>
+      <tr>
+        <td colspan="2" class="label">Total de Volumes</td>
+        <td class="value">{{totais.elianeVols}}</td>
+        <td colspan="3"></td><td class="divider-cell"></td>
+        <td colspan="2" class="label">Total de Volumes</td>
+        <td class="value">{{totais.lucasVols}}</td>
+        <td colspan="3"></td>
+      </tr>
+      <tr><td colspan="13" class="empty-row-spacer-large"></td></tr>
+      <tr>
+        <td colspan="13" class="merged-cell signature-box-bottom" style="text-align: left; font-size: 18px; font-weight: bold;">
+          Assinatura {{transportadoraCompleto}}:
+        </td>
+      </tr>
+      <tr><td colspan="13" class="empty-row-spacer"></td></tr>
+    </tfoot>
+  </table>
+
+  {{!-- Lista de Referência para outros setores (não será impresso) --}}
+  <div class="reference-list">
+    <h5>Lista de Referência</h5>
+    <table>
+      <thead><tr><th>Transportadora</th><th>Nº Nota Fiscal</th></tr></thead>
+      <tbody>
+        {{#each itemsParaRelacao}}
+          <tr><td>{{../transportadoraCompleto}}</td><td>{{this.nfe_numero}}</td></tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+{{#section "scripts"}}
+  {{!-- Script agora só adiciona o listener ao botão, não imprime automaticamente --}}
+  <script>
+    const printButton = document.getElementById('printBtn');
+    if (printButton) {
+        printButton.addEventListener('click', () => {
+            window.print();
+        });
+    }
+  </script>
+{{/section}}

@@ -1,0 +1,240 @@
+<link rel="stylesheet" href="/public/styles/assistencia.css">
+
+<div class="content-card">
+    {{!-- Cabeçalho da Página com Título e Ações --}}
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div class="page-header-actions">
+            <h1 class="page-title mb-0">{{title}}</h1>
+            <a href="/assistencias" class="btn btn-accent">
+                <i class="fas fa-arrow-left me-2"></i>Voltar para a Lista
+            </a>
+            <button type="button" class="btn btn-info" id="btn-open-label-modal">
+                <i class="fas fa-barcode me-2"></i>Gerar Etiqueta
+            </button>
+            <a href="/assistencias/pdf/{{assistencia.id}}" class="btn btn-success-alt" target="_blank">
+                <i class="fas fa-file-pdf me-2"></i>Gerar PDF
+            </a>
+            {{!-- Botão de resolver geral, agora só aparece para assistências que NÃO são de estoque --}}
+            {{#if (isNotStock assistencia.descricao)}}
+                {{#if (isNotResolved assistencia.situacao)}}
+                    <form action="/assistencias/resolver/{{assistencia.id}}" method="POST" class="d-inline">
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-check-circle me-2"></i>Marcar como Resolvida
+                        </button>
+                    </form>
+                {{/if}}
+            {{/if}}
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            {{!-- Card de Volumes (Produtos) e Peças --}}
+            <div class="card mb-4" style="padding-top: 20px;">
+                <div class="card-header">
+                    <h5 class="mb-0">Volumes e Peças Solicitadas</h5>
+                </div>
+                <div class="card-body">
+                    {{#if assistencia.produtos}}
+                        {{#each assistencia.produtos as |produto pIndex|}}
+                            <div class="volume-card">
+                                <div class="volume-card-header">
+                                    <h6>{{produto.nome_produto}}</h6>
+                                    {{#if (isStock ../assistencia.descricao)}}
+                                        <div class="volume-controls-container">
+                                            {{#if produto.volume_qualidade}}
+                                                <div class="volume-quality-display">
+                                                    <strong>Qualidade:</strong>
+                                                    <span class="ms-2 badge bg-dark">{{produto.volume_qualidade}}</span>
+                                                </div>
+                                            {{/if}}
+
+                                            {{#if (gt ../assistencia.produtos.length 1)}}
+                                            <div class="volume-status-control">
+                                                <span class="status-badge status-{{toLowerCase produto.status_volume}} me-2" id="status-badge-{{produto.id}}">
+                                                    {{produto.status_volume}}
+                                                </span>
+                                                <select class="form-select form-select-sm volume-status-select" data-produto-id="{{produto.id}}" data-current-status="{{produto.status_volume}}">
+                                                    <option value="" disabled selected>Alterar Status...</option>
+                                                    <option value="Pendente">Pendente</option>
+                                                    <option value="Para Vistoriar">Para Vistoriar</option>
+                                                    <option value="Pronta para Embalar">Pronta para Embalar</option>
+                                                    <option value="Descarte">Descarte</option>
+                                                    <option value="Resolvida">Resolvida</option>
+                                                </select>
+                                            </div>
+                                            {{/if}}
+                                        </div>
+                                    {{/if}}
+                                </div>
+                                <div class="volume-card-body">
+                                    <ul class="list-group list-group-flush">
+                                        {{#if this.pecas}}
+                                            {{#each this.pecas}}
+                                                <li class="list-group-item">{{this.nome_peca}}</li>
+                                            {{/each}}
+                                        {{else}}
+                                            <li class="list-group-item text-muted">Nenhuma peça especificada para este volume.</li>
+                                        {{/if}}
+                                    </ul>
+                                </div>
+                            </div>
+                        {{/each}}
+                    {{else}}
+                        <p class="text-muted">Nenhum volume (produto) foi associado a esta assistência.</p>
+                    {{/if}}
+                </div>
+            </div>
+
+            {{!-- Card de Observações (sem alterações) --}}
+            <div class="card">
+                <div class="card-header"><h5 class="mb-0">Observações</h5></div>
+                <div class="card-body">
+                    {{#if assistencia.observacoes}}
+                        <p style="white-space: pre-wrap;">{{assistencia.observacoes}}</p>
+                    {{else}}
+                        <p class="text-muted">Nenhuma observação registrada.</p>
+                    {{/if}}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            {{!-- Card de Status e Ações --}}
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Status Geral</h5>
+                    {{#if (canEdit assistencia.situacao)}}
+                        <a href="/assistencias/editar/{{assistencia.id}}" class="btn btn-warning btn-sm">
+                            <i class="fas fa-edit me-1"></i> Editar
+                        </a>
+                    {{/if}}
+                </div>
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <span class="status-badge status-{{toLowerCase assistencia.situacao}} me-3">{{assistencia.situacao}}</span>
+                        {{#if assistencia.marcar_como_alerta}}
+                            <span class="badge bg-danger"><i class="fas fa-exclamation-triangle me-1"></i> ALERTA</span>
+                        {{/if}}
+                    </div>
+                    {{#if (eq assistencia.situacao "Resolvida")}}
+                        <div class="resolution-info">
+                            <p class="mb-0" style="padding-top: 20px;"><strong>Data Resolução:</strong> {{assistencia.data_resolucao_fmt}}</p>
+                        </div>
+                    {{/if}}
+                </div>
+            </div>
+
+            {{!-- Card de Detalhes da Solicitação (sem alterações) --}}
+            <div class="card mb-4" style="padding-bottom: 20px;">
+                <div class="card-header"><h5 class="mb-0">Detalhes da Solicitação</h5></div>
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item"><strong>Categoria:</strong> {{assistencia.descricao}}</li>
+                    <li class="list-group-item"><strong>Solicitante:</strong> {{assistencia.solicitante_nome}}</li>
+                    <li class="list-group-item"><strong>Data:</strong> {{assistencia.data_solicitacao_fmt}}</li>
+                    <li class="list-group-item"><strong>Fábrica:</strong> {{assistencia.fabrica}}</li>
+                    <li class="list-group-item"><strong>Cor:</strong> {{assistencia.cor}}</li>
+                </ul>
+            </div>
+
+            {{!-- Card de Detalhes do Pedido (sem alterações) --}}
+            <div class="card">
+                <div class="card-header"><h5 class="mb-0">Detalhes do Pedido</h5></div>
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item"><strong>NF Origem:</strong> {{assistencia.nf_origem}}</li>
+                    <li class="list-group-item"><strong>Cliente/Pedido:</strong> {{assistencia.nome_pedido}}</li>
+                    <li class="list-group-item"><strong>Documento:</strong> {{assistencia.documento_cliente}}</li>
+                    <li class="list-group-item"><strong>Pedido de Venda:</strong> {{assistencia.numero_pedido_venda}}</li>
+                    <li class="list-group-item"><strong>Coluna:</strong> {{assistencia.coluna_estoque}}</li>
+                    <li class="list-group-item"><strong>Linha:</strong> {{assistencia.linha_estoque}}</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{#section "scripts"}}
+    <script>
+        // Lógica do Modal de Etiquetas (sem alterações)
+        document.getElementById('btn-open-label-modal')?.addEventListener('click', () => {
+            const volumes = [
+                {{#each assistencia.produtos}}
+                { id: {{this.id}}, nome: "{{this.nome_produto}} (Vol. {{addOne @index}})" },
+                {{/each}}
+            ];
+            if (volumes.length === 1) {
+                const assistenciaId = {{assistencia.id}};
+                const produtoId = volumes[0].id;
+                window.open(`/assistencias/etiqueta/${assistenciaId}/${produtoId}`, '_blank');
+                window.open(`/assistencias/etiquetas-estrutura/${assistenciaId}`, '_blank');
+                return;
+            }
+            let optionsHTML = volumes.map(v => `<option value="${v.id}">${v.nome}</option>`).join('');
+            const modalContent = `
+                <p>Esta assistência possui múltiplos volumes. Por favor, selecione qual etiqueta de assistência deseja gerar:</p>
+                <select id="volume-select" class="form-select mt-3">${optionsHTML}</select>
+            `;
+            ModalSystem.confirm(
+                modalContent, 'Selecionar Volume para Etiqueta',
+                () => {
+                    const assistenciaId = {{assistencia.id}};
+                    const selectedProductId = document.getElementById('volume-select').value;
+                    if (selectedProductId) {
+                        window.open(`/assistencias/etiqueta/${assistenciaId}/${selectedProductId}`, '_blank');
+                        window.open(`/assistencias/etiquetas-estrutura/${assistenciaId}`, '_blank');
+                    }
+                }, null, { isHtml: true }
+            );
+        });
+
+        // NOVA LÓGICA: Gerenciamento de status de volumes individuais
+        document.querySelectorAll('.volume-status-select').forEach(selectEl => {
+            selectEl.addEventListener('change', async (e) => {
+                const produtoId = e.target.dataset.produtoId;
+                const newStatus = e.target.value;
+                const currentStatus = e.target.dataset.currentStatus;
+
+                if (!newStatus || newStatus === currentStatus) {
+                    e.target.value = ""; // Reseta o select
+                    return;
+                }
+
+                ModalSystem.confirm(
+                    `Tem certeza que deseja alterar o status deste volume para "${newStatus}"?`,
+                    'Confirmar Alteração de Status',
+                    async () => { // onConfirm
+                        try {
+                            const response = await fetch(`/assistencias/api/update-volume-status/${produtoId}`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ status: newStatus })
+                            });
+
+                            const result = await response.json();
+                            if (!response.ok || !result.success) {
+                                throw new Error(result.message || 'Falha na comunicação com o servidor.');
+                            }
+
+                            // Atualiza a UI sem recarregar a página
+                            const statusBadge = document.getElementById(`status-badge-${produtoId}`);
+                            statusBadge.textContent = newStatus;
+                            statusBadge.className = `status-badge status-${newStatus.toLowerCase().replace(/\s+/g, '-')} me-2`;
+                            e.target.dataset.currentStatus = newStatus; // Atualiza o status atual no elemento
+                            e.target.value = ""; // Reseta o select
+                            
+                            ModalSystem.alert('Status do volume atualizado com sucesso!', 'Sucesso');
+
+                        } catch (error) {
+                            console.error('Erro ao atualizar status do volume:', error);
+                            ModalSystem.alert(`Não foi possível atualizar o status. Erro: ${error.message}`, 'Erro');
+                            e.target.value = ""; // Reseta o select em caso de falha
+                        }
+                    },
+                    () => { // onCancel
+                        e.target.value = ""; // Reseta o select se o usuário cancelar
+                    }
+                );
+            });
+        });
+    </script>
+{{/section}}

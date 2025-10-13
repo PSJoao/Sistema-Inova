@@ -1,0 +1,209 @@
+.content-card {
+    background-color: var(--bg-secondary);
+    border-radius: var(--border-radius-lg);
+    padding: 2rem;
+    box-shadow: var(--shadow-md);
+}
+
+/* --- Abas --- */
+.nav-tabs {
+    border-bottom: 1px solid var(--bg-tertiary);
+    display: flex; /* Garante que as abas fiquem na horizontal */
+    flex-wrap: nowrap;
+}
+.nav-tabs .nav-item {
+    margin-bottom: -1px;
+}
+.nav-tabs .nav-link {
+    border: 1px solid transparent;
+    border-top-left-radius: var(--border-radius-md);
+    border-top-right-radius: var(--border-radius-md);
+    color: var(--text-secondary);
+    font-weight: 500;
+    padding: 0.75rem 1.25rem;
+    transition: all var(--transition-fast);
+}
+.nav-tabs .nav-link:hover {
+    border-color: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+.nav-tabs .nav-link.active {
+    background-color: var(--bg-secondary);
+    border-color: var(--bg-tertiary) var(--bg-tertiary) var(--bg-secondary);
+    color: var(--accent-orange);
+}
+
+/* --- Tabela de Listagem --- */
+.assist-table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+}
+.assist-table-grid {
+    display: grid;
+    /* [CORREÇÃO] Adicionada a primeira coluna de 40px para o checkbox e as outras foram ajustadas */
+    grid-template-columns: 40px 110px 120px 1.65fr 2.55fr 6.65fr 2fr 2fr 2.65fr 120px 100px;
+    min-width: 1200px;
+    font-size: 0.9rem;
+}
+.assist-table-header, .assist-table-row {
+    display: contents;
+}
+.assist-table-header > div {
+    background-color: var(--bg-tertiary);
+    font-weight: 600;
+    padding: 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+.assist-table-row > div {
+    display: flex;
+    align-items: center;
+    padding: 1rem;
+    border-bottom: 1px solid var(--bg-tertiary);
+    transition: background-color var(--transition-fast);
+}
+.assist-table-row { cursor: pointer; }
+.assist-table-row:hover > div { background-color: var(--bg-tertiary); }
+
+/* Destaque de Alerta (APENAS na célula de observação) */
+.col-obs.alert-cell {
+    background-color: rgba(220, 53, 69, 0.08);
+    font-weight: 500;
+    color: var(--color-danger);
+}
+.col-obs.alert-cell i {
+    margin-right: 8px;
+}
+
+/* --- Formulários --- */
+.form-select, .form-control {
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    border-radius: var(--border-radius-md);
+}
+.form-select:focus, .form-control:focus {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    border-color: var(--accent-orange);
+    box-shadow: 0 0 0 0.25rem rgba(var(--accent-orange-rgb), 0.25);
+}
+.produto-bloco {
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+.produto-bloco .card-title {
+    color: var(--accent-orange);
+}
+
+.form-select {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    background-clip: padding-box;
+    appearance: none; /* Remove a aparência padrão do sistema operacional */
+}
+
+.btn-remove-peca {
+    background-color: var(--color-danger);
+    margin-top: 10px;
+    color: #fff;
+    border: none;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--border-radius-sm);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: background-color var(--transition-fast);
+}
+
+.btn-remove-peca:hover {
+    background-color: var(--color-danger-dark);
+}
+
+.btn-add-peca {
+    font-size: 1rem;
+}
+
+
+.btn-remove-produto {
+    background-color: var(--color-danger);
+    color: #fff;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: var(--border-radius-sm);
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background-color var(--transition-fast);
+}
+
+.btn-remove-produto:hover {
+    background-color: var(--color-danger-dark);
+}
+
+.assist-table-row > div.actions-cell {
+    padding: 0.5rem; /* Reduz o padding para a combobox caber melhor */
+}
+
+.status-combobox {
+    width: 100%;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    background-clip: padding-box;
+    appearance: none; /* Remove a aparência padrão do sistema operacional */
+}
+
+/* --- Estilos para Detalhe da Assistência --- */
+.volume-card {
+    border: 1px solid var(--bg-tertiary);
+    border-radius: var(--border-radius-md);
+    margin-bottom: 1rem;
+    background-color: var(--bg-main);
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow var(--transition-fast);
+}
+
+.volume-card:hover {
+    box-shadow: var(--shadow-md);
+}
+
+.volume-card-header {
+    background-color: var(--bg-secondary);
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid var(--bg-tertiary);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
+
+.volume-card-header h6 {
+    margin: 0;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.volume-controls-container {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.volume-quality-display, .volume-status-control {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.volume-card-body {
+    padding: 1.25rem;
+}
+
+.volume-card .list-group-item {
+    background-color: transparent;
+    border-color: var(--bg-tertiary);
+    padding-left: 0;
+    padding-right: 0;
+}

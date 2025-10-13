@@ -1,0 +1,77 @@
+{{!< main}}
+
+{{#section "head"}}
+  <link href="/public/styles/emissao.css" rel="stylesheet">
+{{/section}}
+
+{{!-- 1. Adicionamos o 'data-transportadoras-map' aqui para o JS poder pegar a lista de transportadoras --}}
+<div class="content-card emissao-page-container" data-transportadoras-map="{{json transportadorasMap}}">
+
+  <div id="emissaoListView">
+    <div class="emissao-list-header">
+      <h1 class="page-title">Gerenciador de Emissões</h1>
+      <button id="btnAddEmissao" class="btn btn-accent">
+        <i class="fas fa-plus"></i> Adicionar Nova Emissão
+      </button>
+    </div>
+    <div id="emissaoCardListContainer">
+    </div>
+    <div id="paginationControlsContainer">
+    </div>
+  </div>
+
+  <div id="emissaoDetailView" style="display: none;">
+    <div class="emissao-detail-header">
+      <h1 id="emissaoDetailTitle" class="page-title"></h1>
+    </div>
+    <div id="barcodeListContainer">
+    </div>
+    <div class="bipagem-totais-wrapper">
+        <div class="total-bipado-container">
+            <strong id="bipadosCounter">0</strong>
+        </div>
+    </div>
+    <div class="form-actions">
+      <button id="btnBackToList" class="btn btn-outline-accent"><i class="fas fa-arrow-left"></i> Voltar para Lista</button>
+      <button id="btnFinishEmissao" class="btn btn-warning"><i class="fas fa-check-circle"></i> Finalizar Emissão</button>
+    </div>
+  </div>
+
+  {{!-- ================================================================= --}}
+  {{!-- 2. NOVA TELA ESCONDIDA para Atribuição de Transportadoras --}}
+  {{!-- ================================================================= --}}
+  <div id="carrierAssignmentView" style="display: none;">
+    <div class="emissao-detail-header">
+        <h2 class="page-title">Atribuição Manual de Transportadora</h2>
+    </div>
+    <p class="text-muted" style="text-align: center; margin-bottom: 20px;">
+        As seguintes notas fiscais foram processadas sem uma transportadora. Por favor, selecione a correta para cada uma.
+    </p>
+    
+    <div class="table-responsive-wrapper">
+        <table id="carrierAssignmentTable" class="dataTable-nostyle" style="width:100%;">
+            <thead>
+                <tr>
+                    <th>Nº Nota Fiscal</th>
+                    <th>Chave de Acesso (Final)</th>
+                    <th style="width: 50%;">Selecione a Transportadora</th>
+                </tr>
+            </thead>
+            <tbody id="carrierAssignmentTbody">
+                {{!-- O conteúdo será preenchido pelo emissaoManager.js --}}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="form-actions">
+        {{!-- <button id="btnCancelCarrierAssignment" type="button" class="btn btn-secondary">Voltar e Corrigir</button> --}}
+        <button id="btnFinalizeWithCarriers" type="button" class="btn btn-accent"><i class="fas fa-check-circle"></i> Finalizar com Transportadoras</button>
+    </div>
+  </div>
+
+</div>
+
+{{!-- CORREÇÃO: Movido o script para dentro da 'section' para manter o padrão --}}
+{{#section "scripts"}}
+  <script src="/public/scripts/emissaoManager.js"></script>
+{{/section}}

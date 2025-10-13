@@ -1,0 +1,57 @@
+{{!< main}}
+
+<div class="content-card">
+  <h1 class="page-title">{{title}}</h1>
+
+  <div class="table-responsive-wrapper">
+    <table id="viaVarejoEmptyProductsTable" class="dataTable display" style="width:100%"> {{!-- ID ÚNICO --}}
+      <thead>
+        <tr>
+          <th style="width: 20%;">SKU</th> {{!-- Exemplo de ajuste de largura, prefira classes em tables.css se for comum --}}
+          <th style="width: 80%;">Produto</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each products}} 
+        <tr>
+          <td>{{sku}}</td>
+          <td>{{produto}}</td> {{!-- Use 'description' ou 'produto' conforme o controller envia --}}
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const tableId = '#viaVarejoEmptyProductsTable'; // ID ÚNICO
+  const tableElement = document.querySelector(tableId);
+
+  if (tableElement) {
+    // Lógica de seleção de célula
+    tableElement.addEventListener('click', function(event) {
+      const targetCell = event.target.closest('td, th');
+      if (!targetCell) return;
+
+      tableElement.querySelectorAll('td.selected, th.selected').forEach(el => {
+        el.classList.remove('selected');
+      });
+      targetCell.classList.add('selected');
+    });
+  }
+  // Certifique-se que seu dataTables.js inicializa esta tabela ou adicione a inicialização aqui
+  // se as opções forem diferentes do padrão definido em dataTables.js
+  // Exemplo:
+  // if (typeof $ !== 'undefined' && $.fn.dataTable.isDataTable && !$.fn.dataTable.isDataTable(tableId)) {
+  //   $(tableId).DataTable({
+  //     "pageLength": 10,
+  //     "searching": true,
+  //     "paging": true,
+  //     "info": true, // Mostrar info, estilizado pelo tables.css
+  //     "scrollX": true,
+  //     "language": { /* Suas traduções */ }
+  //   });
+  // }
+});
+</script>

@@ -1,0 +1,430 @@
+/* public/styles/tables.css */
+
+/* ==========================================================================
+   Estilos Base para Tabelas DataTables
+   ========================================================================== */
+table.dataTable {
+  width: 100% !important; /* Garante que o DataTables ocupe toda a largura */
+  margin: 1.5em 0; /* Mais margem vertical */
+  border-collapse: collapse;
+  color: var(--text-secondary);
+  background-color: var(--bg-secondary); /* Fundo principal da tabela */
+  font-size: 0.9rem;
+  border: 1px solid var(--bg-tertiary); /* Borda ao redor da tabela */
+  border-radius: var(--border-radius-md); /* Bordas arredondadas para a tabela como um todo */
+  overflow: hidden; /* Para o border-radius funcionar com o conteúdo interno */
+}
+
+table.dataTable th,
+table.dataTable td {
+  padding: 10px 14px; /* Padding consistente */
+  border: 1px solid var(--bg-tertiary);
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap; /* Evita quebra de linha por padrão, scrollX cuidará do overflow */
+}
+
+/* Remove bordas externas desnecessárias se a tabela já tem uma borda */
+table.dataTable th:first-child,
+table.dataTable td:first-child {
+  border-left: none;
+}
+table.dataTable th:last-child,
+table.dataTable td:last-child {
+  border-right: none;
+}
+table.dataTable thead tr:first-child th {
+    border-top: none;
+}
+table.dataTable tbody tr:last-child td {
+    border-bottom: none;
+}
+
+
+/* Cabeçalho da Tabela */
+table.dataTable thead th {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-weight: 600;
+  transition: background-color var(--transition-fast);
+}
+table.dataTable thead th:hover {
+  background-color: hsl(from var(--bg-tertiary) h s calc(l + 5%)); /* Leve clareamento no hover do TH */
+  color: var(--text-primary);
+}
+
+/* Garante que o fundo do TH não mude ao ser a coluna ordenada ativamente */
+table.dataTable thead th.sorting_asc,
+table.dataTable thead th.sorting_desc,
+table.dataTable thead th.sorting {
+  background-color: var(--bg-tertiary) !important; /* Força o fundo padrão */
+  color: var(--text-primary) !important;
+}
+
+/* Ícones de Ordenação do DataTables (Font Awesome) */
+table.dataTable thead .sorting,
+table.dataTable thead .sorting_asc,
+table.dataTable thead .sorting_desc {
+  background-image: none !important;
+  position: relative;
+  padding-right: 28px; /* Mais espaço para o ícone */
+}
+table.dataTable thead .sorting::after,
+table.dataTable thead .sorting_asc::after,
+table.dataTable thead .sorting_desc::after {
+  font-family: "Font Awesome 5 Free";
+  font-weight: 900;
+  position: absolute;
+  right: 10px; /* Ajuste para o padding-right do th */
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.6; /* Opacidade padrão para ícones de ordenação */
+  font-size: 0.85em;
+  transition: opacity var(--transition-fast), color var(--transition-fast);
+}
+table.dataTable thead .sorting::after { content: "\f0dc"; color: var(--text-secondary); } /* fa-sort e cor sutil */
+table.dataTable thead .sorting_asc::after { content: "\f0de"; opacity: 1; color: var(--accent-orange); } /* fa-sort-up */
+table.dataTable thead .sorting_desc::after { content: "\f0dd"; opacity: 1; color: var(--accent-orange); } /* fa-sort-down */
+table.dataTable thead th:hover .sorting::after {
+    opacity: 0.8; /* Ícone fica um pouco mais visível no hover do TH */
+}
+
+
+/* ==========================================================================
+   Remoção de Efeito Zebrado, Hover em Linhas e Destaque de Coluna Ordenada
+   ========================================================================== */
+
+/* Fundo uniforme para TODAS as linhas do tbody e cor de texto padrão */
+table.dataTable tbody tr,
+table.dataTable tbody tr.odd, /* Sobrescreve DataTables .odd */
+table.dataTable tbody tr.even { /* Sobrescreve DataTables .even */
+  background-color: var(--bg-secondary) !important;
+  color: var(--text-secondary) !important;
+  transition: none !important; /* Remove transições de fundo se houver */
+}
+
+/* SEM MUDANÇA DE COR DE FUNDO NO HOVER das linhas do tbody */
+table.dataTable tbody tr:hover,
+table.dataTable tbody tr.odd:hover,
+table.dataTable tbody tr.even:hover {
+  background-color: var(--bg-secondary) !important; 
+  /* Se quiser um hover MUITO sutil, poderia ser:
+     background-color: hsl(from var(--bg-secondary) h s calc(l + 1.5%)) !important;
+     Mas o pedido foi para não ter. */
+  color: var(--text-secondary) !important; /* Mantém cor do texto */
+}
+
+/* Neutraliza destaque de fundo nas CÉLULAS (TD) da coluna ordenada */
+table.dataTable tbody td.sorting_1,
+table.dataTable tbody td.sorting_2,
+table.dataTable tbody td.sorting_3 {
+  background-color: var(--bg-secondary) !important; /* Garante que o fundo NÃO mude */
+  color: var(--text-secondary) !important; /* Garante que a cor do texto NÃO mude */
+  box-shadow: none !important; /* Remove qualquer sombra que possa ser aplicada por padrão */
+}
+
+/* ==========================================================================
+   Estilos Diversos da Tabela
+   ========================================================================== */
+
+/* Links dentro das células da tabela */
+table.dataTable tbody td a {
+  color: var(--accent-orange);
+  font-weight: 500;
+  text-decoration: none; /* Remove sublinhado padrão */
+}
+table.dataTable tbody td a:hover {
+  color: var(--accent-orange-hover);
+  text-decoration: underline;
+}
+
+/* Estilos para Célula Selecionada (APENAS CONTORNO LARANJA) */
+table.dataTable td.selected, 
+table.dataTable th.selected {
+  background-color: inherit !important; /* Mantém o fundo original da célula */
+  color: inherit !important;            /* Mantém a cor do texto original da célula */
+  box-shadow: inset 0 0 0 2px var(--accent-orange-hover) !important; 
+  outline: none !important; 
+  position: relative; /* Ajuda com o z-index se necessário */
+  z-index: 1;         /* Garante que o box-shadow não seja cortado */
+}
+
+
+/* Estilo para highlight de problemas (do seu highlightIssues.js) */
+.margin-cell.highlight-red {
+  color: var(--color-danger) !important;
+  font-weight: bold;
+}
+
+
+/* ==========================================================================
+   Controles do DataTables (Busca, Paginação, etc.)
+   ========================================================================== */
+.dataTables_wrapper {
+  padding-top: 15px;
+  padding-bottom: 15px;
+}
+.dataTables_wrapper::after { /* Clearfix para os floats do seu JS */
+  content: "";
+  clear: both;
+  display: table;
+}
+
+.dataTables_length,
+.dataTables_filter {
+  margin-bottom: 1.5em;
+}
+
+.dataTables_length label,
+.dataTables_filter label {
+  font-weight: normal;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9em;
+  color: var(--text-primary) !important; /* TEXTO DOS LABELS CLARO */
+}
+
+.dataTables_length select,
+.dataTables_filter input[type="search"] {
+  background-color: var(--bg-primary);
+  color: var(--text-primary); /* Texto DENTRO do input/select */
+  border: 1px solid var(--bg-tertiary);
+  border-radius: var(--border-radius-md);
+  padding: 8px 12px;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.dataTables_length select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23a0a0b0'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E"); /* Seta SVG mais bonita e com cor do tema */
+  background-repeat: no-repeat;
+  background-position: right 0.7em center;
+  background-size: 1em auto;
+  padding-right: 2.5em;
+}
+
+.dataTables_filter input[type="search"] {
+  width: auto; 
+  min-width: 220px;
+}
+.dataTables_filter input[type="search"]::placeholder {
+  color: var(--text-muted);
+  opacity: 0.8;
+}
+
+.dataTables_length select:focus,
+.dataTables_filter input[type="search"]:focus {
+  border-color: var(--accent-orange);
+  box-shadow: 0 0 0 0.2rem rgba(255, 140, 32, 0.3); /* Adapte RGB se sua var(--accent-orange) for diferente */
+  outline: none;
+}
+
+.dataTables_length label,
+.dataTables_filter label,
+.dataTables_info {
+  color: var(--text-primary) !important; /* Garante texto claro */
+  font-size: 0.9em;
+}
+.dataTables_length, .dataTables_filter {
+    margin-bottom: 1.5em;
+}
+.dataTables_info {
+  padding-top: 1em;
+  text-align: center; 
+  margin-top: 15px; /* Mais espaço acima da informação */
+  clear: both; /* Para garantir que fique abaixo dos elementos flutuantes (length e filter) */
+}
+
+/* Paginação Refinada */
+.dataTables_paginate {
+  margin-top: 1.5em; /* Espaçamento acima da paginação */
+  text-align: center; /* Centraliza os botões de paginação */
+  padding-bottom: 10px; /* Espaço extra abaixo */
+}
+
+.dataTables_paginate .paginate_button {
+  display: inline-block; /* Comportamento padrão, bom para text-align: center */
+  background-color: var(--bg-tertiary); /* Fundo sutil para botões não ativos */
+  color: var(--text-primary) !important; /* Texto mais claro para melhor contraste */
+  border: 1px solid var(--bg-tertiary); /* Borda sutil, da mesma cor do fundo */
+  padding: 8px 13px; /* Padding equilibrado */
+  margin: 0 3px;   /* Espaçamento horizontal entre botões */
+  border-radius: var(--border-radius-md); /* Bordas arredondadas consistentes */
+  cursor: pointer;
+  transition: background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+  text-decoration: none;
+  font-size: 0.85em; /* Fonte um pouco menor para paginação */
+  line-height: 1.3;  /* Ajuda no alinhamento vertical do texto */
+  min-width: 34px; /* Garante um tamanho mínimo para toque */
+  box-shadow: 0 1px 2px rgba(0,0,0,0.15); /* Sombra sutil */
+}
+
+.dataTables_paginate .paginate_button:hover:not(.disabled) {
+  background-color: var(--accent-orange-hover);
+  color: var(--accent-orange-text) !important;
+  border-color: var(--accent-orange-hover);
+  transform: translateY(-1px); /* Leve elevação no hover */
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.dataTables_paginate .paginate_button.current,
+.dataTables_paginate .paginate_button.current:hover { /* Estado ativo */
+  background-color: var(--accent-orange);
+  color: var(--accent-orange-text) !important;
+  border-color: var(--accent-orange);
+  font-weight: 600;
+  transform: none; /* Sem elevação para o botão atual */
+  box-shadow: 0 1px 4px rgba(var(--accent-orange-rgb, 255, 140, 32), 0.4); /* Sombra com cor laranja, requer --accent-orange-rgb */
+}
+
+.dataTables_paginate .paginate_button.disabled,
+.dataTables_paginate .paginate_button.disabled:hover { /* Estado desabilitado */
+  background-color: hsl(from var(--bg-tertiary) h s calc(l - 8%)); /* Ainda mais escuro/sutil */
+  color: var(--text-muted) !important;
+  cursor: not-allowed;
+  opacity: 0.5; /* Mais transparente */
+  border-color: hsl(from var(--bg-tertiary) h s calc(l - 8%));
+  transform: none;
+  box-shadow: none;
+}
+
+/* Informações da tabela ("Mostrando X de Y") */
+.dataTables_info {
+  padding-top: 1em;
+  color: var(--text-primary) !important; /* TEXTO DE INFO CLARO */
+  font-size: 0.85em;
+  text-align: center; 
+  margin-top: 10px;
+}
+/* Garante que info e paginate não sejam afetados por floats anteriores */
+.dataTables_info, .dataTables_paginate {
+    clear: both;
+}
+
+
+/* ==========================================================================
+   Ajustes para ScrollX (Rolagem Horizontal)
+   ========================================================================== */
+.dataTables_wrapper .dataTables_scroll {
+  border: 1px solid var(--bg-tertiary);
+  border-radius: var(--border-radius-md);
+  margin-bottom: 1em; /* Espaço após a tabela com rolagem */
+}
+.dataTables_scrollHead, .dataTables_scrollFoot { /* Wrapper do cabeçalho/rodapé com rolagem */
+    overflow: hidden !important; /* Prevenir scrollbars duplicadas no header/footer */
+}
+.dataTables_scrollHeadInner, 
+.dataTables_scrollFootInner {
+  background: var(--bg-secondary); /* Fundo para o cabeçalho/rodapé fixo */
+}
+.dataTables_scrollHeadInner table.dataTable, /* Tabela DENTRO do cabeçalho de rolagem */
+.dataTables_scrollFootInner table.dataTable {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  border-bottom: none !important; /* Evita borda dupla com o corpo da tabela */
+  border-radius: 0; /* Remove border-radius da tabela interna */
+}
+.dataTables_scrollBody {
+    overflow: auto !important; /* Garante que o corpo da tabela tenha o scroll principal */
+}
+.dataTables_scrollBody table.dataTable {
+    border-top: none !important; /* Evita borda dupla com o cabeçalho */
+    border-radius: 0;
+}
+
+
+/* ==========================================================================
+   Responsividade Básica
+   ========================================================================== */
+@media (max-width: 768px) {
+  table.dataTable th,
+  table.dataTable td {
+    white-space: normal; /* Permite quebra de linha */
+    padding: 8px 6px;
+    font-size: 0.85rem; /* Texto um pouco menor em mobile */
+  }
+
+  .dataTables_length,
+  .dataTables_filter {
+    float: none !important; 
+    text-align: left;
+    width: 100%;
+    margin-left: 0 !important; /* Resetando floats/margins do seu JS */
+    margin-right: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+  .dataTables_filter {
+    margin-top: 15px; /* Mais espaço entre length e filter */
+  }
+  .dataTables_filter input[type="search"] {
+    width: 100%; /* Input de busca ocupa toda a largura menos o label */
+    margin-left: 0; /* Reset */
+    box-sizing: border-box; /* Para o width 100% funcionar bem com padding */
+  }
+  .dataTables_length select {
+    margin-left: 0; /* Reset */
+    width: auto; /* Ou um valor fixo menor se necessário */
+  }
+  .dataTables_paginate {
+    display: flex;
+    justify-content: center;
+  }
+  .dataTables_paginate .paginate_button {
+    padding: 6px 10px; /* Botões de paginação um pouco menores */
+    font-size: 0.8rem;
+  }
+  .dataTables_info {
+    text-align: center;
+    font-size: 0.8rem;
+  }
+}
+
+
+/* ==========================================================================
+   Botões de Ação Dentro das Tabelas
+   ========================================================================== */
+.table-actions { /* Para a célula <td> que contém os botões */
+    text-align: center !important; /* Centraliza os botões na célula */
+    white-space: nowrap; /* Impede que os botões quebrem linha entre si */
+}
+.table-actions .btn { /* Estilo base para botões de ação */
+  padding: 5px 8px;
+  font-size: 0.85rem;
+  margin: 0 3px; /* Espaçamento entre botões de ação */
+}
+.table-actions .btn i { /* Ícones dentro dos botões de ação */
+  margin-right: 0; /* Sem margem se for só ícone */
+  font-size: 0.9em; /* Ajuste o tamanho do ícone se necessário */
+}
+
+/* Reutilizando e adaptando as classes de botão do components.css para o contexto de tabela */
+.table-actions .btn.btn-warning { /* Se você usar a classe .btn-warning (que já tem estilos base) */
+  /* background-color: transparent; */ /* Já definido em components.css se usar .btn-outline-warning */
+  /* color: var(--accent-orange); */
+  /* border: 1px solid var(--accent-orange); */
+}
+.table-actions .btn.btn-warning:hover {
+  /* background-color: rgba(255, 140, 32, 0.15); */
+  /* color: var(--accent-orange-hover); */
+}
+/* Se você estiver usando .btn-outline-warning ou .btn-outline-danger do components.css,
+   eles já devem ter o estilo de contorno. Se não, defina aqui: */
+.table-actions .btn-icon.btn-outline-warning { /* Mais específico */
+  color: var(--accent-orange);
+  border-color: var(--accent-orange);
+}
+.table-actions .btn-icon.btn-outline-warning:hover {
+  background-color: rgba(255, 140, 32, 0.1); /* Laranja bem sutil no hover */
+  color: var(--accent-orange-hover);
+}
+
+.table-actions .btn-icon.btn-outline-danger {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+.table-actions .btn-icon.btn-outline-danger:hover {
+  background-color: rgba(220, 53, 69, 0.1); /* Vermelho bem sutil no hover */
+  color: hsl(from var(--color-danger) h s calc(l - 10%));
+}

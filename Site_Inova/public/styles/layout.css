@@ -1,0 +1,133 @@
+/* public/styles/layout.css */
+
+/* Container principal que envolve a sidebar e o conteúdo da página */
+.page-container {
+  display: flex;
+  width: 100%;
+  min-height: 100vh; /* Garante que o layout ocupe toda a altura da tela */
+  overflow-x: hidden; /* Evita scroll horizontal indesejado no body */
+  align-items: stretch;
+}
+
+/* Wrapper para o conteúdo principal e a barra superior */
+.page-wrapper {
+  flex-grow: 1; /* Faz com que esta div ocupe o espaço restante */
+  display: flex;
+  flex-direction: column;
+  transition: margin-left var(--transition-normal); /* Para animação da sidebar */
+  background-color: var(--bg-primary); /* Fundo principal da área de conteúdo */
+  overflow-y: auto; /* Permite scroll vertical no conteúdo se necessário */
+}
+
+/* Barra Superior (onde fica o botão de toggle e pode ir o título da página) */
+.top-bar {
+  background-color: var(--bg-secondary); /* Cor de fundo da barra superior */
+  color: var(--text-primary);
+  padding: 0 20px;
+  height: 69px; /* Altura da barra superior */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+  position: sticky; /* Fixa a top-bar no topo ao rolar */
+  top: 0;
+  z-index: 1000; /* Garante que fique acima do conteúdo */
+  border-bottom: 1px solid var(--bg-tertiary);
+}
+
+.sidebar-toggle-btn {
+  font-size: 1.25rem;
+  color: var(--text-secondary);
+  background-color: transparent;
+  padding: 10px;
+  border-radius: var(--border-radius-md);
+}
+.sidebar-toggle-btn:hover {
+  color: var(--accent-orange);
+  background-color: var(--bg-tertiary);
+}
+
+.top-bar-title h2 { /* Se você colocar o {{title}} aqui */
+  margin: 0;
+  font-size: 1.25rem;
+  color: var(--text-primary);
+}
+
+.top-bar-user {
+  /* Espaço para informações do usuário, foto, etc. */
+}
+
+/* Área de Conteúdo Principal */
+.main-content {
+  flex-grow: 1;
+  padding: 25px; /* Espaçamento interno para o conteúdo */
+  overflow-y: auto; /* Scroll individual se o conteúdo for maior */
+}
+
+/* Footer (opcional, se você adicionou no main.handlebars) */
+.footer {
+  background-color: var(--bg-secondary);
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 15px;
+  font-size: 0.85em;
+  border-top: 1px solid var(--bg-tertiary);
+}
+
+/* ----- Responsividade do Layout ----- */
+
+/* Quando a sidebar estiver colapsada (classe adicionada via JS) */
+.sidebar.collapsed {
+  width: 0;
+  /* Ou uma largura mínima para mostrar apenas ícones, ex: 80px */
+  /* Se for largura mínima:
+    width: 80px; 
+    padding: 0; 
+  */
+}
+.sidebar.collapsed .sidebar-header h2.logo-text,
+.sidebar.collapsed .sidebar-nav span,
+.sidebar.collapsed .sidebar-nav .arrow {
+  /* Esconde o texto quando colapsada, se for o design de ícones apenas */
+  /* display: none; */ 
+}
+.sidebar.collapsed .sidebar-nav .sub-menu {
+  /* Ajustes para submenus em modo colapsado, se necessário */
+}
+
+.page-wrapper.sidebar-collapsed {
+  margin-left: 0; 
+  /* Se a sidebar colapsada tiver largura mínima:
+    margin-left: 80px; 
+  */
+}
+
+
+/* Telas menores - Exemplo: sidebar fica por cima ou totalmente escondida */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed; /* Ou absolute, dependendo do efeito desejado */
+    left: -260px; /* Escondida fora da tela (largura da sidebar) */
+    height: 100vh;
+    z-index: 1010; /* Acima da top-bar quando aberta */
+    box-shadow: var(--box-shadow-medium);
+    transition: left var(--transition-normal); /* Animação para deslizar */
+  }
+
+  .sidebar.open { /* Classe a ser adicionada via JS */
+    left: 0;
+  }
+
+  .page-wrapper {
+    margin-left: 0 !important; /* Ocupa toda a largura */
+    width: 100%;
+  }
+
+  .top-bar {
+    /* O botão de toggle na top-bar será o principal para abrir/fechar a sidebar no mobile */
+  }
+
+  .main-content {
+    padding: 20px; /* Reduz padding em telas menores */
+  }
+}

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{title}} - InovaXPress</title>
+  <link rel="shortcut icon" href="/public/icons/favicon.ico" type="image/x-icon">
+
+  <link href="/public/styles/reset.css" rel="stylesheet">
+  <link href="/public/styles/theme.css" rel="stylesheet">
+  <link href="/public/styles/components.css" rel="stylesheet"> {{!-- Para os botões .btn --}}
+  <link href="/public/styles/main-menu.css" rel="stylesheet">
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+</head>
+<body class="main-menu-page">
+
+  <header class="main-menu-header">
+    <div class="main-menu-title-brand">
+      <h1>INOVA</h1><h1 class="accent">X</h1><h1>PRESS</h1>
+    </div>
+  </header>
+
+  <div class="menu-grid-container">
+    {{#if (eq cargo "ADM")}}
+      <div class="module-card">
+        <h2>Monitoramento</h2>
+          <a href="/madeira/urls" class="btn btn-accent btn-card"><i class="fas fa-store"></i> Madeira - Lucas</a>
+          <a href="/madeiramadeira/urls" class="btn btn-accent btn-card"><i class="fas fa-store"></i> Madeira - Eliane</a>
+          <a href="/viavarejo/urls" class="btn btn-accent btn-card"><i class="fas fa-shopping-bag"></i> ViaVarejo</a>
+        {{!-- Adicione mais botões para outros módulos ou funcionalidades globais aqui --}}
+      </div>
+      <div class="module-card">
+        <h2>Notas Fiscais</h2>
+          <a href="/emissao" class="btn btn-accent btn-card"><i class="fas fa-barcode"></i> Gerenciar Emissões</a>
+          <a href="/emissao/nfe-management" class="btn btn-accent btn-card"><i class="fas fa-sticky-note"></i> Gerar Etiquetas</a>
+          <a href="/acompanhamento/pedidos" class="btn btn-accent btn-card"><i class="fas fa-shopping-cart"></i> Gerenciar Pedidos</a>
+          <a href="/assistencias" class="btn btn-accent btn-card"><i class="fas fa-solid fa-file-invoice"></i> Assistências</a>
+        {{!-- Adicione mais botões para outros módulos ou funcionalidades globais aqui --}}
+      </div>
+      <div class="module-card">
+        <h2>Transporte</h2>
+          <a href="/relacoes" class="btn btn-accent btn-card"><i class="fas fa-truck fa-fw"></i> Gerenciar Relações</a>
+          <a href="/rastreio" class="btn btn-accent btn-card"><i class="fas fa-paper-plane"></i> Acompanhamentos</a>
+          <a href="/historico-nfe" class="btn btn-accent btn-card"><i class="fas fa-solid fa-sim-card"></i> Histórico de Notas</a>
+        {{!-- Adicione mais botões para outros módulos ou funcionalidades globais aqui --}}
+      </div>
+    {{/if}}
+    {{#if (eq cargo "NFE")}}
+     <div class="module-card">
+        <h2>Notas Fiscais</h2>
+          <a href="/emissao" class="btn btn-accent btn-card"><i class="fas fa-barcode"></i> Gerenciar Emissões</a>
+          <a href="/emissao/nfe-management" class="btn btn-accent btn-card"><i class="fas fa-sticky-note"></i> Gerar Etiquetas</a>
+          <a href="/historico-nfe" class="btn btn-accent btn-card"><i class="fas fa-solid fa-sim-card"></i> Histórico de Notas</a>
+          <a href="/assistencias" class="btn btn-accent btn-card"><i class="fas fa-solid fa-file-invoice"></i> Assistências</a>
+
+        {{!-- Adicione mais botões para outros módulos ou funcionalidades globais aqui --}}
+      </div>
+    {{/if}}
+    {{#if (eq cargo "REL")}}
+      <div class="module-card">
+        <h2>Transporte</h2>
+          <a href="/relacoes" class="btn btn-accent btn-card"><i class="fas fa-truck fa-fw"></i> Gerenciar Relações</a>
+          <a href="/historico-nfe" class="btn btn-accent btn-card"><i class="fas fa-solid fa-sim-card"></i> Histórico de Notas</a>
+          <a href="/emissao" class="btn btn-accent btn-card"><i class="fas fa-barcode"></i> Gerenciar Emissões</a>
+        {{!-- Adicione mais botões para outros módulos ou funcionalidades globais aqui --}}
+      </div>
+    {{/if}}
+
+
+    {{!-- Adicione outros .module-card aqui se tiver mais agrupamentos --}}
+    {{!-- Exemplo:
+    <div class="module-card">
+      <h2>Configurações</h2>
+      <a href="/settings/profile" class="btn btn-outline-accent">Meu Perfil</a>
+      <a href="/logout" class="btn btn-danger">Sair</a>
+    </div>
+    --}}
+  </div>
+
+</body>
+</html>

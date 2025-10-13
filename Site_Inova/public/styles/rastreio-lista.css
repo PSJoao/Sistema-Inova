@@ -1,0 +1,169 @@
+/* /public/styles/rastreio-lista.css (VERSÃO FINAL RESPONSIVA) */
+
+/* --- Estilos dos Filtros (Mantidos) --- */
+.acmp-filters-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+    align-items: flex-end;
+}
+
+.acmp-filter-group label {
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.acmp-filter-group select,
+.acmp-filter-group input {
+    background-color: var(--bg-primary) !important;
+    border: 1px solid var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+}
+
+/* --- Container da Lista com Rolagem Horizontal --- */
+.rastreio-list-wrapper {
+    width: 100%;
+    overflow-x: auto; /* Garante a barra de rolagem horizontal quando necessário */
+    border: 1px solid var(--bg-tertiary);
+    border-radius: var(--border-radius-lg);
+}
+
+/* --- Layout principal da Lista --- */
+.rastreio-list {
+    display: grid;
+    /* Define o template base das colunas. Usamos 'minmax' para flexibilidade */
+    grid-template-columns: minmax(180px, 1.2fr) minmax(150px, 1fr) minmax(120px, 1fr) minmax(200px, 1.5fr) minmax(250px, 2fr) minmax(180px, 1.2fr);
+    min-width: 1200px; /* Largura mínima antes da barra de rolagem aparecer */
+    font-size: 0.85rem;
+}
+
+/* --- Estrutura para Header e Linhas --- */
+.list-header, .list-row {
+    display: contents; /* Essencial para que os filhos se alinhem ao grid pai */
+}
+
+/* --- Estilos das Células (Cabeçalho e Dados) --- */
+.list-header > span,
+.list-item {
+    display: flex;
+    align-items: center;
+    padding: 12px 15px;
+    border-bottom: 1px solid var(--bg-tertiary);
+    overflow: hidden; /* Controla o estouro de conteúdo */
+}
+
+/* --- [CORREÇÃO] Controle de Quebra de Linha --- */
+.list-item {
+    white-space: normal; /* Permite que o texto quebre a linha por padrão */
+    word-break: break-word; /* Força a quebra de palavras longas */
+}
+
+.item-ocorrencia {
+    white-space: nowrap; /* Apenas esta coluna não quebra linha */
+    text-overflow: ellipsis; /* E adiciona "..." ao final */
+}
+
+
+/* --- Estilos do Cabeçalho --- */
+.list-header > span {
+    background-color: var(--bg-tertiary);
+    font-weight: 600;
+    color: var(--text-primary);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    white-space: nowrap; /* Cabeçalho nunca quebra linha */
+}
+
+/* --- Estilos da Linha de Dados --- */
+.list-row {
+    cursor: pointer;
+    transition: background-color 0.3s ease-in-out;
+}
+
+.list-row.email-notified {
+    background-color: var(--color-success-opacity, rgba(40, 167, 69, 0.1));
+    border-left: 3px solid var(--color-success, #28a745);
+}
+
+.list-row.email-notified .list-item {
+    background-color: transparent; /* Garante que a cor da linha prevaleça */
+}
+
+/* Efeito de hover na linha inteira */
+.list-row:hover .list-item {
+    background-color: hsl(from var(--bg-secondary) h s calc(l + 4%));
+}
+
+.list-item {
+    background-color: var(--bg-secondary);
+    color: var(--text-secondary);
+    transition: background-color var(--transition-fast);
+}
+
+/* Remove a borda da última linha */
+.rastreio-list > .list-row:last-child .list-item {
+    border-bottom: none;
+}
+
+.item-pedido {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+/* --- Lógica para Exibição da Coluna "Previsão Atual" --- */
+
+.list-header .item-previsao-atual,
+.list-row .item-previsao-atual {
+    display: none; /* Começa escondida */
+}
+
+/* Quando a classe é aplicada, o grid se reajusta para incluir a nova coluna */
+.rastreio-list.show-previsao-column {
+    grid-template-columns: minmax(180px, 1.2fr) minmax(140px, 1fr) minmax(150px, 1fr) minmax(120px, 1fr) minmax(200px, 1.5fr) minmax(250px, 2fr) minmax(180px, 1.2fr);
+}
+
+.rastreio-list.show-previsao-column .list-header .item-previsao-atual,
+.rastreio-list.show-previsao-column .list-row .item-previsao-atual {
+    display: flex; /* Mostra a coluna */
+    justify-content: center;
+}
+
+
+/* --- Estilos da Combobox de Status --- */
+.status-select-wrapper {
+    position: relative;
+    z-index: 5; /* Garante que o select fique acima das outras células */
+}
+
+.status-select {
+    -webkit-appearance: none; -moz-appearance: none; appearance: none;
+    border: none; background-color: transparent; padding: 0.4rem 2rem 0.4rem 0.8rem;
+    border-radius: var(--border-radius-md); font-size: 0.75rem; font-weight: 600;
+    text-transform: uppercase; color: #fff; cursor: pointer;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-repeat: no-repeat; background-position: right 0.5rem center; background-size: 1em;
+    max-width: 100%;
+}
+
+.status-select.status-entregue-confirmado { background-color: var(--color-success); }
+.status-select.status-confirmar-entrega { background-color: #17a2b8; }
+.status-select.status-fora-do-prazo { background-color: var(--color-danger); }
+.status-select.status-em-trânsito { background-color: var(--accent-blue, #3675f4); }
+.status-select.status-fora-do-comum { background-color: var(--color-warning, #ffc107); }
+.status-select.status-outros { background-color: var(--text-muted); }
+.status-select option { background-color: var(--bg-secondary); color: var(--text-primary); }
+
+/* --- Paginação e Mensagens --- */
+.pagination-controls {
+    display: flex; justify-content: center; align-items: center;
+    padding: 2rem 0; gap: 1rem;
+}
+.no-results-message {
+    padding: 2rem; text-align: center; color: var(--text-secondary);
+    /* Ocupa todas as colunas do grid */
+    grid-column: 1 / -1;
+}

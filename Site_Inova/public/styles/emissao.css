@@ -1,0 +1,248 @@
+/* public/styles/emissao.css */
+
+.emissao-page-container .content-card { /* Para o .content-card específico da página de emissão, se precisar de overrides */
+    /* Ex: padding: 15px; se o padrão de 20px 25px for muito */
+}
+
+.emissao-list-header {
+  text-align: center;
+  margin-bottom: 25px;
+}
+.emissao-list-header h1.page-title { /* Estiliza o H1 que já tem a classe page-title */
+  margin-bottom: 20px;
+  text-align: center; /* Centraliza o título "Emissões" */
+}
+
+/* Botão Adicionar Nova Emissão no topo da lista */
+.btn-add-emissao-top { 
+  /* Reutiliza .btn e .btn-accent do components.css */
+  /* Se precisar de estilos específicos, adicione aqui. Ex: */
+  /* padding: 10px 20px; */
+}
+
+
+/* Cards de Emissão na Lista */
+.emissao-card-item {
+  background-color: var(--bg-tertiary); /* Um pouco diferente do content-card para destaque */
+  border: 1px solid hsl(from var(--bg-tertiary) h s calc(l + 10%)); /* Borda sutil mais clara */
+  border-radius: var(--border-radius-md);
+  padding: 15px 20px;
+  margin-bottom: 15px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: var(--box-shadow-soft);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+.emissao-card-item:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--box-shadow-medium);
+}
+
+.emissao-card-item h4 {
+  margin: 0;
+  font-size: 1.1rem; 
+  color: var(--text-primary); 
+  font-weight: 500;
+}
+
+.emissao-card-actions .btn { /* Usa a classe .btn base do components.css */
+  margin-left: 8px;
+  padding: 7px 10px;
+  font-size: 0.85em;
+}
+/* Cores específicas para botões de ação já vêm de .btn-success, .btn-danger etc. */
+/* Ex: <button class="btn btn-icon btn-success">...</button> */
+
+
+/* Paginação customizada da lista de cards (se não usar DataTables aqui) */
+#emissaoCardListContainer + #paginationControlsContainer button { /* Estilos do theme.css/tables.css para .dataTables_paginate já são bons */
+  /* Se precisar de algo diferente para ESTA paginação específica: */
+  /* background-color: var(--accent-orange); */
+}
+#emissaoCardListContainer + #paginationControlsContainer .page-info {
+  color: var(--text-secondary);
+}
+
+
+/* View de Detalhe da Emissão */
+#emissaoDetailView .page-title { /* Título dentro da view de detalhe */
+  text-align: center;
+  margin-bottom: 25px;
+}
+
+#barcodeListContainer {
+  margin-top: 20px;
+  padding: 20px;
+  border: 1px dashed var(--bg-tertiary);
+  border-radius: var(--border-radius-md);
+  background-color: var(--bg-primary); /* Fundo um pouco mais escuro para contraste */
+  min-height: 150px; 
+}
+#barcodeListContainer h5 { /* Cabeçalhos dentro do barcodeListContainer */
+    color: var(--text-primary);
+    font-weight: 600;
+    margin-top: 0; /* Remove margin-top se for o primeiro elemento */
+}
+#barcodeListContainer hr {
+    border-color: var(--bg-tertiary);
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+}
+#barcodeListContainer ul {
+    font-family: monospace; /* Mantém a sugestão para códigos de barras */
+    font-size: 0.95em;
+    color: var(--text-secondary);
+    list-style-position: inside;
+}
+#barcodeListContainer ul li {
+    padding: 2px 0;
+}
+#barcodeListContainer p { /* Para mensagens como "Nenhum código..." */
+    font-style: italic;
+    color: var(--text-muted);
+}
+
+
+/* Wrapper e Input para códigos de barras no modo de adição */
+.barcode-input-wrapper { 
+  display: flex; 
+  align-items: center; 
+  margin-bottom: 10px; 
+}
+.barcode-input-wrapper input[type="text"].form-control { /* Aplica estilo .form-control */
+  /* Herda estilos do forms.css */
+  /* Se precisar de algo específico: */
+  /* background-color: var(--bg-secondary); */
+}
+
+/* Botões na view de detalhe */
+#emissaoDetailView .form-actions { /* Se envolver os botões em um .form-actions */
+    margin-top: 25px;
+    text-align: right; /* Alinha à direita, por exemplo */
+}
+#emissaoDetailView .btn { /* Aplica estilos .btn base */
+    margin-left: 10px;
+}
+/* .btn-finish-emissao e .btn-back-to-list podem usar .btn-accent, .btn-outline-accent, etc. */
+/* Exemplo: .btn-finish-emissao use class="btn btn-warning" */
+/* Exemplo: .btn-back-to-list use class="btn btn-secondary-custom" (definir .btn-secondary-custom) */
+
+.table-sm { /* Para a tabela de NFe reports na visualização */
+    font-size: 0.85em;
+}
+.table-sm th, .table-sm td {
+    padding: 0.4rem 0.6rem;
+}
+
+.nfe-report-item-card {
+    background-color: var(--bg-primary);
+    border: 1px solid var(--bg-tertiary);
+    border-radius: var(--border-radius-md);
+    margin-bottom: 15px;
+    box-shadow: var(--box-shadow-soft);
+}
+.nfe-report-item-card .report-header {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--bg-tertiary);
+    font-size: 0.95em;
+}
+.nfe-report-item-card .report-header.status-success { background-color: hsl(from var(--color-success) h s l / 0.1); }
+.nfe-report-item-card .report-header.status-error { background-color: hsl(from var(--color-danger) h s l / 0.1); }
+.nfe-report-item-card .report-body {
+    padding: 12px;
+    font-size: 0.9em;
+}
+.nfe-report-item-card .report-body p {
+    margin: 0 0 5px 0;
+}
+.nfe-report-item-card .report-body p:last-child {
+    margin-bottom: 0;
+}
+.nfe-report-item-card .report-body .error-details {
+    color: var(--color-warning);
+    font-style: italic;
+    font-size: 0.9em;
+}
+.nfe-report-item-card .report-footer {
+    padding: 8px 12px;
+    border-top: 1px solid var(--bg-tertiary);
+    background-color: hsl(from var(--bg-primary) h s calc(l - 3%));
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9em;
+}
+.frenet-checkbox {
+    transform: scale(1.1);
+    cursor: pointer;
+}
+
+.barcode-input-wrapper {
+  display: flex;
+  align-items: center; /* Alinha verticalmente */
+  gap: 15px;          /* Espaço entre os elementos */
+  margin-bottom: 10px;
+}
+
+.barcode-input-wrapper .barcode-input {
+  flex-grow: 1; /* Faz o input de texto ocupar o máximo de espaço */
+}
+
+/* Container para o checkbox "É Frenet?" */
+.frenet-checkbox-container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0; /* Impede que encolha */
+  color: var(--text-secondary);
+  font-size: 0.85em;
+}
+.frenet-checkbox-container input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--accent-orange);
+}
+
+/* Botão de deletar a linha de bipagem */
+.delete-barcode-btn {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  border: 1px solid var(--bg-tertiary);
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2em;
+  line-height: 1;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+.delete-barcode-btn:hover {
+  background-color: var(--color-danger);
+  color: white;
+  border-color: var(--color-danger);
+}
+
+/* Em public/styles/emissao.css, no final do arquivo */
+
+.frenet-indicator {
+    font-weight: 600;
+    color: var(--accent-orange);
+    font-size: 0.9em;
+    margin-left: 5px;
+}
+
+.status-error-indicator {
+    font-weight: 600;
+    color: var(--color-danger);
+    font-size: 0.9em;
+    margin-left: 5px;
+}

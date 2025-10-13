@@ -1,0 +1,65 @@
+/* public/styles/print-labels.css */
+@page {
+    size: A4; /* A folha inteira é A4 */
+    margin: 0.5cm; /* Margem pequena na folha */
+}
+
+body {
+    font-family: 'Segoe UI', 'Roboto', Arial, sans-serif;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+}
+
+.label-sheet {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0; /* Sem espaço entre as etiquetas */
+}
+
+.label-container {
+    width: 10cm;
+    height: 15cm;
+    box-sizing: border-box;
+    border: 1px dashed #ccc; /* Borda pontilhada para corte, visível na tela */
+    padding: 0.5cm;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    overflow: hidden;
+    page-break-inside: avoid; /* Tenta não quebrar uma etiqueta no meio da página */
+}
+
+.label-container > div {
+    margin-bottom: 8px;
+}
+
+.header { text-align: center; }
+.header strong { font-size: 11pt; }
+.header span { font-size: 10pt; }
+
+.address { margin-top: 15px; }
+.address-line-1 { font-size: 14pt; font-weight: bold; }
+.address-line-2 { font-size: 11pt; }
+.address-line-3 { font-size: 11pt; }
+
+.recipient-info { margin-top: 20px; }
+.recipient-name { font-size: 12pt; font-weight: bold; }
+.recipient-phone { font-size: 11pt; }
+
+.product-info { font-size: 11pt; margin-top: 20px; }
+
+.nfe-info { display: flex; align-items: baseline; gap: 8px; margin-top: 15px; }
+.label-nf, .label-vol { font-size: 10pt; font-weight: bold; }
+.value-nf, .value-vol { font-size: 20pt; font-weight: bold; }
+
+.carrier-info { font-size: 12pt; font-weight: bold; text-align: center; margin-top: 15px; }
+
+.barcode-container { text-align: center; margin-top: auto; padding-top: 10px; }
+.barcode { width: 100%; height: auto; }
+
+/* Regras para impressão */
+@media print {
+    body { margin: 0; }
+    .print-actions-panel { display: none !important; }
+    .label-container { border: none; } /* Remove a borda pontilhada na impressão final */
+}

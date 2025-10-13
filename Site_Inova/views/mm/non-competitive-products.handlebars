@@ -1,0 +1,71 @@
+{{!< main}}
+
+<div class="content-card">
+  <h1 class="page-title">{{title}}</h1>
+
+  <div class="table-responsive-wrapper">
+    <table id="nonCompetitiveProductTable" class="dataTable display" style="width:100%">
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Produto</th>
+          {{!-- Se houver mais colunas no seu controller para esta view, adicione-as --}}
+          {{!-- Exemplo de como era na sua versão ViaVarejo para esta página:
+          <th>Nosso Preço</th>
+          <th>Custo</th>
+          <th>Margem</th> 
+          --}}
+        </tr>
+      </thead>
+      <tbody>
+        {{#each urls}} {{!-- Ou products, dependendo do nome da variável do controller --}}
+        <tr>
+          <td>{{sku}}</td>
+          <td><a href={{url}} target="_blank">{{description}}</a></td> {{!-- Assumindo url_principal e description --}}
+          {{!-- Exemplo:
+          <td>{{formatPrice nosso_preco}}</td>
+          <td>{{formatPrice custo}}</td>
+          <td class="margin-cell">
+            {{#if (neq margin 'N/A')}}{{margin}}%{{else}}0%{{/if}}
+          </td> 
+          --}}
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{{!-- Script para seleção de célula (ajustado para esta tabela) --}}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const table = document.getElementById('nonCompetitiveProductTable');
+  if (table) {
+    table.addEventListener('click', function(event) {
+      const targetCell = event.target.closest('td, th');
+      if (!targetCell) return;
+
+      table.querySelectorAll('td.selected, th.selected').forEach(el => {
+        el.classList.remove('selected');
+      });
+      targetCell.classList.add('selected');
+    });
+  }
+
+  // Inicialização do DataTables para esta tabela específica se o seu dataTables.js não a cobrir
+  // Se o seu dataTables.js já inicializa #nonCompetitiveProductTable, este bloco não é necessário.
+  // if (typeof $ !== 'undefined' && typeof $.fn.dataTable !== 'undefined' && !$.fn.dataTable.isDataTable('#nonCompetitiveProductTable')) {
+  //   $('#nonCompetitiveProductTable').DataTable({
+  //     "pageLength": 10,
+  //     "searching": true,
+  //     "paging": true,
+  //     "info": false, // Ou true, estilizado pelo tables.css
+  //     "scrollX": true,
+  //     "language": { /* Traduções (podem ser globais no dataTables.js) */ }
+  //     // "drawCallback": function() { 
+  //     //   if (typeof highlightIssues === 'function') { highlightIssues('#nonCompetitiveProductTable'); }
+  //     // }
+  //   });
+  // }
+});
+</script>

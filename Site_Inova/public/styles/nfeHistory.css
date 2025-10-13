@@ -1,0 +1,134 @@
+/* public/styles/nfeHistory.css */
+
+/* --- Controles e Filtros da Página --- */
+.nfe-history-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    padding: 1rem;
+    background-color: var(--bg-secondary);
+    border-radius: var(--border-radius-lg);
+    margin-bottom: 1.5rem;
+}
+.filter-group {
+    display: flex;
+    flex-direction: column;
+}
+.filter-group label {
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+.filter-group.search-group {
+    flex-grow: 1;
+}
+
+/* --- [CORREÇÃO FINAL] Estrutura com Barra de Rolagem --- */
+.table-container {
+    width: 100%;
+    overflow-x: auto; /* Garante a barra de rolagem horizontal */
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+}
+
+/* Força a estrutura a se comportar como uma tabela */
+.nfe-history-table {
+    display: table;
+    width: 100%;
+    min-width: 1300px; /* Largura mínima para ativar a rolagem */
+    border-collapse: collapse;
+}
+
+.nfe-history-table-header,
+.nfe-history-card {
+    display: table-row;
+}
+
+.nfe-history-table-header > span,
+.nfe-history-card > div {
+    display: table-cell;
+    padding: 1rem;
+    vertical-align: middle;
+    border-bottom: 1px solid var(--bg-tertiary);
+}
+
+.nfe-history-table-header > span {
+    background-color: var(--bg-tertiary);
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+
+.nfe-history-grid .nfe-history-card:last-child > div {
+    border-bottom: none;
+}
+
+.nfe-history-grid .nfe-history-card:hover {
+    background-color: var(--bg-tertiary);
+}
+
+/* --- Componentes Internos da Linha --- */
+.nfe-status {
+    padding: 0.25rem 0.75rem;
+    border-radius: var(--border-radius-md);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #fff;
+    text-align: center;
+    white-space: nowrap;
+}
+.nfe-status.status-relacionada { background-color: var(--color-success); }
+.nfe-status.status-pendente { background-color: var(--accent-orange); }
+.nfe-status.status-cancelada { background-color: red; }
+.nfe-status.status-justificada_adiada { background-color: blue; }
+
+.nfe-action-select {
+    width: 100%;
+    min-width: 180px;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 0.4rem;
+    border-radius: var(--border-radius-sm);
+}
+
+/* --- Contador de Estruturas (sem alterações) --- */
+.nfe-history-missing-products {
+    margin-top: 1.5rem;
+    padding: 1.5rem;
+    background-color: var(--bg-secondary);
+    border-radius: var(--border-radius-lg);
+    border: 1px solid var(--border-color);
+}
+.missing-products-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: 10px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 0.8rem;
+}
+.missing-products-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.6rem 0.8rem;
+    border-radius: var(--border-radius-md);
+    background-color: var(--bg-tertiary);
+}
+
+.product-count {
+    font-weight: 700; /* Mais forte */
+    color: #fff; /* Texto branco */
+    background-color: var(--accent-orange); /* Fundo laranja de destaque */
+    padding: 0.2rem 0.7rem; /* Mais preenchimento */
+    border-radius: 10px; /* Formato de "pílula" */
+    font-size: 0.9rem;
+    min-width: 28px; /* Largura mínima para manter o formato */
+    text-align: center;
+}

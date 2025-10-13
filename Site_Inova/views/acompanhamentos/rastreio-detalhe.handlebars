@@ -1,0 +1,356 @@
+{{!-- views/acompanhamentos/rastreio-detalhe.handlebars (VERSÃO FINAL POLIDA) --}}
+
+{{#section "head"}}
+    <link href="/public/styles/rastreio.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+{{/section}}
+
+<div class="content-card">
+    <div class="page-header-actions">
+        <div>
+            <a href="/rastreio" class="back-link"><i class="fas fa-arrow-left"></i> Voltar para a listagem</a>
+            <h1 class="page-title">{{title}}</h1>
+        </div>
+        {{#if (isRissoOrJew pedido.transportadora)}}
+            <div class="header-actions-buttons">
+                <button id="btn-enviar-email" class="btn btn-warning"><i class="fas fa-envelope"></i> Enviar Posição de Entrega</button>
+            </div>
+        {{/if}}    
+    </div>
+
+    {{!-- Grid para organizar os cards de informação --}}
+    <div class="detalhe-grid">
+        {{!-- Card de Informações Gerais --}}
+        <div class="detalhe-card">
+            <h3>Informações do Pedido</h3>
+            <div class="info-row">
+                <span class="info-label">Nº do Pedido:</span>
+                <span class="info-value">{{pedido.numero_pedido}}</span>
+            </div>
+             <div class="info-row">
+                <span class="info-label">Nº da NFE:</span>
+                <span class="info-value">{{pedido.numero_nfe}}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Transportadora:</span>
+                <span class="info-value">{{pedido.transportadora}}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Data de Envio:</span>
+                <span class="info-value">{{formatDate pedido.data_envio}}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Previsão de Entrega:</span>
+                <span class="info-value">{{formatDate pedido.data_previsao_entrega}}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Data de Entrega:</span>
+                <span class="info-value">{{#if pedido.data_entrega}}{{formatDate pedido.data_entrega}}{{else}}Pendente{{/if}}</span>
+            </div>
+        </div>
+
+        {{#if pedido.observacao}}
+            <div class="info-line">
+                <span class="info-label">Última Observação:</span>
+                <span class="info-value status-highlight status-conferencia">{{pedido.observacao}}</span>
+            </div>
+        {{/if}}
+
+        {{!-- Card de Informações da NFE --}}
+        <div class="detalhe-card">
+            <h3>Dados do Documento</h3>
+            <div class="info-row">
+                <span class="info-label">Remetente:</span>
+                <span class="info-value">{{headerInfo.remetente}}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Destinatário:</span>
+                <span class="info-value">{{headerInfo.destinatario}}</span>
+            </div>
+             <div class="info-row">
+                <span class="info-label">Situação Atual:</span>
+                <span class="info-value status-highlight">{{pedido.situacao_atual}}</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="admin-section">
+        <h2 class="section-title">Adicionar Observação</h2>
+        <div id="observacao-form" data-pedido-id="{{pedido.id}}">
+            <div class="acmp-filter-group">
+                <label for="observacao-select">Selecione uma observação:</label>
+                <select id="observacao-select" class="form-control">
+                    <option value="">Selecione...</option>
+                    <option value="Barrado">Barrado</option>
+                    <option value="Indenização">Indenização</option>
+                    <option value="Contato ativo">Contato ativo</option>
+                    <option value="Comprovante de entrega solicitado">Comprovante de entrega solicitado</option>
+                    <option value="Solicitar posição de entrega">Solicitar posição de entrega</option>
+                    <option value="Posição de entrega solicitada">Posição de entrega solicitada</option>
+                    <option value="Sem produto">Sem produto</option>
+                    <option value="Solicitar contato ativo">Solicitar contato ativo</option>
+                    <option value="Nova Previsão de Entrega">Nova Previsão de Entrega</option>
+                    <option value="Reclamação">Reclamação</option>
+                    <option value="Mediação">Mediação</option>
+                    <option value="Análise em Recobrança">Análise em Recobrança</option>
+                    <option value="Cancelada">Cancelada</option>
+                    <option value="Devolução">Devolução</option>
+                    <option value="Esperando Reposição">Esperando Reposição</option>
+                    <option value="Outros">Outros</option>
+                </select>
+            </div>
+
+            {{!-- Campo para nova data (começa escondido) --}}
+            <div class="acmp-filter-group" id="nova-previsao-container" style="display: none; margin-top: 1rem;">
+                <label for="nova-previsao-input">Nova Data de Previsão:</label>
+                <input type="date" id="nova-previsao-input" class="form-control">
+            </div>
+
+            {{!-- Campo para observação "Outros" (começa escondido) --}}
+            <div class="acmp-filter-group" id="outros-obs-container" style="display: none; margin-top: 1rem;">
+                <label for="outros-obs-textarea">Digite a Observação:</label>
+                <textarea id="outros-obs-textarea" class="form-control" rows="3"></textarea>
+            </div>
+            
+            <div class="header-actions-buttons" style="margin-top: 1.5rem;">
+                <button id="salvar-observacao-btn" class="btn btn-primary">Salvar Observação</button>
+            </div>
+        </div>
+    </div>
+
+    {{!-- Container do Histórico --}}
+    <div class="historico-container">
+        <h2>Histórico de Eventos</h2>
+        {{#if historico}}
+            <ul class="timeline">
+                {{#each historico}}
+                <li class="timeline-item">
+                    <div class="timeline-date">{{formatDateTime this.data_hora_efetiva}}</div>
+                    <div class="timeline-content">
+                        <h4 class="timeline-title">{{this.ocorrencia}}</h4>
+                        <p class="timeline-description">{{this.descricao}}</p>
+                        <span class="timeline-location"><i class="fas fa-map-marker-alt"></i> {{this.cidade}}</span>
+                    </div>
+                </li>
+                {{/each}}
+            </ul>
+        {{else}}
+            <p class="no-results-message">Nenhum histórico de eventos encontrado para este pedido.</p>
+        {{/if}}
+    </div>
+
+    {{#if (neq pedido.email_status 'Nenhum')}}
+        <div class="detalhe-card email-history-card">
+            <div class="email-history-header">
+                <h3><i class="fas fa-envelope-open-text"></i> Histórico de E-mails</h3>
+                {{#if (eq pedido.email_status 'Email - Em Andamento')}}
+                <button id="btn-resolve-email" class="btn btn-success-alt btn-sm" data-pedido-id="{{pedido.id}}">
+                    <i class="fas fa-check-circle"></i> Marcar como Resolvido
+                </button>
+                {{else}}
+                <span class="status-indicator status-resolved"><i class="fas fa-check-circle"></i> Resolvido</span>
+                {{/if}}
+            </div>
+            <div id="email-history-container">
+                {{!-- O JavaScript irá popular esta área com o histórico de e-mails --}}
+                <div class="loading-spinner"></div>
+            </div>
+        </div>
+    {{/if}}
+
+</div>
+
+{{#section "scripts"}}
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // =================================================================================
+            // SEU CÓDIGO ORIGINAL E FUNCIONAL DE OBSERVAÇÕES (INTOCADO)
+            // =================================================================================
+            const observacaoSelect = document.getElementById('observacao-select');
+            const novaPrevisaoContainer = document.getElementById('nova-previsao-container');
+            const novaPrevisaoInput = document.getElementById('nova-previsao-input');
+            const outrosObsContainer = document.getElementById('outros-obs-container');
+            const outrosObsTextarea = document.getElementById('outros-obs-textarea');
+            const salvarBtn = document.getElementById('salvar-observacao-btn');
+            const form = document.getElementById('observacao-form');
+
+            if (observacaoSelect) {
+                observacaoSelect.addEventListener('change', () => {
+                    const selectedValue = observacaoSelect.value;
+                    novaPrevisaoContainer.style.display = selectedValue === 'Nova Previsão de Entrega' ? 'block' : 'none';
+                    outrosObsContainer.style.display = selectedValue === 'Outros' ? 'block' : 'none';
+                });
+            }
+
+            if (salvarBtn) {
+                salvarBtn.addEventListener('click', async () => {
+                    const pedidoId = form.dataset.pedidoId;
+                    const observacaoBase = observacaoSelect.value;
+                    let observacaoFinal = observacaoBase;
+                    let novaPrevisaoEntrega = null;
+
+                    if (!observacaoBase) {
+                        ModalSystem.alert('Por favor, selecione uma observação.', 'Atenção');
+                        return;
+                    }
+
+                    if (observacaoBase === 'Nova Previsão de Entrega') {
+                        const dateValue = novaPrevisaoInput.value;
+                        if (!dateValue) {
+                            ModalSystem.alert('Por favor, selecione a nova data de previsão.', 'Atenção');
+                            return;
+                        }
+                        const parts = dateValue.split('-');
+                        const dataUTC = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+                        const dataFormatada = dataUTC.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+                        novaPrevisaoEntrega = dateValue;
+                        observacaoFinal = `Nova Previsão de Entrega: ${dataFormatada}`;
+                    }
+
+                    if (observacaoBase === 'Outros') {
+                        const textoOutros = outrosObsTextarea.value.trim();
+                        if (!textoOutros) {
+                            ModalSystem.alert('Por favor, digite a observação.', 'Atenção');
+                            return;
+                        }
+                        observacaoFinal = textoOutros;
+                    }
+
+                    salvarBtn.disabled = true;
+                    salvarBtn.textContent = 'Salvando...';
+
+                    try {
+                        const response = await fetch('/rastreio/api/salvar-observacao', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                pedidoId: pedidoId,
+                                observacao: observacaoFinal,
+                                novaPrevisaoEntrega: novaPrevisaoEntrega
+                            })
+                        });
+                        const result = await response.json();
+                        if (!response.ok) throw new Error(result.message || 'Ocorreu um erro no servidor.');
+                        ModalSystem.alert(result.message, 'Sucesso', () => { window.location.reload(); });
+                    } catch (error) {
+                        ModalSystem.alert(`Erro: ${error.message}`, 'Falha na Operação');
+                        salvarBtn.disabled = false;
+                        salvarBtn.textContent = 'Salvar Observação';
+                    }
+                });
+            }
+
+            // =================================================================================
+            // SEU CÓDIGO ORIGINAL E FUNCIONAL DE HISTÓRICO DE E-MAILS (INTOCADO)
+            // =================================================================================
+            const emailHistoryCard = document.querySelector('.email-history-card');
+            if (emailHistoryCard) {
+                const container = document.getElementById('email-history-container');
+                const resolveBtn = document.getElementById('btn-resolve-email');
+                const pedidoId = resolveBtn ? resolveBtn.dataset.pedidoId : null;
+                const fetchAndRenderEmailHistory = async () => {
+                    if (!pedidoId) return;
+                    try {
+                        const response = await fetch(`/rastreio/api/email-history/${pedidoId}`);
+                        if (!response.ok) throw new Error('Falha ao buscar histórico.');
+                        
+                        const emails = await response.json();
+                        container.innerHTML = ''; 
+
+                        if (emails.length === 0) {
+                            container.innerHTML = '<p>Nenhum e-mail encontrado para este pedido.</p>';
+                            return;
+                        }
+
+                        emails.forEach(email => {
+                            const sentDate = new Date(email.sent_at);
+                            const formattedDate = sentDate.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+                            const formattedTime = sentDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+                            const emailItem = document.createElement('div');
+                            emailItem.className = 'email-item';
+                            emailItem.dataset.threadId = email.thread_id;
+                            emailItem.innerHTML = `
+                                <div class="email-item-header">
+                                    <span class="email-from">De: ${email.from_address}</span>
+                                    <span class="email-date">${formattedDate} às ${formattedTime}</span>
+                                </div>
+                                <div class="email-subject">${email.subject}</div>
+                                <p class="email-snippet">${email.snippet}</p>
+                            `;
+                            emailItem.addEventListener('click', () => {
+                                const gmailUrl = `https://mail.google.com/mail/u/0/#inbox/${email.thread_id}`;
+                                window.open(gmailUrl, '_blank');
+                            });
+                            container.appendChild(emailItem);
+                        });
+
+                    } catch (error) {
+                        console.error('Erro ao buscar histórico de e-mails:', error);
+                        container.innerHTML = '<p style="color:var(--color-danger);">Erro ao carregar o histórico de e-mails.</p>';
+                    }
+                };
+                if (resolveBtn) {
+                        resolveBtn.addEventListener('click', async () => {
+                            ModalSystem.confirm('Deseja marcar esta conversa como resolvida?', 'Confirmar Ação', async () => {
+                                try {
+                                    const response = await fetch(`/rastreio/api/resolve-email/${pedidoId}`, { method: 'POST' });
+                                    const result = await response.json();
+                                    if (!response.ok) throw new Error(result.message);
+                                    
+                                    ModalSystem.alert('Status do e-mail atualizado com sucesso!', 'Sucesso', () => {
+                                        window.location.reload(); 
+                                    });
+                                } catch (error) {
+                                    ModalSystem.alert(`Erro: ${error.message}`, 'Falha na Operação');
+                                }
+                            });
+                        });
+                    }
+
+                fetchAndRenderEmailHistory();
+            }
+
+            // =================================================================================
+            // NOVO BLOCO DE CÓDIGO PARA O BOTÃO DE E-MAIL (ADICIONADO DE FORMA SEGURA)
+            // =================================================================================
+            const btnEnviarEmail = document.getElementById('btn-enviar-email');
+            if (btnEnviarEmail) {
+                const pedidoId = '{{pedido.id}}';
+                const pedidoNfe = '{{pedido.numero_nfe}}';
+                const transportadoraNome = '{{pedido.transportadora}}';
+
+                btnEnviarEmail.addEventListener('click', () => {
+                    const confirmationMessage = `
+                        <p>Você confirma o envio do e-mail de cobrança?</p>
+                        <div style="margin-top: 1rem; text-align: left; font-size: 0.9rem;">
+                            <p><strong>Transportadora:</strong> ${transportadoraNome}</p>
+                            <p><strong>NFE:</strong> ${pedidoNfe}</p>
+                        </div>
+                    `;
+                    
+                    ModalSystem.confirm(
+                        confirmationMessage,
+                        'Confirmar Envio de E-mail',
+                        async () => { // onConfirmCallback
+                            ModalSystem.showLoading('Enviando e-mail...');
+                            try {
+                                const response = await fetch(`/rastreio/api/enviar-email-cobranca/${pedidoId}`, {
+                                    method: 'POST'
+                                });
+                                const result = await response.json();
+                                if (!response.ok) throw new Error(result.message || 'Ocorreu um erro no servidor.');
+                                ModalSystem.alert(result.message, 'Sucesso', () => {
+                                    window.location.reload();
+                                });
+                            } catch (error) {
+                                ModalSystem.alert(`Erro: ${error.message}`, 'Falha na Operação');
+                            }
+                        },
+                        null // onCancelCallback
+                    );
+                });
+            }
+        });
+    </script>
+{{/section}}

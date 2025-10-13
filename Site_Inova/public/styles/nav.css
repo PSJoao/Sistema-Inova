@@ -1,0 +1,210 @@
+/* public/styles/nav.css */
+
+.sidebar {
+  width: 260px; /* Largura da sidebar */
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0; /* Impede que a sidebar encolha */
+  border-right: 1px solid var(--bg-tertiary);
+  transition: width var(--transition-normal), transform var(--transition-normal); /* Para animação de colapso */
+  overflow-x: auto; /* Evita scroll horizontal na sidebar */
+  z-index: 1005; /* Acima de alguns elementos, abaixo de modais, etc. */
+}
+
+.sidebar-content-sticky-wrapper {
+  position: sticky; /* Gruda no topo da .sidebar (que agora é full-height) */
+  top: 0;
+  height: 100vh; /* O conteúdo visível e sticky tem a altura da janela */
+  width: 100%; /* Ocupa toda a largura da .sidebar */
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto; /* Permite scroll APENAS no conteúdo da sidebar se ele for maior que 100vh */
+}
+
+/* Cabeçalho da Sidebar (Logo) */
+.sidebar-header {
+  padding: 18px 20px;
+  text-align: center;
+  border-bottom: 1px solid var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center; /* Centraliza se for só texto */
+  flex-shrink: 0;
+}
+
+.sidebar-header .logo-link {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.sidebar-header .logo-img {
+  height: 32px; /* Ajuste o tamanho da sua logo */
+  width: auto;
+  margin-right: 10px;
+}
+
+.sidebar-header .logo-text {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+.sidebar-header .logo-accent {
+  color: var(--accent-orange);
+}
+
+/* Navegação Principal da Sidebar */
+.sidebar-nav {
+  flex-grow: 1; /* Ocupa o espaço restante na sidebar */
+  padding-top: 15px;
+}
+
+.sidebar-nav ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.sidebar-nav li a {
+  display: flex;
+  align-items: center;
+  padding: 12px 20px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+  font-size: 0.95rem;
+  white-space: nowrap; /* Evita quebra de linha no texto do menu */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-nav li a:hover,
+.sidebar-nav li a.active { /* Classe 'active' para o link da página atual */
+  background-color: var(--bg-tertiary);
+  color: var(--accent-orange);
+  border-left: 3px solid var(--accent-orange); /* Destaque na lateral */
+  padding-left: 17px; /* Ajusta padding para compensar a borda */
+}
+
+.sidebar-nav li a .fa-fw { /* Para ícones Font Awesome com largura fixa */
+  width: 1.25em; /* Garante alinhamento dos ícones */
+  margin-right: 12px; /* Espaço entre ícone e texto */
+  font-size: 1.1em; /* Tamanho do ícone */
+  text-align: center;
+}
+.sidebar-nav li a span {
+    transition: opacity var(--transition-fast);
+}
+
+
+/* Módulos com Submenus */
+.nav-module .module-toggle {
+  position: relative; /* Para o posicionamento da seta */
+}
+
+.nav-module .module-toggle .arrow {
+  margin-left: auto; /* Empurra a seta para a direita */
+  font-size: 0.8em;
+  transition: transform var(--transition-fast);
+}
+
+.nav-module.open > .module-toggle .arrow { /* Quando o submenu está aberto */
+  transform: rotate(90deg);
+}
+.nav-module.open > .module-toggle {
+    background-color: var(--bg-tertiary);
+    color: var(--accent-orange);
+}
+
+
+.sub-menu {
+  list-style: none;
+  padding-left: 0; /* Zera padding para controlar com os 'a' */
+  max-height: 0; /* Começa fechado */
+  overflow: hidden;
+  transition: max-height 0.3s ease-out; /* Animação de abrir/fechar */
+  background-color: rgba(0,0,0,0.1); /* Fundo sutil para o submenu */
+}
+
+.nav-module.open > .sub-menu {
+  /* max-height será definido via JS para animar corretamente */
+  /* Exemplo: submenu.style.maxHeight = submenu.scrollHeight + "px"; */
+}
+
+.sub-menu li a {
+  padding-left: 45px; /* Indentação para subitens (depois do espaço do ícone principal) */
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+.sub-menu li a:hover,
+.sub-menu li a.active {
+  background-color: var(--bg-primary); /* Um pouco mais escuro que o submenu bg */
+  color: var(--accent-orange);
+  border-left: none; /* Remove a borda lateral para subitens */
+  padding-left: 45px; /* Mantém indentação */
+}
+.sub-menu li a .fa-fw { /* Ícones do submenu, se houver */
+    margin-right: 10px;
+    font-size: 1em;
+}
+
+
+/* Divisor na Sidebar (opcional) */
+.sidebar-divider {
+  height: 1px;
+  background-color: var(--bg-tertiary);
+  margin: 15px 20px;
+}
+
+
+/* Estilos para a sidebar colapsada (Exemplo: mostra apenas ícones) */
+.sidebar.collapsed {
+  width: 70px; /* Largura para mostrar apenas ícones */
+}
+.sidebar.collapsed .sidebar-header .logo-text {
+  display: none; /* Esconde texto da logo */
+}
+.sidebar.collapsed .sidebar-header .logo-img {
+  margin-right: 0; /* Remove margem da imagem da logo */
+}
+.sidebar.collapsed .sidebar-nav li a span {
+  display: none; /* Esconde texto dos links */
+}
+.sidebar.collapsed .sidebar-nav li a .fa-fw {
+  margin-right: 0; /* Remove margem do ícone */
+}
+.sidebar.collapsed .sidebar-nav li a {
+  justify-content: center; /* Centraliza o ícone */
+  padding: 12px 10px; /* Ajusta padding */
+}
+.sidebar.collapsed .nav-module .module-toggle .arrow {
+  display: none; /* Esconde a seta do submenu */
+}
+.sidebar.collapsed .sub-menu {
+  /* Comportamento do submenu quando a sidebar está colapsada:
+     Pode ser um pop-out no hover do ícone do módulo.
+     Requer JS adicional para esse tipo de interação mais complexa.
+     Por ora, eles ficarão escondidos ou podem ser estilizados para aparecer de outra forma.
+  */
+  position: absolute;
+  left: 70px; /* Aparece ao lado da sidebar colapsada */
+  background-color: var(--bg-secondary);
+  width: 200px; /* Largura do submenu pop-out */
+  box-shadow: var(--box-shadow-medium);
+  border-radius: 0 var(--border-radius-md) var(--border-radius-md) 0;
+  opacity: 0;
+  visibility: hidden;
+  z-index: 1100;
+}
+.sidebar.collapsed .nav-module:hover > .sub-menu {
+    /* Exemplo de como poderia ser um pop-out no hover. Precisa de JS para controlar max-height se animado */
+    opacity: 1;
+    visibility: visible;
+    max-height: 500px; /* Um valor alto para permitir todos os itens */
+}
+.sidebar.collapsed .sub-menu li a {
+  padding-left: 20px; /* Ajusta padding para o submenu pop-out */
+}

@@ -1,0 +1,103 @@
+{{!< main}}
+
+<div class="content-card">
+  <div class="page-header-actions">
+    <h1 class="page-title">{{title}}</h1>
+    <div class="action-buttons">
+      {{!-- Se você tiver uma rota para adicionar produtos ViaVarejo, o botão iria aqui --}}
+      <a href="/viavarejo/add-url" class="btn btn-accent"><i class="fas fa-plus"></i> Adicionar Produto ViaVarejo</a>
+      {{!-- Se tiver um relatório específico para ViaVarejo --}}
+      {{!-- <a href="/viavarejo/generate-report" class="btn btn-success-alt"><i class="fas fa-file-excel"></i> Gerar Relatório ViaVarejo</a> --}}
+    </div>
+  </div>
+
+  {{#if hasUndefinedCost}}
+    <div class="alert alert-warning">
+      <i class="fas fa-exclamation-triangle"></i> Existem produtos sem custo definido, favor importar planilha do relatório.
+    </div>
+  {{/if}}
+
+  <div class="table-responsive-wrapper">
+    <table id="viaVarejoUrlTable" class="dataTable display" style="width:100%">
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Produto</th>
+          <th>Custo</th>
+          <th>Nome Ganhador</th>
+          <th>Prazo Ganhador</th>
+          <th>A Vista Ganhador</th>
+          <th>Nosso Preço</th>
+          <th>Nome Concorrente</th>
+          <th>Valor Concorrente</th>
+          <th>Margem</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each urls}} 
+        <tr>
+          <td>{{sku}}</td>
+          {{!-- Para o link do produto, use a variável correta que contém a URL. 
+               Se for 'url_principal' como nos outros módulos, use-a. Se for 'url', use 'url'.
+               Assumindo que você tem uma variável como 'url_principal' ou 'url' para o link.
+               E para o nome, pode ser 'produto' ou 'description'. Usarei 'produto' como no seu exemplo anterior para esta tabela.
+          --}}
+          <td>
+            {{#if url_principal}} {{!-- Ou {{#if url}} --}}
+              <a href="{{url_principal}}" target="_blank">{{produto}}</a>
+            {{else}}
+              {{produto}}
+            {{/if}}
+          </td>
+          <td>{{formatPrice custo}}</td>
+          <td>{{nome_ganhador}}</td>
+          <td>{{#if prazo_ganhador}}{{formatPrice prazo_ganhador}}{{else}}R$ 0,00{{/if}}</td>
+          <td>{{#if a_vista_ganhador}}{{formatPrice a_vista_ganhador}}{{else}}R$ 0,00{{/if}}</td>
+          <td>{{#if nosso_preco}}{{formatPrice nosso_preco}}{{else}}R$ 0,00{{/if}}</td>
+          <td>{{#if menor_concorrente}}{{menor_concorrente}}{{else}}Nenhum{{/if}}</td>
+          <td>{{#if valor_menor_concorrente}}{{formatPrice valor_menor_concorrente}}{{else}}R$ 0,00{{/if}}</td>
+          <td class="margin-cell {{#if (isLowMargin margin)}}highlight-red{{/if}}">
+            {{#if (neq margin 'N/A')}}{{margin}}%{{else}}0%{{/if}}
+          </td>
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{{!-- Script para seleção de célula (mantém o padrão, mas usa o ID correto da tabela) --}}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const tableId = '#viaVarejoUrlTable'; // ID correto desta tabela
+  const tableElement = document.querySelector(tableId);
+
+  if (tableElement) {
+    tableElement.addEventListener('click', function(event) {
+      const targetCell = event.target.closest('td, th');
+      if (!targetCell) return;
+      tableElement.querySelectorAll('td.selected, th.selected').forEach(el => el.classList.remove('selected'));
+      targetCell.classList.add('selected');
+    });
+  }
+  
+  // Certifique-se de que seu dataTables.js inicializa esta tabela com o ID 'viaVarejoUrlTable'
+  // ou adicione a inicialização específica aqui se as opções forem diferentes.
+  // Exemplo, se o seu dataTables.js não a cobrir:
+  // if (typeof $ !== 'undefined' && $.fn.dataTable.isDataTable && !$.fn.dataTable.isDataTable(tableId)) {
+  //   $(tableId).DataTable({
+  //     "pageLength": 10,
+  //     "searching": true,
+  //     "paging": true,
+  //     "info": true, // Recomendo deixar true, pois o tables.css já o estiliza
+  //     "scrollX": true,
+  //     "language": { /* Suas traduções */ },
+  //     "drawCallback": function() {
+  //       if (typeof highlightIssues === 'function') {
+  //         highlightIssues(tableId); // Passando o ID da tabela para a função
+  //       }
+  //     }
+  //   });
+  // }
+});
+</script>

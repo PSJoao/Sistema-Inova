@@ -1,0 +1,51 @@
+{{!< main}}
+
+<div class="content-card">
+  <h1 class="page-title">{{title}}</h1>
+
+  <div class="table-responsive-wrapper">
+    {{!-- Note que o ID da tabela original era nonCompetitiveProductTable, que já usamos em monitoring. --}}
+    {{!-- É crucial que os IDs das tabelas sejam únicos em todo o site se o seu dataTables.js os chama por ID. --}}
+    <table id="viaVarejoNonCompetitiveTable" class="dataTable display" style="width:100%"> {{!-- ID ÚNICO --}}
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Produto</th>
+          <th>Nosso Preço</th>
+          <th>Custo</th>
+          <th>Margem</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each products}}
+        <tr>
+          <td>{{sku}}</td>
+          <td>{{produto}}</td> {{!-- Ou description --}}
+          <td>{{formatPrice nosso_preco}}</td>
+          <td>{{formatPrice custo}}</td>
+          <td class="margin-cell {{#if (isLowMargin margin)}}highlight-red{{/if}}">
+            {{#if (neq margin 'N/A')}}{{margin}}%{{else}}0%{{/if}}
+          </td>
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const tableId = '#viaVarejoNonCompetitiveTable'; // ID ÚNICO
+  const tableElement = document.querySelector(tableId);
+
+  if (tableElement) {
+    tableElement.addEventListener('click', function(event) {
+      const targetCell = event.target.closest('td, th');
+      if (!targetCell) return;
+      tableElement.querySelectorAll('td.selected, th.selected').forEach(el => el.classList.remove('selected'));
+      targetCell.classList.add('selected');
+    });
+  }
+  // Inicialização DataTables se necessário
+});
+</script>

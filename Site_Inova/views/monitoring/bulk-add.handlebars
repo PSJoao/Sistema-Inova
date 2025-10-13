@@ -1,0 +1,89 @@
+<div class="page-header-actions">
+    <h1 class="page-title">{{title}}</h1>
+</div>
+
+<div class="content-card">
+    <p class="text-secondary">
+        Faça o upload de uma planilha (.xlsx, .xls, .csv) contendo os produtos da MadeiraMadeira.
+        Arraste e solte o arquivo na área indicada ou clique para selecionar.
+    </p>
+
+    <hr class="styled">
+
+    <form action="/madeiramadeira/bulk-add" method="POST" enctype="multipart/form-data" id="uploadForm">
+        <div class="form-group">
+            <label for="productSheet">Planilha de produtos:</label>
+            
+            <div id="file-upload-zone" class="file-upload-zone">
+                <div class="file-upload-content">
+                    <i class="fas fa-cloud-upload-alt file-upload-icon"></i>
+                    <p class="file-upload-text">Arraste e solte o arquivo aqui, ou clique para selecionar.</p>
+                    <span class="file-upload-selected-name"></span>
+                </div>
+                <input type="file" id="productSheet" name="productSheet" class="file-upload-input" accept=".xlsx, .xls, .csv" required>
+            </div>
+            <div class="form-text error" id="fileError"></div>
+        </div>
+
+        <div class="form-actions mt-2">
+            <button type="submit" class="btn btn-accent">
+                <i class="fas fa-upload"></i> Enviar e Processar Arquivo
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+    // Script para controlar a nova área de upload
+    const uploadZone = document.getElementById('file-upload-zone');
+    const fileInput = document.getElementById('productSheet');
+    const uploadText = uploadZone.querySelector('.file-upload-text');
+    const selectedName = uploadZone.querySelector('.file-upload-selected-name');
+    const uploadIcon = uploadZone.querySelector('.file-upload-icon');
+
+    // Clicar na zona ativa o input de arquivo escondido
+    uploadZone.addEventListener('click', () => {
+        fileInput.click();
+    });
+
+    // Eventos para feedback visual de 'arrastar e soltar'
+    uploadZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadZone.classList.add('drag-over');
+    });
+
+    uploadZone.addEventListener('dragleave', () => {
+        uploadZone.classList.remove('drag-over');
+    });
+
+    uploadZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadZone.classList.remove('drag-over');
+        // Define os arquivos do 'drop' para o input
+        if (e.dataTransfer.files.length) {
+            fileInput.files = e.dataTransfer.files;
+            // Dispara o evento 'change' manualmente para atualizar a UI
+            fileInput.dispatchEvent(new Event('change'));
+        }
+    });
+
+    // Atualiza a UI quando um arquivo é selecionado
+    fileInput.addEventListener('change', () => {
+        if (fileInput.files.length > 0) {
+            uploadText.style.display = 'none'; // Esconde texto original
+            selectedName.textContent = `Arquivo selecionado: ${fileInput.files[0].name}`; // Mostra nome do arquivo
+            selectedName.style.display = 'block';
+            uploadIcon.classList.remove('fa-cloud-upload-alt');
+            uploadIcon.classList.add('fa-check-circle'); // Muda o ícone para sucesso
+            uploadZone.classList.add('file-selected');
+        } else {
+            uploadText.style.display = 'block';
+            selectedName.textContent = '';
+            selectedName.style.display = 'none';
+            uploadIcon.classList.remove('fa-check-circle');
+            uploadIcon.classList.add('fa-cloud-upload-alt');
+            uploadZone.classList.remove('file-selected');
+        }
+    });
+
+</script>

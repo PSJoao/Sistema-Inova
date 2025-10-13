@@ -1,0 +1,200 @@
+/* public/styles/components.css */
+
+/* === Botões === */
+.btn {
+  display: inline-flex; /* Para alinhar ícone e texto verticalmente */
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1rem; /* Padrão: 8px 16px */
+  font-size: 0.9rem;    /* Padrão: ~14.4px */
+  font-weight: 500;
+  line-height: 1.5;
+  text-align: center;
+  text-decoration: none;
+  vertical-align: middle;
+  cursor: pointer;
+  user-select: none;
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--border-radius-md); /* 6px */
+  transition: color var(--transition-fast), background-color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+  white-space: nowrap; /* Evita quebra de linha no texto do botão */
+}
+
+.btn i, .btn .fas, .btn .far, .btn .fab, .btn .icon {
+  margin-right: 0.4em; /* Espaço entre ícone e texto */
+  line-height: 1;
+}
+.btn .icon-only i { /* Se o botão tiver só um ícone */
+    margin-right: 0;
+}
+
+
+/* Botão de Acento Laranja (Principal) */
+.btn-accent {
+  color: var(--accent-orange-text);
+  background-color: var(--accent-orange);
+  border-color: var(--accent-orange);
+}
+.btn-accent:hover {
+  color: var(--accent-orange-text);
+  background-color: var(--accent-orange-hover);
+  border-color: var(--accent-orange-hover);
+}
+.btn-accent:focus {
+  box-shadow: 0 0 0 0.2rem rgba(255, 140, 32, 0.35); /* Laranja do --accent-orange com alpha */
+}
+
+/* Botão Secundário (Contorno Laranja) */
+.btn-outline-accent {
+  color: var(--accent-orange);
+  border-color: var(--accent-orange);
+}
+.btn-outline-accent:hover {
+  color: var(--accent-orange-text);
+  background-color: var(--accent-orange);
+  border-color: var(--accent-orange);
+}
+
+/* Botão de Sucesso */
+.btn-success {
+  color: #fff;
+  background-color: var(--color-success);
+  border-color: var(--color-success);
+}
+.btn-success:hover {
+  background-color: hsl(from var(--color-success) h s calc(l - 7%));
+  border-color: hsl(from var(--color-success) h s calc(l - 10%));
+}
+
+/* Botão de Perigo */
+.btn-danger {
+  color: #fff;
+  background-color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+.btn-danger:hover {
+  background-color: hsl(from var(--color-danger) h s calc(l - 7%));
+  border-color: hsl(from var(--color-danger) h s calc(l - 10%));
+}
+
+/* Botão de Aviso */
+.btn-warning {
+  color: #1e1e2f; /* Texto escuro para contraste com amarelo */
+  background-color: var(--color-warning);
+  border-color: var(--color-warning);
+}
+.btn-warning:hover {
+  color: #1e1e2f;
+  background-color: hsl(from var(--color-warning) h s calc(l - 7%));
+  border-color: hsl(from var(--color-warning) h s calc(l - 10%));
+}
+
+
+/* Botões de Ícone (usados em tabelas, etc.) */
+.btn-icon {
+  padding: 0.375rem 0.6rem; /* Menor padding */
+  line-height: 1; /* Para centralizar melhor o ícone se estiver sozinho */
+}
+.btn-icon i {
+  margin-right: 0; /* Sem margem se for apenas um ícone */
+  font-size: 0.9em;
+}
+
+/* Variações de contorno para ícones */
+.btn-icon.btn-outline-warning {
+  color: var(--color-warning);
+  border-color: var(--color-warning);
+}
+.btn-icon.btn-outline-warning:hover {
+  color: #1e1e2f;
+  background-color: var(--color-warning);
+}
+
+.btn-icon.btn-outline-danger {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+.btn-icon.btn-outline-danger:hover {
+  color: #fff;
+  background-color: var(--color-danger);
+}
+
+
+/* === Alertas === */
+.alert {
+  padding: 0.9rem 1.25rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid transparent;
+  border-radius: var(--border-radius-md);
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+}
+.alert i, .alert .fas, .alert .far, .alert .fab, .alert .icon {
+  margin-right: 0.75rem;
+  font-size: 1.2em;
+}
+
+.alert-warning {
+  color: #664d03; /* Texto mais escuro para contraste */
+  background-color: #fff3cd;
+  border-color: #ffeeba;
+}
+.alert-warning i { color: #856404; }
+
+.alert-danger {
+  color: #58151c;
+  background-color: #f8d7da;
+  border-color: #f5c2c7;
+}
+.alert-danger i { color: #721c24; }
+
+.alert-success {
+  color: #0f5132;
+  background-color: #d1e7dd;
+  border-color: #badbcc;
+}
+.alert-success i { color: #155724; }
+
+.alert-info {
+  color: #055160;
+  background-color: #cff4fc;
+  border-color: #b6effb;
+}
+.alert-info i { color: #0c5460; }
+
+
+/* === Cards (Estilo base para .content-card já está em theme.css) === */
+/* Podemos adicionar variações de card aqui se necessário */
+
+
+/* === Outros Componentes === */
+/* Ex: Badges/Tags */
+.badge {
+  display: inline-block;
+  padding: 0.3em 0.6em;
+  font-size: 0.75em;
+  font-weight: 600;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: baseline;
+  border-radius: var(--border-radius-sm);
+}
+.badge-orange {
+  color: var(--accent-orange-text);
+  background-color: var(--accent-orange);
+}
+.badge-grey {
+  color: var(--text-primary);
+  background-color: var(--bg-tertiary);
+}
+
+/* Separador Horizontal */
+hr.styled {
+    border: 0;
+    height: 1px;
+    background-color: var(--bg-tertiary);
+    margin: 1.5rem 0;
+}

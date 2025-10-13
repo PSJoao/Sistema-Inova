@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{title}} - InovaXPress</title>
+  <link rel="shortcut icon" href="/public/icons/favicon.ico" type="image/x-icon">
+
+  <link href="/public/styles/reset.css" rel="stylesheet">
+  <link href="/public/styles/theme.css" rel="stylesheet">
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/simple-line-icons/2.5.5/css/simple-line-icons.min.css">
+  <link rel="stylesheet" href="https://waseone.github.io/icons/css/waseone-icons.css">
+  <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.10.21/css/jquery.dataTables.css">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DynaPuff:wght@400..700&display=swap" rel="stylesheet">
+
+  <link href="/public/styles/layout.css" rel="stylesheet">
+  <link href="/public/styles/nav.css" rel="stylesheet">
+  <link href="/public/styles/components.css" rel="stylesheet">
+  <link href="/public/styles/forms.css" rel="stylesheet">
+  <link href="/public/styles/tables.css" rel="stylesheet">
+  <link href="/public/styles/emissao.css" rel="stylesheet">
+  <link href="/public/styles/modal.css" rel="stylesheet">
+  <link href="/public/styles/relacoes.css" rel="stylesheet">
+  {{{_sections.head}}}
+</head>
+<body>
+  <div class="page-container"> 
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-content-sticky-wrapper">
+        <div class="sidebar-header">
+          <a href="/" class="logo-link">
+            <img src="/public/icons/favicon.ico" alt="Logo InovaXPress" class="logo-img"> 
+            <h2 class="logo-text">INOVA<span class="logo-accent">X</span>PRESS</h2>
+          </a>
+        </div>
+        <nav class="sidebar-nav">
+          <ul>
+            <li><a href="/"><i class="fas fa-home fa-fw"></i> <span>Menu Principal</span></a></li>
+            {{#if (eq cargo 'ADM')}}
+            <li class="nav-module">
+              <a href="#" class="module-toggle"><i class="fas fa-store fa-fw"></i> <span>Madeira - Lucas</span> <i class="fas fa-chevron-right arrow"></i></a>
+              <ul class="sub-menu">
+                <li><a href="/madeira/urls"><i class="fas fa-clipboard-list fa-fw"></i> Gerenciar Produtos</a></li>
+                <li><a href="/madeira/monitoring"><i class="fas fa-chart-line fa-fw"></i> Monitorar Produtos</a></li>
+                <li><a href="/madeira/non-competitive-products"><i class="fas fa-handshake fa-fw"></i> P. Sem Concorrentes</a></li>
+                <li><a href="/madeira/out-of-promotion"><i class="fas fa-tags fa-fw"></i> Produtos Sem Promoção</a></li>
+              </ul>
+            </li>
+            <li class="nav-module">
+              <a href="#" class="module-toggle"><i class="fas fa-store fa-fw"></i> <span>Madeira - Eliane</span> <i class="fas fa-chevron-right arrow"></i></a>
+              <ul class="sub-menu">
+                <li><a href="/madeiramadeira/urls"><i class="fas fa-clipboard-list fa-fw"></i> Gerenciar Produtos</a></li>
+                <li><a href="/madeiramadeira/monitoring"><i class="fas fa-chart-line fa-fw"></i> Monitorar Produtos</a></li>
+                <li><a href="/madeiramadeira/non-competitive-products"><i class="fas fa-handshake fa-fw"></i> P. Sem Concorrentes</a></li>
+                <li><a href="/madeiramadeira/out-of-promotion"><i class="fas fa-tags fa-fw"></i> Produtos Sem Promoção</a></li>
+              </ul>
+            </li>
+            <span style="position: absolute; margin-left: 500px; font-family: 'DynaPuff', system-ui; font-size: 90px;">Igor</span>
+            <li class="nav-module">
+              <a href="#" class="module-toggle"><i class="fas fa-shopping-bag fa-fw"></i> <span>ViaVarejo</span> <i class="fas fa-chevron-right arrow"></i></a>
+              <ul class="sub-menu">
+                 <li><a href="/viavarejo/urls"><i class="fas fa-clipboard-list fa-fw"></i> Gerenciar Produtos</a></li>
+                <li><a href="/viavarejo/home"><i class="fas fa-chart-line fa-fw"></i> Monitorar Produtos</a></li>
+                <li><a href="/viavarejo/non-competitive-products"><i class="fas fa-handshake fa-fw"></i> P. Sem Concorrentes</a></li>
+                <li><a href="/viavarejo/empty-products"><i class="fas fa-box-open fa-fw"></i> P. Sem Estoque</a></li>
+              </ul>
+            </li>
+
+            <li class="nav-module">
+              <a href="#" class="module-toggle"><i class="fas fa-solid fa-file fa-fw"></i> <span>Nota Fiscal</span> <i class="fas fa-chevron-right arrow"></i></a>
+              <ul class="sub-menu">
+                <li><a href="/emissao"><i class="fas fa-barcode fa-fw"></i> Gerenciar Emissões</a></li>
+                 <li><a href="/emissao/nfe-management"><i class="fas fa-light fa-sticky-note fa-fw"></i> Gerar Etiquetas</a></li>
+                <li><a href="/acompanhamento/pedidos"><i class="fas fa-shopping-cart fa-fw"></i> Gerenciar Pedidos</a></li>
+                <li><a href="/assistencias"><i class="fas fa-solid fa-file-invoice fa-fw"></i> Assistências</a></li>
+              </ul>
+            </li>
+
+            <li class="nav-module">
+              <a href="#" class="module-toggle"><i class="fas fa-truck fa-fw"></i> <span>Transporte</span> <i class="fas fa-chevron-right arrow"></i></a>
+              <ul class="sub-menu">
+                <li><a href="/relacoes"><i class="fas fa-truck fa-fw"></i> Gerenciar Relações</a></li>
+                <li><a href="/rastreio"><i class="fas fa-paper-plane fa-fw"></i> Acompanhamentos</a></li>
+                <li><a href="/historico-nfe"><i class="fas fa-solid fa-sim-card fa-fw"></i> Histórico de Notas</a></li>
+              </ul>
+            </li>
+            {{/if}}
+            
+            {{#if (eq cargo 'NFE')}}
+            <li class="nav-module">
+              <a href="/emissao" class="module-link-direct"><i class="fas fa-barcode fa-fw"></i> <span>Gerenciar Emissões</span></a>
+              <a href="/emissao/nfe-management" class="module-link-direct"><i class="fas fa-light fa-sticky-note fa-fw"></i> <span>Gerar Etiquetas</span></a>
+              <a href="/assistencias" class="module-link-direct"><i class="fas fa-solid fa-file-invoice fa-fw"></i> <span>Assistências</span></a>
+              <a href="/historico-nfe" class="module-link-direct"><i class="fas fa-solid fa-sim-card fa-fw"></i> <span>Histórico de Notas</span></a>
+            </li>
+            {{/if}}
+            {{#if (eq cargo 'REL')}}
+             <li class="nav-module">
+              <a href="/relacoes" class="module-link-direct"><i class="fas fa-truck fa-fw"></i> <span>Gerenciar Relações</span></a>
+              <a href="/historico-nfe" class="module-link-direct"><i class="fas fa-solid fa-sim-card fa-fw"></i> <span>Histórico de Notas</span></a>
+              <a href="/emissao" class="module-link-direct"><i class="fas fa-barcode fa-fw"></i> <span>Gerenciar Emissões</span></a>
+            </li>
+            {{/if}}
+            <hr class="sidebar-divider"> 
+            <li><a href="/logout"><i class="fas fa-sign-out-alt fa-fw"></i> <span>Sair</span></a></li> 
+          </ul>
+        </nav>
+      </div>
+    </aside>
+
+    <div class="page-wrapper" id="pageWrapper">
+      <header class="top-bar" id="topBar">
+        <button class="sidebar-toggle-btn" id="sidebarToggleBtn" aria-label="Alternar menu lateral">
+          <i class="fas fa-bars"></i>
+        </button>
+        <div class="top-bar-title">
+        </div>
+        <div class="top-bar-user">
+          {{#if username}}
+            <span style="color: var(--text-secondary); font-size: 0.9em;">Olá, {{username}}</span>
+          {{/if}}
+        </div>
+      </header>
+     
+      <main class="main-content" id="mainContent">
+        {{{body}}}
+      </main>
+    </div>
+
+  </div> 
+
+  {{!-- SCRIPTS GLOBAIS --}}
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/handlebars.js/4.7.8/handlebars.min.js"></script>
+  <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/1.10.21/js/jquery.dataTables.js"></script>
+  
+  <script src="/public/scripts/modal.js"></script> 
+  <script src="/public/scripts/layout.js"></script>
+  <script src="/public/scripts/dataTables.js"></script>    
+  <script src="/public/scripts/highlightIssues.js"></script> 
+
+  {{!-- MODAL GLOBAL (controlado pelo modal.js) --}}
+  <div id="customModalOverlay" class="modal-overlay"></div>
+  <div id="customModal" class="custom-modal" role="dialog" aria-modal="true" aria-labelledby="customModalTitle" style="display: none;">
+    <div class="custom-modal-header">
+      <h3 id="customModalTitle" class="custom-modal-title-text">Título do Modal</h3>
+    </div>
+    <div class="custom-modal-body">
+      <div id="customModalSpinner" class="modal-spinner" style="display: none;"></div>
+      <p id="customModalMessage">Mensagem do modal aqui.</p>
+    </div>
+    <div class="custom-modal-footer">
+      <button id="customModalBtnOk" class="btn btn-accent">OK</button>
+      <button id="customModalBtnConfirm" class="btn btn-accent">Continuar</button>
+      <button id="customModalBtnCancel" class="btn btn-outline-accent">Cancelar</button>
+    </div>
+  </div>
+
+  {{!-- Espaço para scripts específicos da página --}}
+  {{{_sections.scripts}}}
+  
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // Exibe mensagens flash usando o ModalSystem
+      {{#if success_msg.length}}
+        ModalSystem.alert('{{success_msg}}', 'Sucesso!');
+      {{/if}}
+
+      {{#if error_msg.length}}
+        ModalSystem.alert('{{error_msg}}', 'Erro!');
+      {{/if}}
+
+      {{#if info_msg.length}}
+        ModalSystem.alert('{{info_msg}}', 'Aviso');
+      {{/if}}
+    });
+  </script>
+</body>
+</html>

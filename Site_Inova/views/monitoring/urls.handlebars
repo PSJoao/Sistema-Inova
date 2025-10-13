@@ -1,0 +1,94 @@
+{{!< main}} {{!-- Usa o novo layout principal --}}
+
+{{!-- Conteúdo específico desta página --}}
+<div class="content-card"> {{!-- Novo container geral para o conteúdo da página --}}
+  <div class="page-header-actions"> {{!-- Container para título e botões de ação --}}
+    <h1 class="page-title">{{title}}</h1>
+    <div class="action-buttons">
+      <a href="/madeiramadeira/bulk-add" class="btn btn-accent"><i class="fas fa-plus"></i> Adicionar Produtos</a>
+      <a href="/madeiramadeira/generate-report" class="btn btn-success-alt"><i class="fas fa-file-excel"></i> Gerar Relatório</a>
+    </div>
+  </div>
+
+  {{!-- O wrapper .table-responsive garante que a tabela possa rolar horizontalmente em telas pequenas --}}
+  {{!-- O dataTables.js já configura scrollX:true, o CSS em tables.css ajuda com a aparência --}}
+  <div class="table-responsive-wrapper">
+    <table id="urlTable" class="dataTable display" style="width:100%"> {{!-- Adicionei 'display' que é uma classe comum do DataTables, e width:100% --}}
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Produto</th>
+          <th>Custo</th>
+          <th>Nosso Preço</th>
+          <th>Menor Preço Concorrente</th>
+          <th>Nossa Margem</th>
+          <th>Margem Concorrente</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each urls}} 
+        <tr>
+          <td>{{sku}}</td>
+          <td><a href={{url}} target="_blank">{{description}}</a></td>
+          <td>{{formatPrice custo}}</td>
+          <td>{{#if inovaMóveisPrice}}{{formatPrice inovaMóveisPrice}}{{else}}R$ 0,00{{/if}}</td>
+          <td>{{#if concorrentePrice}}{{formatPrice concorrentePrice}}{{else}}R$ 0,00{{/if}}</td>
+          <td class="margin-cell {{#if (isLowMargin margin)}}highlight-red{{/if}}">
+            {{#if (neq margin 'N/A')}}{{margin}}%{{else}}0%{{/if}}
+          </td>
+          <td>
+            {{#if (neq concorrenteMargin 'N/A')}}{{concorrenteMargin}}%{{else}}0%{{/if}}
+          </td>
+          <td class="table-actions"> {{!-- Classe para alinhar/estilizar botões de ação --}}
+            <a href="/madeiramadeira/edit-url/{{id}}" class="btn btn-icon btn-warning-alt" title="Editar">
+              <i class="fas fa-edit"></i>
+            </a>
+            <form action="/madeiramadeira/remove-url" method="post" class="form-remove-product" style="display:inline;"> {{!-- Mantido o 'remove-url' como POST --}}
+              <input type="hidden" name="id" value="{{id}}">
+              <button type="submit" class="btn btn-icon btn-danger-alt" title="Remover">
+                <i class="fas fa-trash"></i> 
+              </button>
+            </form>
+          </td>
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{{!-- Scripts específicos desta página, se houver, podem ir aqui --}}
+{{!-- O dataTables.js e highlightIssues.js já são globais no main.handlebars --}}
+{{!-- O script de seleção de célula: --}}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Adiciona evento de clique para cada célula da tabela #urlTable
+  // Seletor mais específico para evitar conflito se houver outras tabelas
+  const urlTable = document.getElementById('urlTable');
+  if (urlTable) {
+    urlTable.addEventListener('click', function(event) {
+      const targetCell = event.target.closest('td, th');
+      if (!targetCell) return;
+
+      // Remove a classe 'selected' de todas as células desta tabela
+      urlTable.querySelectorAll('td.selected, th.selected').forEach(el => {
+        el.classList.remove('selected');
+      });
+
+      // Adiciona a classe 'selected' à célula clicada
+      targetCell.classList.add('selected');
+    });
+  }
+
+  // Se o seu dataTables.js não reinicializar highlightIssues após draw,
+  // você pode precisar adicionar um callback aqui ou no dataTables.js.
+  // Exemplo: if (typeof $.fn.dataTable !== 'undefined' && $.fn.dataTable.isDataTable('#urlTable')) {
+  //   $('#urlTable').on('draw.dt', function() {
+  //     if (typeof highlightIssues === 'function') {
+  //       highlightIssues('#urlTable'); // Ajuste highlightIssues para aceitar seletor
+  //     }
+  //   });
+  // }
+});
+</script>

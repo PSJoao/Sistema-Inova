@@ -1,0 +1,131 @@
+{{!< main}}
+
+{{#section "head"}}
+    <link href="/public/styles/nfeHistory.css" rel="stylesheet">
+{{/section}}
+
+<div class="content-card">
+    <div class="page-header-actions">
+        <h1 class="page-title">{{title}}</h1>
+    </div>
+    <div class="nfe-history-filters">
+        <div class="filter-group">
+            <label for="nfe-history-situacao-filter">Situação:</label>
+            <select id="nfe-history-situacao-filter" class="form-control form-control-sm">
+                <option value="">Todas</option>
+                <option value="Relacionada">Relacionadas</option>
+                <option value="Pendente">Pendentes</option>
+                <option value="Cancelada">Canceladas</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label for="nfe-history-justificativa-filter">Justificativa:</label>
+            <select id="nfe-history-justificativa-filter" class="form-control form-control-sm">
+                <option value="">Todas</option>
+                <option value="SEM_JUSTIFICATIVA">Sem Justificativa</option>
+                {{#each justificativas}}
+                    <option value="{{this}}">{{this}}</option>
+                {{/each}}
+            </select>
+        </div>
+        <div class="filter-group search-group">
+             <label for="nfe-history-search-input">Busca Rápida:</label>
+             <input type="text" id="nfe-history-search-input" class="form-control form-control-sm" placeholder="Buscar por NFE, transportadora...">
+        </div>
+        <div class="filter-group">
+            <label>&nbsp;</label> {{!-- Label vazia para alinhar --}}
+            <button id="nfe-history-justify-report-btn" class="btn btn-success"><i class="fas fa-file-excel"></i> Gerar Relatório</button>
+        </div>
+        <div class="filter-group">
+            <label>&nbsp;</label> {{!-- Label vazia para alinhar --}}
+            <button id="nfe-history-report-btn" class="btn btn-success"><i class="fas fa-file-excel"></i> Relatório "Sem Produtos"</button>
+        </div>
+    </div>
+
+    {{!-- [CORREÇÃO FINAL] Container que terá a barra de rolagem --}}
+    <div class="table-container">
+        {{!-- [CORREÇÃO FINAL] A estrutura agora é uma tabela real para garantir o alinhamento --}}
+        <table class="nfe-history-table">
+            <thead>
+                <tr>
+                    <th>Nº da NF-e</th>
+                    <th>Data Emissão</th>
+                    <th>Situação</th>
+                    <th>Transportadora</th>
+                    <th>Lista de Produtos</th>
+                    <th>Última Justificativa</th>
+                    <th>Data da Ação</th>
+                    <th>Nova Ação</th>
+                </tr>
+            </thead>
+            <tbody id="nfe-history-grid">
+                {{!-- Renderização inicial feita pelo servidor --}}
+                {{#if nfeData.length}}
+                    {{#each nfeData}}
+                         <tr class="nfe-history-card" data-nfe-id="{{this.id}}">
+                            <td>{{this.nfe_numero}}</td>
+                            <td>{{formatDate this.data_emissao}}</td>
+                            <td><span class="nfe-status status-{{this.status_para_relacao}}">{{this.status_para_relacao}}</span></td>
+                            <td>{{this.transportadora_apelido}}</td>
+                            <td class="product-list" title="{{this.product_descriptions_list}}">{{truncate this.product_descriptions_list 50}}</td>
+                            <td>{{this.justificativa}}</td>
+                            <td>{{formatDate this.data_acao}}</td>
+                            <td>
+                                <select class="nfe-action-select" data-nfe-id-select="{{this.id}}" {{#unless (eq this.status_para_relacao "pendente")}}disabled{{/unless}}>
+                                    <option value="">Selecione...</option>
+                                    {{#each ../justificativas}}
+                                        <option value="{{this}}">{{this}}</option>
+                                    {{/each}}
+                                    <option value="ADIAR">Adiar</option>
+                                </select>
+                            </td>
+                        </tr>
+                    {{/each}}
+                {{else}}
+                    <tr>
+                        <td colspan="7" style="text-align: center; padding: 2rem;">Nenhuma nota fiscal encontrada.</td>
+                    </tr>
+                {{/if}}
+            </tbody>
+        </table>
+    </div>
+
+    <div id="nfe-history-pagination" class="pagination-controls">
+        {{#with pagination}}
+            <button id="nfe-history-prev-page" class="btn btn-secondary" {{#if isFirstPage}}disabled{{/if}}>&laquo; Anterior</button>
+            <select id="nfe-history-page-select" class="page-select-dropdown">
+                {{#times totalPages 1}}
+                    <option value="{{this}}" {{#if (eq ../currentPage this)}}selected{{/if}}>
+                        Página {{this}}
+                    </option>
+                {{/times}}
+            </select>
+            <button id="nfe-history-next-page" class="btn btn-secondary" {{#if isLastPage}}disabled{{/if}}>Próxima &raquo;</button>
+        {{/with}}
+    </div>
+
+    <div id="nfe-history-missing-products-container" class="nfe-history-missing-products" style="display: none;">
+        <h3 class="section-title">Estruturas Faltantes (Contador)</h3>
+        <ul id="nfe-history-missing-products-list" class="missing-products-list"></ul>
+    </div>
+</div>
+
+{{!-- [CORREÇÃO FINAL] O template agora gera uma linha de tabela (tr) completa --}}
+<template id="nfe-history-card-template">
+    <tr class="nfe-history-card" data-nfe-id="{{id}}">
+        <td>{{nfe_numero}}</td>
+        <td>{{formatDate data_emissao}}</td>
+        <td><span class="nfe-status status-{{status_para_relacao}}">{{status_para_relacao}}</span></td>
+        <td>{{transportadora_apelido}}</td>
+        <td class="product-list" title="{{product_descriptions_list}}">{{truncate product_descriptions_list 50}}</td>
+        <td>{{justificativa}}</td>
+        <td>{{formatDate data_acao}}</td>
+        <td>
+            <select class="nfe-action-select" data-nfe-id-select="{{id}}"></select>
+        </td>
+    </tr>
+</template>
+
+{{#section "scripts"}}
+  <script src="/public/scripts/nfeHistoryManager.js"></script>
+{{/section}}

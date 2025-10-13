@@ -1,0 +1,128 @@
+/* public/styles/main-menu.css */
+
+body.main-menu-page { /* Adicionaremos esta classe ao body no mainMenu.handlebars */
+  background-color: var(--bg-primary); /* Fundo escuro do tema */
+  color: var(--text-primary);
+  font-family: var(--font-primary);
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column; /* Para o cabeçalho e o grid */
+  align-items: center;
+  /* Imagem de fundo (se desejar manter) */
+  /* background-image: url('/public/styles/imagens/mulherapontandotrue.png'); ou madeiramadeirabackground.jpg */
+  /* background-size: cover; */
+  /* background-position: center; */
+  /* background-repeat: no-repeat; */
+  /* background-attachment: fixed; */ /* Para a imagem não rolar com o conteúdo */
+  /* Se usar imagem de fundo, pode ser necessário um overlay para legibilidade: */
+  /* position: relative; */
+}
+/* body.main-menu-page::before { */ /* Overlay para imagem de fundo */
+  /* content: ''; */
+  /* position: absolute; */
+  /* top: 0; left: 0; width: 100%; height: 100%; */
+  /* background-color: rgba(30, 30, 47, 0.7); */ /* --bg-primary com alpha */
+  /* z-index: -1; */ /* Atrás do conteúdo */
+/* } */
+
+
+.main-menu-header {
+  padding: 30px 20px 20px; /* Mais padding no topo */
+  text-align: center;
+  width: 100%;
+  /* background-color: rgba(var(--bg-secondary-rgb), 0.5); */ /* Opcional: Fundo semi-transparente para o header se tiver imagem de fundo no body */
+}
+
+.main-menu-title-brand {
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+}
+.main-menu-title-brand h1 {
+  color: var(--text-primary);
+  font-size: 2.8rem;
+  margin: 0 5px;
+  font-weight: 700;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.3); /* Sombra para destaque */
+}
+.main-menu-title-brand .accent {
+  color: var(--accent-orange);
+  font-size: 3.3rem;
+}
+
+.menu-grid-container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 25px; /* Espaçamento entre os cards de módulo */
+  padding: 20px;
+  width: 100%;
+  max-width: 1200px; /* Limita a largura do grid */
+  margin-top: 20px;
+}
+
+.module-card {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  border-radius: var(--border-radius-lg);
+  padding: 25px;
+  width: 100%;
+  max-width: 320px; /* Largura dos cards de módulo */
+  box-shadow: var(--box-shadow-medium);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+.module-card:hover {
+  box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+}
+
+.module-card h2 { /* Título do módulo (ex: "Monitoramento") */
+  font-size: 1.6rem;
+  color: var(--text-primary);
+  margin-bottom: 20px;
+  border-bottom: 2px solid var(--accent-orange); /* Linha laranja abaixo do título */
+  padding-bottom: 10px;
+  display: inline-block; /* Para a borda se ajustar ao texto */
+}
+
+.module-card .btn { /* Botões dentro dos cards de módulo */
+  width: 90%; /* Largura dos botões */
+  margin-top: 10px; /* Espaçamento entre botões */
+  padding: 10px 15px;
+  font-size: 0.95rem;
+  /* Usar .btn-accent ou .btn-outline-accent para os botões */
+}
+
+/* Exemplo de como diferenciar botões se necessário, mas prefira usar as classes .btn-accent, etc. */
+.module-card .btn-card {
+  /* background: linear-gradient(to left, rgb(255, 100, 28) 20%, #ff8c20 80%); */
+  /* Use var(--accent-orange) ou uma variação */
+}
+.module-card .btn-viavarejo {
+  /* background: linear-gradient(to bottom, blue 50%, red 50%); */
+  /* Crie variáveis para essas cores se precisar de gradientes específicos */
+  /* Ou use cores sólidas do tema: */
+  background-color: var(--color-info); /* Exemplo */
+  border-color: var(--color-info);
+  color: #fff;
+}
+.module-card .btn-viavarejo:hover {
+  background-color: hsl(from var(--color-info) h s calc(l - 7%));
+  border-color: hsl(from var(--color-info) h s calc(l - 10%));
+}
+
+.module-card .btn-mercadolivre {
+  /* Estilo para Mercado Livre, pode ser um amarelo ou outra cor do tema */
+  background-color: var(--color-warning);
+  border-color: var(--color-warning);
+  color: #1e1e2f;
+}
+.module-card .btn-mercadolivre:hover {
+  background-color: hsl(from var(--color-warning) h s calc(l - 7%));
+  border-color: hsl(from var(--color-warning) h s calc(l - 10%));
+}

@@ -1,0 +1,393 @@
+/* /public/styles/rastreio.css */
+
+/* --- Estilos dos Filtros --- */
+.acmp-filters-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+    align-items: flex-end;
+}
+
+.acmp-filter-group label {
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+/* [MELHORIA] Adiciona borda e fundo mais escuro aos filtros */
+.acmp-filter-group select,
+.acmp-filter-group input {
+    background-color: var(--bg-primary) !important; /* Fundo mais escuro */
+    border: 1px solid var(--bg-tertiary) !important; /* Borda visível */
+    color: var(--text-primary) !important;
+}
+
+/* public/styles/rastreio.css */
+
+/* --- Filtros (sem alterações) --- */
+
+/* --- Estrutura da Grade de Cards --- */
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    gap: 1.5rem;
+    padding-top: 1rem;
+}
+
+/* --- Card de Rastreio --- */
+.rastreio-card {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--bg-tertiary);
+    border-radius: var(--border-radius-lg);
+    display: flex;
+    flex-direction: column;
+    text-decoration: none;
+    color: inherit;
+    transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+    position: relative; /* Necessário para o link overlay */
+}
+.rastreio-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+    border-color: var(--accent-orange);
+}
+
+/* [NOVO] Overlay que torna o card todo clicável */
+.card-link-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1; /* Fica abaixo da combobox de status */
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.8rem 1.25rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.card-title {
+    font-size: 1rem;
+    font-weight: 600;
+}
+.card-title .icon { margin-right: 0.5rem; }
+
+/* [NOVO] Estilo para a Combobox de Status */
+.status-select-wrapper {
+    position: relative;
+    z-index: 2; /* Garante que a combobox fique acima do link overlay */
+}
+
+.status-select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    border: none;
+    background-color: transparent;
+    padding: 0.4rem 2rem 0.4rem 0.8rem;
+    border-radius: var(--border-radius-md);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #fff;
+    cursor: pointer;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    background-size: 1em;
+}
+
+/* Cores de fundo da combobox */
+.status-select.status-entregue-confirmado { background-color: var(--color-success); }
+.status-select.status-entregue-conferir { background-color: #17a2b8; } /* Um ciano para diferenciar */
+.status-select.status-atrasado { background-color: var(--color-danger); }
+.status-select.status-em-transito { background-color: var(--accent-blue); }
+.status-select.status-outros { background-color: var(--text-muted); }
+
+.status-select option {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.card-body {
+    padding: 1rem 1.25rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+.info-block {
+    display: flex;
+    flex-direction: column;
+}
+.info-block.full-width {
+    grid-column: 1 / -1; /* Ocupa a largura toda */
+}
+.info-label {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.25rem;
+}
+.info-value {
+    font-size: 0.9rem;
+    font-weight: 500;
+    white-space: normal;
+    word-break: break-word;
+}
+
+/* --- Paginação --- */
+.pagination-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 2rem 0;
+    gap: 1rem;
+}
+
+.back-link {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    background-color: var(--accent-orange);
+    color: #fff !important;
+    border-radius: var(--border-radius-md);
+    text-decoration: none;
+    font-weight: 600;
+    transition: background-color 0.2s;
+    margin-bottom: 1.5rem; /* Espaçamento para o título */
+}
+.back-link:hover {
+    background-color: hsl(from var(--accent-orange) h s l / 0.8);
+}
+.back-link .icon {
+    margin-right: 0.5rem;
+}
+
+/* --- Estilos da Página de Detalhes --- */
+.detalhe-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.detalhe-card {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.detalhe-card h3 {
+    padding-bottom: 0.8rem;
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 1.1rem;
+    color: var(--text-primary);
+}
+
+.detalhe-card .info-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.9rem;
+}
+
+.detalhe-card .info-label {
+    color: var(--text-secondary);
+}
+
+.detalhe-card .info-value {
+    text-align: right;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.status-highlight {
+    font-weight: 600 !important;
+    padding: 0.3rem 0.8rem;
+    border-radius: var(--border-radius-md);
+    color: #fff !important;
+}
+
+.historico-container {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    padding: 1.5rem;
+}
+
+.historico-container h2 {
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 1rem;
+    margin-bottom: 1.5rem;
+    font-size: 1.2rem;
+}
+
+/* --- Timeline (Estilos originais mantidos e ajustados) --- */
+.timeline {
+    list-style: none;
+    padding: 0;
+    position: relative;
+}
+.timeline:before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 15px;
+    height: 100%;
+    width: 2px;
+    background: var(--bg-tertiary);
+}
+.timeline-item {
+    margin-bottom: 20px;
+    position: relative;
+    padding-left: 45px;
+}
+.timeline-item:last-child {
+    margin-bottom: 0;
+}
+.timeline-item:before {
+    content: '';
+    position: absolute;
+    left: 9px;
+    top: 5px;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background: var(--bg-tertiary);
+    border: 3px solid var(--bg-secondary);
+}
+.timeline-item:first-child:before {
+    background: var(--accent-orange); /* Destaque para o evento mais recente */
+}
+.timeline-date {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 5px;
+}
+.timeline-content {
+    background: var(--bg-primary);
+    padding: 1rem;
+    border-radius: var(--border-radius-md);
+}
+.timeline-title {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+.timeline-description {
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+.timeline-location {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 0.8rem;
+    display: block;
+}
+.timeline-location .icon {
+    margin-right: 5px;
+}
+
+.email-history-card {
+    grid-column: 1 / -1; /* Ocupa a largura total da grid */
+    margin-top: 1.5rem;
+}
+
+.email-history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--bg-tertiary);
+}
+
+.email-history-header h3 {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.status-indicator.status-resolved {
+    background-color: var(--color-success-opacity);
+    color: var(--color-success);
+    padding: 0.3rem 0.8rem;
+    border-radius: var(--border-radius-md);
+    font-weight: 500;
+    font-size: 0.8rem;
+}
+
+#email-history-container {
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: 10px; /* Espaço para a barra de rolagem */
+}
+
+.email-item {
+    padding: 1rem;
+    border-bottom: 1px solid var(--bg-tertiary);
+    cursor: pointer;
+    transition: background-color var(--transition-fast);
+}
+
+.email-item:last-child {
+    border-bottom: none;
+}
+
+.email-item:hover {
+    background-color: var(--bg-secondary-hover);
+}
+
+.email-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.email-from {
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.email-subject {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.email-snippet {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+/* Spinner de Carregamento */
+.loading-spinner {
+    border: 4px solid var(--bg-tertiary);
+    border-top: 4px solid var(--accent-blue);
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    animation: spin 1s linear infinite;
+    margin: 2rem auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}

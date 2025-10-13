@@ -1,0 +1,15 @@
+{{! views/layouts/print.handlebars }}
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-g">
+  <title>{{title}}</title>
+  {{!-- Link para um CSS específico de impressão que criaremos depois --}}
+  <link href="/public/styles/print-relacao.css" rel="stylesheet">
+  {{{_sections.head}}}
+</head>
+<body>
+  {{{body}}}
+  {{{_sections.scripts}}}
+</body>
+</html>

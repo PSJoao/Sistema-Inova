@@ -1,0 +1,28 @@
+{{!< main}} {{!-- Usa o novo layout principal --}}
+
+<div class="content-card">
+  <h1 class="page-title">{{title}}</h1>
+  
+  <div class="form-container"> {{!-- Wrapper opcional para o formulário --}}
+    <form action="/madeira/add-url" method="post">
+      <div class="form-group">
+        <label for="sku">SKU:</label>
+        <input type="text" id="sku" name="sku" class="form-control" placeholder="Insira o SKU do produto" required>
+      </div>
+
+      <div class="form-group">
+        <label for="url">URL do Produto:</label>
+        <input type="url" id="url" name="url" class="form-control" placeholder="Insira a URL do produto" required> {{!-- Alterado name para url_principal se for o caso no backend --}}
+      </div>
+
+      <div class="form-group">
+        <label for="description">Descrição (Nome do Produto):</label>
+        <input type="text" id="description" name="description" class="form-control" placeholder="Insira o nome do produto" required>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn btn-accent"><i class="fas fa-plus"></i> Adicionar Produto</button>
+      </div>
+    </form>
+  </div>
+</div>

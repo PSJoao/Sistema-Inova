@@ -1,0 +1,104 @@
+/* public/styles/login.css */
+
+body.login-page { /* Adicionaremos esta classe ao body no login.handlebars */
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-primary); /* Usando a variável de fonte do theme.css */
+  display: flex;
+  flex-direction: column; /* Para empilhar o título e o container */
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh; /* Garante que ocupe toda a altura */
+  padding: 20px; /* Espaçamento para telas pequenas */
+}
+
+.login-title-brand {
+  display: flex;
+  justify-content: center;
+  align-items: baseline; /* Alinha pela base do texto */
+  margin-bottom: 30px; /* Espaço entre o título e a caixa de login */
+}
+.login-title-brand h1 {
+  color: var(--text-primary);
+  font-size: 2.5rem; /* Ajuste conforme necessário */
+  margin: 0 5px; /* Pequeno espaço entre as partes do nome */
+  font-weight: 700;
+}
+.login-title-brand .accent {
+  color: var(--accent-orange);
+  font-size: 3rem; /* 'X' um pouco maior */
+}
+
+.login-container {
+  background-color: var(--bg-secondary);
+  padding: 30px 40px; /* Aumentar um pouco o padding interno */
+  border-radius: var(--border-radius-lg); /* Usando variável global */
+  box-shadow: var(--box-shadow-medium);
+  text-align: center;
+  width: 100%;
+  max-width: 400px; /* Largura máxima da caixa de login */
+}
+
+.login-container h2 { /* Para o título "Login" dentro da caixa, se houver */
+  margin-bottom: 25px;
+  color: var(--accent-orange);
+  font-size: 1.8rem;
+}
+
+.login-container .form-group { /* Reutilizando a classe se aplicável */
+  margin-bottom: 20px;
+}
+.login-container label {
+  display: block;
+  text-align: left;
+  margin-bottom: 8px;
+  font-weight: 500;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.login-container input[type="text"],
+.login-container input[type="password"] {
+  width: 100%; /* Ocupa toda a largura do container do input */
+  padding: 12px 15px;
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--bg-tertiary);
+  background-color: var(--bg-primary); /* Fundo do input mais escuro */
+  color: var(--text-primary);
+  font-size: 1rem;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.login-container input[type="text"]::placeholder,
+.login-container input[type="password"]::placeholder {
+  color: var(--text-muted);
+}
+
+.login-container input[type="text"]:focus,
+.login-container input[type="password"]:focus {
+  border-color: var(--accent-orange);
+  box-shadow: 0 0 0 0.2rem rgba(255, 140, 32, 0.25); /* Laranja com alpha */
+  outline: none;
+}
+
+.login-container button[type="submit"] {
+  /* Reutiliza .btn e .btn-accent do components.css */
+  width: 100%; /* Botão ocupa toda a largura */
+  padding: 12px 15px;
+  font-size: 1.1rem;
+  margin-top: 10px; /* Espaço acima do botão */
+}
+
+.login-container .error-message {
+  color: var(--color-danger); /* Usando variável de cor de perigo */
+  background-color: rgba(var(--color-danger), 0.1); /* Fundo sutil para o erro */
+  border: 1px solid rgba(var(--color-danger), 0.3);
+  padding: 10px;
+  border-radius: var(--border-radius-sm);
+  font-weight: 500;
+  margin-bottom: 20px;
+  font-size: 0.9rem;
+}
+.login-container .error-message:empty { /* Esconde se não houver mensagem */
+    display: none;
+}

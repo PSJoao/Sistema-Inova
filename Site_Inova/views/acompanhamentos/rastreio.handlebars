@@ -1,0 +1,112 @@
+{{!-- views/acompanhamentos/rastreio.handlebars --}}
+
+{{#section "head"}}
+    <link href="/public/styles/rastreio-lista.css" rel="stylesheet">
+{{/section}}
+
+<div class="content-card" data-precisa-conferir="{{precisaConferir}}">
+    <div class="page-header-actions">
+        <h1 class="page-title">{{title}}</h1>
+    </div>
+    <div class="action-buttons">
+        <button id="btn-gerar-relatorio" class="btn btn-success-alt">
+            <i class="fas fa-file-excel"></i> Gerar Relatório
+        </button>
+    </div>
+    {{!-- Filtros --}}
+    <div class="acmp-filters-bar">
+        <div class="acmp-filter-group">
+            <label for="search-input">Busca Rápida:</label>
+            <input type="text" id="search-input" class="form-control form-control-sm" placeholder="Buscar por pedido, NFE...">
+        </div>
+        <div class="acmp-filter-group">
+            <label for="transportadora-filter">Transportadora:</label>
+            <select id="transportadora-filter" class="form-control form-control-sm">
+                <option value="">Todas</option>
+                {{#each transportadoras}}
+                    <option value="{{this}}">{{this}}</option>
+                {{/each}}
+            </select>
+        </div>
+        <div class="acmp-filter-group">
+            <label for="plataforma-filter">Plataforma:</label>
+            <select id="plataforma-filter" class="form-control form-control-sm">
+                <option value="">Todas</option>
+                {{#each plataformas}}
+                    <option value="{{this}}">{{this}}</option>
+                {{/each}}
+            </select>
+        </div>
+        <div class="acmp-filter-group">
+            <label for="situacao-filter">Situação:</label>
+            <select id="situacao-filter" class="form-control form-control-sm">
+                <option value="">Todas</option>
+                <option value="entregue_conferir">Entregue - Conferir</option>
+                <option value="entregue_confirmado">Entregue - Confirmado</option>
+                <option value="fora_prazo_conferir">Fora do Prazo - Conferir</option>
+                <option value="fora_prazo_conferido">Fora do Prazo - Conferido</option>
+                <option value="em_transito">Em Trânsito</option>
+                <option value="fora_do_comum">Fora do Comum</option> 
+                <option value="outros">Outros</option>
+                <option disabled>––––––––––</option>
+                <option value="email_em_andamento">Email - Em Andamento</option>
+                <option value="email_resolvido">Email - Resolvido</option>
+            </select>
+        </div>
+        
+        <div class="acmp-filter-group">
+            <label for="data-inicio-filter">De:</label>
+            <input type="date" id="data-inicio-filter" class="form-control form-control-sm">
+        </div>
+
+        <div class="acmp-filter-group">
+            <label for="data-fim-filter">Até:</label>
+            <input type="date" id="data-fim-filter" class="form-control form-control-sm">
+        </div>
+
+        <div class="acmp-filter-group">
+            <label for="observacao-filter">Observação:</label>
+            <select id="observacao-filter" class="form-control form-control-sm">
+                <option value="">Todas</option>
+                <option value="Barrado">Barrado</option>
+                <option value="Indenização">Indenização</option>
+                <option value="Contato ativo">Contato ativo</option>
+                <option value="Comprovante de entrega solicitado">Comprovante de entrega solicitado</option>
+                <option value="Solicitar posição de entrega">Solicitar posição de entrega</option>
+                <option value="Posição de entrega solicitada">Posição de entrega solicitada</option>
+                <option value="Sem produto">Sem produto</option>
+                <option value="Solicitar contato ativo">Solicitar contato ativo</option>
+                <option value="Nova Previsão de Entrega">Nova Previsão de Entrega</option>
+                <option value="Reclamação">Reclamação</option>
+                <option value="Mediação">Mediação</option>
+                <option value="Análise em Recobrança">Análise em Recobrança</option>
+                <option value="Cancelada">Cancelada</option>
+                <option value="Devolução">Devolução</option>
+                <option value="Esperando Reposição">Esperando Reposição</option>
+                <option value="Outros">Outros</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="rastreio-list-wrapper">
+        <div class="rastreio-list" id="rastreio-list-container">
+            <div class="list-header">
+                <span class="item-status">Status</span>
+                <span class="item-previsao-atual">Previsão Atual</span>
+                <span class="item-pedido">Pedido</span>
+                <span class="item-nfe">NFE</span>
+                <span class="item-transportadora">Transportadora</span>
+                <span class="item-ocorrencia">Última Ocorrência (API)</span>
+                <span class="item-observacao">Última Observação</span>
+            </div>
+          
+            {{!-- As linhas de dados serão inseridas aqui --}}
+        </div>
+    </div>
+    
+    <div id="pagination-controls" class="pagination-controls"></div>
+</div>
+
+{{#section "scripts"}}
+    <script src="/public/scripts/rastreioManager.js"></script>
+{{/section}}

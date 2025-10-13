@@ -1,0 +1,240 @@
+/* public/styles/theme.css */
+
+/* Variáveis de Cores e Fontes (Root) */
+:root {
+  /* Cores do Tema Dark */
+  --bg-primary: #1e1e2f;        /* Fundo principal bem escuro (azul/roxo profundo) */
+  --bg-secondary: #27293d;     /* Fundo para containers/cards (um pouco mais claro) */
+  --bg-tertiary: #3b3d56;      /* Superfícies um pouco mais claras, bordas */
+  
+  --text-primary: #e0e0e0;     /* Texto principal (cinza claro/quase branco) */
+  --text-secondary: #a0a0b0;   /* Texto secundário/legendas (cinza médio) */
+  --text-muted: #707080;       /* Texto bem sutil */
+
+  /* Cor de Destaque Laranja (Baseada na sua logo) */
+  --accent-orange: #ff8c20;       /* Laranja principal (o que você usava) */
+  --accent-orange-hover: #ff7b00;  /* Laranja para hover (um pouco mais escuro/vibrante) */
+  --accent-orange-text: #ffffff;   /* Texto para usar sobre o fundo laranja */
+
+  /* Outras Cores de Ação (se necessário) */
+  --color-success: #28a745;
+  --color-warning: #ffc107;
+  --color-danger: #dc3545;
+  --color-info: #17a2b8;
+
+  /* Fontes */
+  --font-primary: 'Arial', 'Helvetica', sans-serif; /* Sua fonte atual como fallback */
+  /* Você pode adicionar uma fonte mais moderna aqui, ex: 'Poppins', 'Roboto', 'Open Sans' */
+  /* Se adicionar, lembre-se de importá-la no main.handlebars ou no CSS */
+
+  /* Outras Variáveis */
+  --border-radius-sm: 4px;
+  --border-radius-md: 6px;
+  --border-radius-lg: 8px;
+  --box-shadow-soft: 0 4px 12px rgba(0, 0, 0, 0.2);
+  --box-shadow-medium: 0 6px 18px rgba(0, 0, 0, 0.25);
+
+  /* Transições */
+  --transition-fast: 0.2s ease-in-out;
+  --transition-normal: 0.3s ease-in-out;
+}
+
+/* Estilos Globais do Body */
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-primary);
+  font-size: 16px;
+  line-height: 1.6;
+  display: flex; /* Para o layout com sidebar */
+}
+
+/* Tipografia Básica */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text-primary);
+  font-weight: 600;
+  margin-bottom: 0.75em;
+  line-height: 1.3;
+}
+
+h1 { font-size: 2.25rem; } /* ~36px */
+h2 { font-size: 1.875rem; } /* ~30px */
+h3 { font-size: 1.5rem; }   /* ~24px */
+h4 { font-size: 1.25rem; }  /* ~20px */
+
+p {
+  margin-bottom: 1em;
+  color: var(--text-secondary);
+}
+
+a {
+  color: var(--accent-orange);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+a:hover {
+  color: var(--accent-orange-hover);
+  text-decoration: underline;
+}
+
+/* Ajustes para Font Awesome (se necessário) */
+.fas, .far, .fal, .fab, .icon { /* Adicione 'icon' se usar Simple Line Icons com essa classe */
+  line-height: 1; /* Para melhor alinhamento vertical */
+}
+
+/* Estilos para scrollbars (opcional, mas bom para temas dark) */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--bg-tertiary);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Classes utilitárias básicas */
+.text-center {
+  text-align: center;
+}
+.mt-1 { margin-top: 0.5rem; }
+.mt-2 { margin-top: 1rem; }
+.mb-1 { margin-bottom: 0.5rem; }
+.mb-2 { margin-bottom: 1rem; }
+/* Adicione mais conforme necessário */
+
+/* Estilo para o container geral que você usava (geral-card) */
+/* Vamos criar um nome mais genérico ou usar um novo */
+.content-card {
+  background-color: var(--bg-secondary);
+  padding: 20px 25px;
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--box-shadow-soft);
+  width: 100%; /* Ocupará o espaço disponível no main-content */
+}
+
+.page-title { /* Para os H1s no topo das páginas */
+    color: var(--text-primary);
+    margin-bottom: 20px;
+    font-size: 1.8rem; /* Ajuste conforme necessário */
+}
+
+/* Adicionar ao theme.css ou um novo components.css */
+
+/* Cabeçalho de Página com Ações */
+.page-header-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap; /* Para quebrar em telas menores */
+  gap: 10px;
+}
+.page-header-actions .page-title {
+  margin-bottom: 0; /* Remove margem do título se estiver no header */
+}
+.action-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: end;
+}
+
+/* Botões Genéricos (se ainda não tiver um estilo base bom) */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 15px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  border-radius: var(--border-radius-md);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.btn i {
+  margin-right: 6px;
+}
+
+/* Botão de Acento Laranja (principal) */
+.btn-accent {
+  background-color: var(--accent-orange);
+  color: var(--accent-orange-text);
+  border-color: var(--accent-orange);
+}
+.btn-accent:hover {
+  background-color: var(--accent-orange-hover);
+  border-color: var(--accent-orange-hover);
+  color: var(--accent-orange-text);
+}
+
+/* Botão de Sucesso Alternativo (contorno ou cor diferente) */
+.btn-success-alt {
+  background-color: var(--color-success);
+  color: #fff;
+  border-color: var(--color-success);
+}
+.btn-success-alt:hover {
+  background-color: hsl(from var(--color-success) h s calc(l - 10%)); /* Mais escuro */
+  border-color: hsl(from var(--color-success) h s calc(l - 10%));
+  color: #fff;
+}
+
+/* Botões de Ação em Tabela (geralmente apenas ícones) */
+.table-actions .btn-icon {
+  padding: 6px 8px; /* Menor para ícones */
+  background-color: transparent;
+  border: 1px solid var(--bg-tertiary);
+}
+.table-actions .btn-icon:hover {
+  border-color: var(--text-secondary);
+}
+.table-actions .btn-icon i {
+  margin-right: 0;
+}
+
+.btn-warning-alt { color: var(--color-warning); }
+.btn-warning-alt:hover { color: hsl(from var(--color-warning) h s calc(l - 10%)); background-color: rgba(var(--color-warning), 0.1); }
+
+.btn-danger-alt { color: var(--color-danger); }
+.btn-danger-alt:hover { color: hsl(from var(--color-danger) h s calc(l - 10%)); background-color: rgba(var(--color-danger), 0.1); }
+
+
+/* Alertas */
+.alert {
+  padding: 12px 18px;
+  margin-bottom: 20px;
+  border: 1px solid transparent;
+  border-radius: var(--border-radius-md);
+  font-size: 0.9rem;
+}
+.alert-warning {
+  color: #533f03; /* Texto escuro para contraste */
+  background-color: #fff3cd; /* Fundo amarelo claro */
+  border-color: #ffeeba; /* Borda amarela */
+}
+.alert-warning i {
+    margin-right: 8px;
+}
+
+/* Wrapper para tabelas responsivas (scroll) */
+.table-responsive-wrapper {
+    width: 100%;
+    overflow-x: auto; /* Garante scroll horizontal */
+    -webkit-overflow-scrolling: touch; /* Scroll suave no iOS */
+}
+
+/* Adicionar ao theme.css */
+.text-muted { color: var(--text-muted); }
+
+/* Adicionar ao public/styles/theme.css */
+.text-muted { color: var(--text-muted) !important; } /* !important para garantir sobreposição se necessário */

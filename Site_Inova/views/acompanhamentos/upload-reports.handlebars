@@ -1,0 +1,59 @@
+{{! ✍️ Site_Inova/views/acompanhamentos/index.hbs }}
+
+<div class="page-header-actions">
+    <h1 class="page-title">{{title}}</h1>
+    <div class="action-buttons">
+        <a href="/acompanhamento/pedidos/download" class="btn btn-success-alt">
+            <i class="fas fa-download"></i> Baixar Relatório Consolidado
+        </a>
+    </div>
+</div>
+
+<div class="content-card">
+    <p class="text-secondary">
+        Faça o upload dos relatórios de pedidos de cada plataforma. Você pode enviar um ou mais arquivos de uma vez. O sistema irá processá-los e unificar os dados.
+    </p>
+
+    <hr class="styled">
+
+    <form action="/acompanhamento/pedidos/upload" method="POST" enctype="multipart/form-data">
+        <div class="row">
+            {{!-- Coluna da Esquerda --}}
+            <div class="col-md-6">
+                <div class="form-group mb-3">
+                    <label for="relatorioMagalu">Magazine Luiza</label>
+                    <input type="file" id="relatorioMagalu" name="relatorioMagalu" class="form-control" accept=".xlsx, .xls, .csv">
+                </div>
+                <div class="form-group mb-3">
+                    <label for="relatorioViaVarejo">Via Varejo</label>
+                    <input type="file" id="relatorioViaVarejo" name="relatorioViaVarejo" class="form-control" accept=".xlsx, .xls, .csv">
+                </div>
+                <div class="form-group mb-3">
+                    <label for="relatorioMadeira">Madeira Madeira</label>
+                    <input type="file" id="relatorioMadeira" name="relatorioMadeira" class="form-control" accept=".xlsx, .xls, .csv">
+                </div>
+            </div>
+            {{!-- Coluna da Direita --}}
+            <div class="col-md-6">
+                <div class="form-group mb-3">
+                    <label for="relatorioMercadoLivre">Mercado Livre</label>
+                    <input type="file" id="relatorioMercadoLivre" name="relatorioMercadoLivre" class="form-control" accept=".xlsx, .xls, .csv">
+                </div>
+                <div class="form-group mb-3">
+                    <label for="relatorioAmazon">Amazon</label>
+                    <input type="file" id="relatorioAmazon" name="relatorioAmazon" class="form-control" accept=".xlsx, .xls, .csv">
+                </div>
+                <div class="form-group mb-3">
+                    <label for="relatorioAmericanas">Americanas</label>
+                    <input type="file" id="relatorioAmericanas" name="relatorioAmericanas" class="form-control" accept=".xlsx, .xls, .csv">
+                </div>
+            </div>
+        </div>
+
+        <div class="form-actions mt-2">
+            <button type="submit" class="btn btn-accent">
+                <i class="fas fa-upload"></i> Enviar e Processar Arquivos
+            </button>
+        </div>
+    </form>
+</div>

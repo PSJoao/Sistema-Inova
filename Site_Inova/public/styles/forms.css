@@ -1,0 +1,291 @@
+/* public/styles/forms.css */
+
+.form-container {
+  /* Usado para envolver um formulário dentro de um .content-card, se necessário mais espaçamento */
+  /* Ex: <div class="content-card"><div class="form-container">...</div></div> */
+}
+
+.form-group {
+  margin-bottom: 1.25rem; /* Espaçamento entre grupos de formulário */
+}
+
+.form-group label {
+  display: block;
+  color: var(--text-secondary);
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  padding: 0.65rem 0.9rem; /* Padding interno do input */
+  font-size: 0.95rem;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background-color: var(--bg-primary); /* Fundo do input um pouco mais escuro que o card */
+  background-clip: padding-box;
+  border: 1px solid var(--bg-tertiary); /* Borda sutil */
+  appearance: none; /* Remove aparência padrão do SO */
+  border-radius: var(--border-radius-md);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.form-control::placeholder {
+  color: var(--text-muted);
+  opacity: 1; /* Firefox */
+}
+
+.form-control:focus {
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
+  border-color: var(--accent-orange);
+  outline: 0;
+  box-shadow: 0 0 0 0.2rem rgba(255, 140, 32, 0.25); /* Usando o valor de --accent-orange diretamente */
+}
+
+/* Para input[type="file"] - estilização básica, pode ser mais complexa */
+input[type="file"].form-control {
+  padding-top: 0.5rem; /* Ajuste de padding para file input */
+  padding-bottom: 0.5rem;
+}
+
+/* Estilização customizada para input file (requer um pouco de JS para o nome do arquivo) */
+.custom-file-input-wrapper {
+    position: relative;
+    overflow: hidden;
+    display: inline-block;
+    width: 100%;
+    cursor: pointer;
+}
+.custom-file-input-wrapper input[type="file"] {
+    position: absolute;
+    left: 0;
+    top: 0;
+    opacity: 0; /* Esconde o input original */
+    width: 100%;
+    height: 100%;
+    cursor: pointer;
+}
+.custom-file-input-button { /* O botão que o usuário vê */
+    display: block;
+    width: 100%;
+    padding: 0.65rem 0.9rem;
+    font-size: 0.95rem;
+    color: var(--text-secondary); /* Cor inicial do texto */
+    background-color: var(--bg-primary);
+    border: 1px solid var(--bg-tertiary);
+    border-radius: var(--border-radius-md);
+    text-align: left; /* Ou center, conforme preferir */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.custom-file-input-wrapper:hover .custom-file-input-button {
+    border-color: var(--accent-orange);
+}
+.custom-file-input-button.has-file { /* Classe adicionada via JS quando um arquivo é selecionado */
+    color: var(--text-primary); /* Cor do texto quando tem arquivo */
+}
+
+
+/* Botões de formulário */
+.form-actions {
+  margin-top: 1.5rem;
+  text-align: center; /* Centraliza botões de ação do formulário */
+}
+
+/* Usar as classes .btn e .btn-accent (ou outras) definidas no theme.css/components.css */
+/* Ex: <button type="submit" class="btn btn-accent">Salvar</button> */
+
+/* Mensagens de erro/validação (exemplo) */
+.form-text.error {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--color-danger);
+}
+
+/* Checkbox e Radio (estilização básica, pode ser mais elaborada) */
+.form-check {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.form-check-input {
+  width: auto; /* Checkbox não ocupa 100% */
+  margin-right: 0.5rem;
+  /* Estilização customizada de checkbox/radio é mais complexa e pode requerer JS ou mais CSS */
+}
+.form-check-label {
+  color: var(--text-secondary);
+  font-weight: normal;
+  margin-bottom: 0; /* Remove margem do label de check/radio */
+}
+
+/* Textarea */
+textarea.form-control {
+  min-height: 120px; /* Altura mínima para textareas */
+  resize: vertical; /* Permite redimensionamento vertical */
+}
+
+/* ✍️ public/styles/forms.css (ADICIONE ESTE CÓDIGO NO FINAL) */
+
+/* === ZONA DE UPLOAD DE ARQUIVO CUSTOMIZADA === */
+.file-upload-zone {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  border: 2px dashed var(--bg-tertiary); /* Borda tracejada para indicar a área */
+  border-radius: var(--border-radius-lg);
+  background-color: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background-color var(--transition-fast);
+  text-align: center;
+}
+
+.file-upload-zone:hover,
+.file-upload-zone.drag-over {
+  border-color: var(--accent-orange);
+  background-color: var(--bg-secondary); /* Leve mudança de cor no hover */
+}
+
+/* Quando um arquivo é selecionado, a borda fica sólida e verde */
+.file-upload-zone.file-selected {
+  border-style: solid;
+  border-color: var(--color-success);
+}
+
+.file-upload-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.file-upload-icon {
+  font-size: 3rem; /* Ícone grande */
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+}
+
+/* Ícone muda de cor quando um arquivo é selecionado */
+.file-upload-zone.file-selected .file-upload-icon {
+  color: var(--color-success);
+}
+
+.file-upload-text {
+  margin: 0;
+  font-weight: 500;
+}
+
+.file-upload-selected-name {
+  display: none; /* Escondido por padrão */
+  margin-top: 0.5rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.file-upload-input {
+  /* O input de arquivo real fica completamente invisível */
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.table-filters-container {
+    padding: 1rem;
+    background-color: var(--bg-secondary);
+    border-radius: var(--border-radius-md);
+    margin-bottom: 0.8rem;
+    border: 1px solid var(--border-color);
+}
+
+.filter-bar {
+    display: flex;
+    align-items: flex-end; /* Alinha os itens na base */
+    gap: 1rem; /* Espaçamento entre os grupos de filtro */
+    flex-wrap: wrap; /* Permite que os itens quebrem a linha em telas pequenas */
+    margin-bottom: 1rem;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.filter-group label {
+    font-size: 0.8rem;
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+    color: var(--text-secondary);
+}
+
+.filter-group .form-control {
+    max-width: 180px; /* Impede que os campos de data fiquem muito largos */
+}
+
+.search-filter-group .form-control {
+    max-width: 100%; /* Permite que a pesquisa ocupe mais espaço */
+}
+
+/* Estilo para o ícone dentro do campo de pesquisa */
+.input-with-icon {
+    position: relative;
+}
+
+.input-with-icon .fa-search {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.input-with-icon input {
+    padding-left: 30px !important; /* Adiciona espaço para o ícone */
+}
+
+/* ✍️ Adicione este código ao seu ficheiro CSS */
+
+/* Novo container para a barra de pesquisa e ações */
+.search-and-actions-bar {
+    display: flex;
+    justify-content: space-between; /* Alinha os itens nas extremidades */
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 1.5rem; /* Aumenta o espaço entre os grupos */
+    margin-top: 1rem; /* Adiciona espaço acima */
+    border-top: 1px solid var(--border-color);
+    padding-top: 1rem;
+}
+
+.search-filter-group {
+    flex-grow: 1; /* Permite que a pesquisa ocupe o espaço disponível */
+}
+
+.bulk-actions-group .input-group {
+    display: flex;
+}
+
+.bulk-actions-group .input-group input {
+    /* Impede que o botão quebre a linha */
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.bulk-actions-group .input-group button {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    white-space: nowrap; /* Evita que o texto do botão quebre */
+}

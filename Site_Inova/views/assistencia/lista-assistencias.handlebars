@@ -1,0 +1,113 @@
+{{!-- 
+  views/assistencia/lista-assistencias.handlebars
+  - Versão 2: Nomes das abas e data-aba corrigidos para corresponder à nova lógica.
+--}}
+<link rel="stylesheet" href="/public/styles/assistencia.css">
+
+<div class="content-card">
+    {{!-- Cabeçalho da Página --}}
+    <div class="page-header-actions">
+        <h1 class="page-title">{{title}}</h1>
+        <div style="display: flex; justify-content: end;">
+            <button id="btnExportarExcel" class="btn btn-success-alt">
+                <i class="fas fa-file-excel me-2"></i>Exportar para Excel
+            </button>
+            <a href="/assistencias/nova" class="btn btn-primary">
+                <i class="fas fa-plus me-2"></i>Nova Assistência
+            </a>
+            <a href="/assistencias/resolucao-massa" class="btn btn-info" id="btn-resolucao-massa" style="display: none;">
+                <i class="fas fa-barcode me-2"></i>Resolução em Massa
+            </a>
+        </div>
+    </div>
+
+    {{!-- Container para notificações (sucesso, erro) --}}
+    <div id="notification-container">
+        {{{_sections.messages}}}
+    </div>
+
+    {{!-- Card com os Filtros da Tabela --}}
+    <div class="assist-filters-bar" style="padding-bottom: 10px; display: flex; gap: 15px; flex-wrap: wrap; align-items: center; margin-top: 15px;">
+        <div class="assist-filter-group flex-grow-1" style="min-width: 350px;">
+            <label for="buscaGeral">Busca Rápida</label>
+            <input type="text" id="buscaGeral" class="form-control" placeholder="NF, cliente, solicitante, produto...">
+        </div>
+        <div class="assist-filter-group">
+            <label for="filtroSolicitante">Solicitante</label>
+            <select id="filtroSolicitante" class="form-control" style="min-width: 180px;">
+                <option value="">Todos</option>
+            </select>
+        </div>
+        <div class="assist-filter-group">
+            <label for="filtroSituacao">Situação</label>
+            <select id="filtroSituacao" class="form-control" style="min-width: 150px;">
+                <option value="Todos">Todos</option>
+                <option value="Pendente" selected>Pendente</option>
+                <option value="Resolvida">Resolvida</option>
+                <option value="Para Vistoriar">Para Vistoriar</option>
+                <option value="Pronta para Embalar">Pronta para Embalar</option>
+                <option value="Descarte">Descarte</option>
+                <option value="Múltiplo">Múltiplo</option>
+            </select>
+        </div>
+        <div class="assist-filter-group">
+            <label for="filtroFabrica">Fábrica</label>
+            <select id="filtroFabrica" class="form-control" style="min-width: 250px;">
+                <option value="">Todas</option>
+                {{#each fabricas}}
+                    <option value="{{this.fabrica}}">{{this.fabrica}}</option>
+                {{/each}}
+            </select>
+        </div>
+        <div class="assist-filter-group">
+            <label for="dataInicio">De</label>
+            <input type="date" id="dataInicio" class="form-control">
+        </div>
+        <div class="assist-filter-group">
+            <label for="dataFim">Até</label>
+            <input type="date" id="dataFim" class="form-control">
+        </div>
+        <div class="assist-filter-group" id="filtro-volume-status-container" style="display: none;">
+            <label for="filtroVolumeStatus">Status do Volume</label>
+            <select id="filtroVolumeStatus" class="form-control" style="min-width: 150px;">
+                <option value="Todos">Todos</option>
+                <option value="Volume Bom">Volume Bom</option>
+                <option value="Volume Ruim">Volume Ruim</option>
+            </select>
+        </div>
+        <div class="assist-filter-group">
+             <button id="bulk-resolve-btn" class="btn btn-success" style="display: none;">
+                <i class="fas fa-check-double me-2"></i>Resolver Selecionadas
+            </button>
+        </div>
+    </div>
+       
+    
+
+    {{!-- Abas de Navegação Corrigidas --}}
+    <ul class="nav nav-tabs" id="assistenciaTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="aba1-tab" data-bs-toggle="tab" data-bs-target="#content" type="button" role="tab" data-aba="aba1">Peça para Cliente</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="aba2-tab" data-bs-toggle="tab" data-bs-target="#content" type="button" role="tab" data-aba="aba2">Reposição / Estoque</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="aba3-tab" data-bs-toggle="tab" data-bs-target="#content" type="button" role="tab" data-aba="aba3">Loja Física / Mostruário</button>
+        </li>
+    </ul>
+
+    {{!-- Conteúdo das Abas (onde a tabela será renderizada) --}}
+    <div class="tab-content">
+        <div class="tab-pane fade show active" id="content" role="tabpanel">
+            <div class="assist-table-wrapper mt-3">
+                <div id="table-container" class="assist-table-grid"></div>
+            </div>
+            <div id="pagination-container" class="assist-pagination-controls"></div>
+        </div>
+    </div>
+</div>
+
+{{#section "scripts"}}
+    <script src="/public/scripts/assistenciaManager.js"></script>
+{{/section}}

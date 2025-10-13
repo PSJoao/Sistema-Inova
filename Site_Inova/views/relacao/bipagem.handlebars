@@ -1,0 +1,144 @@
+{{!< main}}
+
+{{#section "head"}}
+  <link href="/public/styles/relacoes.css" rel="stylesheet">
+{{/section}}
+
+<div class="content-card">
+  <div class="page-header-actions">
+    <h1 class="page-title">{{title}}</h1>
+    <div class="action-buttons">
+      <a href="/relacoes" id="btnVoltar" class="btn btn-outline-accent"><i class="fas fa-arrow-left"></i> Voltar para Transportadoras</a>
+    </div>
+  </div>
+  
+  {{!-- View Principal de Bipagem --}}
+  <div id="bipagemView" data-transportadora-apelido={{transportadora.apelido}} data-editing-relation-id={{editingRelationId}}> 
+    <div class="bipagem-container">
+      {{!-- Coluna da Esquerda: NFs Pendentes --}}
+      <div class="bipagem-coluna" id="colunaNFsPendentes">
+        <h4>NF-e Pendentes para {{transportadora.apelido}}</h4>
+        <div class="bipagem-list-scroll-wrapper">
+            <ul id="nfsPendentesList">
+            {{#if notasFiscaisPendentes.length}}
+                {{#each notasFiscaisPendentes}}
+                <li class="nf-list-item" data-chave="{{this.chaveAcesso44d}}" data-idrelatorio="{{this.idRelatorio}}" data-justificativa="{{this.justificativa}}" data-nfnumero="{{this.numeroNF}}" data-produtos="{{this.produtos}}" data-total-volumes="{{this.totalVolumes}}">
+                    <div class="nf-item-main-info">
+                        NF: <strong>{{this.numeroNF}}</strong> ({{this.contaBling}})
+                        <span class="nf-produtos-preview">(Produtos: {{#if this.produtos}}{{truncate this.produtos 40}}{{else}}N/D{{/if}})</span>
+                    </div>
+                    <div class="volume-counter" data-total-volumes="{{this.totalVolumes}}">
+                      <span class="bipado-count">0</span>/<span class="total-count">{{this.totalVolumes}}</span>
+                    </div>
+                </li>
+                {{/each}}
+            {{else}}
+                <p style="color:var(--text-muted);">Nenhuma NF-e pendente para esta transportadora.</p>
+            {{/if}}
+            </ul>
+        </div>
+      </div>
+
+      {{!-- Coluna da Direita: Bipar Códigos --}}
+      <div class="bipagem-coluna" id="colunaBipagem">
+        <h4>Bipar Chaves de Acesso Aqui:</h4>
+        <div class="bipagem-list-scroll-wrapper">
+            <div id="bipadosListContainer">
+              {{!-- Se houver barcodes salvos, cria um input para cada um --}}
+              {{#if savedBarcodes.length}}
+                {{#each savedBarcodes}}
+                  <div class="barcode-input-wrapper">
+                    {{!-- O input já vem preenchido com o código salvo --}}
+                    <input type="text" class="bipado-barcode-input form-control" value="{{this}}">
+                  </div>
+                {{/each}}
+              {{/if}}
+
+              {{!-- O JavaScript cuidará de adicionar um campo vazio aqui para continuar a bipagem --}}
+            </div>
+        </div>
+        <div class="bipagem-totais-wrapper">
+          <div class="total-bipado-container">
+            <span>Volumes Bipados:</span>
+            <strong id="totalVolumesBipadosCount">0</strong>
+          </div>
+          <div class="total-bipado-container total-peso-container">
+            <span>Peso Total (kg):</span>
+            <strong id="totalPesoBipadoCount">0.000</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bipagem-actions">
+      <button id="btnFinalizarRelacao" class="btn btn-accent"><i class="fas fa-check-circle"></i> Finalizar e Gerar Relação</button>
+    </div>
+  </div>
+
+  {{!-- NOVA ESTRUTURA PARA A View de Justificativas (inicialmente oculta) --}}
+  <div id="justificativasView" style="display: none;">
+    <h3 class="page-title">Justificar NF-e Não Bipadas para <span id="justificativaTransportadoraNome">{{transportadora.apelido}}</span></h3>
+    <p>As NF-e abaixo não foram bipadas. Selecione uma justificativa para cada uma.</p>
+    
+    <div class="justification-controls-header">
+        <div class="form-group search-justification-group">
+            <label for="searchJustificativaNF">Pesquisar NF na lista de justificativas</label>
+            <input type="text" id="searchJustificativaNF" class="form-control form-control-sm" placeholder="Pesquisar NF por número ou produtos...">
+        </div>
+        <div class="justification-bulk-actions">
+            <div class="form-group" style="padding-bottom: 20px;">
+                <label for="bulkJustificationSelect">Aplicar em Massa:</label>
+                <select id="bulkJustificationSelect" class="form-control form-control-sm">
+                    {{!-- Opções serão populadas por JS --}}
+                </select>
+            </div>
+            <button id="btnApplyBulkJustification" class="btn btn-sm btn-secondary-custom" style="padding-bottom: 40px;"><i class="fas fa-check-double"></i> Aplicar aos Selecionados</button>
+        </div>
+    </div>
+
+    <form id="formJustificativas">
+      <div class="table-responsive-wrapper" style="margin-top: 10px;"> {{!-- Usando wrapper de tabela para consistência visual --}}
+        <table id="justificativasTable" class="dataTable-nostyle" style="width:100%;"> {{!-- Tabela para itens de justificativa --}}
+            <thead>
+                <tr>
+                    <th style="width: 5%; text-align:center;"><input type="checkbox" id="selectAllJustificationItems" title="Selecionar Todos"></th>
+                    <th style="width: 20%;">NF Número</th>
+                    <th style="width: 40%;">Produtos na NF</th>
+                    <th style="width: 35%;">Justificativa (Selecionar)</th>
+                </tr>
+            </thead>
+            <tbody id="justificativasListContainer">
+                {{!-- Itens de justificativa (linhas da tabela) serão populados aqui pelo JavaScript --}}
+                {{!-- Exemplo de linha:
+                <tr class="justification-item" data-nfe-report-id="XYZ">
+                    <td style="text-align:center;"><input type="checkbox" class="form-check-input bulk-select-justification"></td>
+                    <td class="nf-numero-just"><strong>12345</strong></td>
+                    <td class="nf-produtos-just">(Produto A, Produto B)</td>
+                    <td>
+                        <select class="form-control form-control-sm justification-reason-select">
+                            <option value="" selected disabled>Selecione um motivo...</option>
+                            <option value="Não tem produto">Não tem produto</option>
+                            ...
+                            <option value="NÃO VAI SAIR (CANCELAR ENVIO)">Não vai sair (Cancelar envio)</option>
+                        </select>
+                    </td>
+                </tr>
+                --}}
+            </tbody>
+        </table>
+      </div>
+      <div id="justificativasPaginationControlsContainer" style="margin-top:10px;">
+        {{!-- Controles de paginação para a lista de justificativas --}}
+      </div>
+      <hr class="styled">
+      <div class="form-actions" style="margin-top: 20px;">
+        <button type="button" id="btnCancelJustificativas" class="btn btn-outline-accent"><i class="fas fa-times"></i> Cancelar</button>
+        <button type="submit" id="btnConfirmAndSaveJustificativas" class="btn btn-accent"><i class="fas fa-save"></i> Salvar Justificativas e Finalizar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{{#section "scripts"}}
+  <script src="/public/scripts/relacaoManager.js"></script>
+{{/section}}

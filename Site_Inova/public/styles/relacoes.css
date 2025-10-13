@@ -1,0 +1,602 @@
+/* public/styles/relacoes.css */
+
+/* ==========================================================================
+   Página Principal de Relações (index.hbs) - Cards de Transportadoras
+   ========================================================================== */
+.transportadoras-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+  padding: 10px 0;
+}
+
+.transportadora-card {
+  background-color: var(--bg-tertiary);
+  padding: 25px 20px;
+  border-radius: var(--border-radius-lg);
+  text-align: center;
+  box-shadow: var(--box-shadow-soft);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
+  text-decoration: none;
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 130px;
+}
+.transportadora-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--box-shadow-medium);
+  background-color: hsl(from var(--bg-tertiary) h s calc(l + 7%));
+}
+.transportadora-card h3 {
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 1.5rem;
+  color: var(--accent-orange);
+}
+.transportadora-card p {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 0;
+}
+
+/* ==========================================================================
+   Página de Bipagem (bipagem.hbs)
+   ========================================================================== */
+.bipagem-container {
+  display: flex;
+  flex-direction: row;
+  gap: 25px;
+  width: 100%;
+  margin-bottom: 25px;
+}
+
+.bipagem-coluna {
+  flex: 1;
+  background-color: var(--bg-secondary);
+  padding: 20px;
+  border-radius: var(--border-radius-md);
+  box-shadow: inset 0 1px 4px rgba(0,0,0,0.25); /* Sombra interna um pouco mais forte */
+  display: flex;
+  flex-direction: column;
+}
+.bipagem-coluna h4 {
+  color: var(--text-primary);
+  font-size: 1.2rem;
+  margin-top: 0;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--bg-tertiary);
+  flex-shrink: 0;
+}
+
+.bipagem-list-scroll-wrapper {
+  flex-grow: 1;
+  min-height: 250px; /* Reduzido um pouco se a tela for menor */
+  max-height: calc(65vh - 120px); /* Baseado na altura da viewport */
+  overflow-y: auto;
+  padding-right: 5px; 
+  margin-top: 5px; /* Pequena margem no topo da lista */
+}
+
+/* Lista de NFs Pendentes (Esquerda) */
+#nfsPendentesList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+#nfsPendentesList li {
+  background-color: var(--bg-primary);
+  color: var(--text-secondary);
+  padding: 10px 15px; /* Mais padding horizontal */
+  margin-bottom: 8px;
+  border-radius: var(--border-radius-sm);
+  font-size: 0.9rem;
+  border: 1px solid var(--bg-tertiary);
+  transition: opacity var(--transition-fast), border-color var(--transition-fast);
+  display: flex;
+  justify-content: space-between;
+  align-items: center; /* Alinha itens verticalmente */
+  flex-wrap: nowrap;
+}
+#nfsPendentesList li:hover {
+  border-color: var(--accent-orange); /* Destaque laranja no hover */
+}
+.nf-item-main-info {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  margin-right: 10px;
+  justify-content: center; 
+}
+.nf-item-main-info strong {
+  font-size: 1rem; /* Um pouco menor para consistência */
+  color: var(--text-primary);
+}
+.nf-produtos-preview {
+  font-size: 0.85em; /* Um pouco maior */
+  color: var(--text-muted);
+  max-width: 250px; /* Ajuste conforme necessário */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 3px; /* Mais espaço */
+}
+#nfsPendentesList li .nf-volumes {
+  font-weight: 600; /* Um pouco menos bold que 'bold' */
+  color: var(--text-primary);
+  white-space: nowrap;
+  margin-left: auto; 
+  padding-left: 10px; 
+}
+
+/* NF "match" (escondida na bipagem) */
+#nfsPendentesList li.matched {
+  display: none !important;
+}
+
+/* Lista de Códigos Bipados (Direita) */
+#bipadosListContainer .barcode-input-wrapper {
+  margin-bottom: 10px;
+}
+#bipadosListContainer .barcode-input-wrapper input[type="text"].form-control {
+  background-color: var(--bg-primary);
+  border-color: var(--bg-tertiary);
+  /* Sem feedback de borda aqui, o ModalSystem cuida dos avisos */
+}
+
+.bipagem-actions {
+  margin-top: 30px; /* Mais espaço */
+  text-align: right;
+}
+
+/* ==========================================================================
+   View de Justificativas (Dentro de bipagem.hbs)
+   ========================================================================== */
+#justificativasView {
+  padding-top: 15px;
+}
+#justificativasView h3.page-title {
+  margin-bottom: 10px;
+  text-align: center;
+  font-size: 1.5rem; 
+}
+#justificativasView > p {
+  margin-bottom: 20px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.95em;
+}
+
+.justification-controls-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;     
+  margin-bottom: 20px;
+  flex-wrap: wrap;        
+  gap: 20px; /* Aumenta o gap */               
+  padding: 15px;
+  background-color: var(--bg-tertiary);
+  border-radius: var(--border-radius-md);
+}
+.search-justification-group {
+  flex: 2 1 300px; /* Permite que a busca ocupe mais espaço se disponível */
+}
+.search-justification-group input[type="text"].form-control-sm,
+.justification-bulk-actions select.form-control-sm {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid hsl(from var(--bg-tertiary) h s calc(l + 10%)); /* Borda um pouco mais clara que o fundo */
+  font-size: 0.9em;
+  height: calc(1.5em + 1rem + 2px); /* Altura padrão de .form-control-sm com padding .5rem .75rem */
+  box-sizing: border-box;
+}
+.search-justification-group input[type="text"].form-control-sm::placeholder {
+  color: var(--text-muted);
+}
+
+.justification-bulk-actions {
+  display: flex;
+  align-items: flex-end; 
+  gap: 10px;
+  flex: 1 1 auto;
+  justify-content: flex-start; 
+}
+.justification-bulk-actions .form-group {
+  margin-bottom: 0 !important;
+  flex-grow: 1; 
+}
+.justification-bulk-actions .btn-sm {
+    font-size: 0.875rem; /* Consistente com .form-control-sm */
+    height: calc(1.5em + 1rem + 2px); /* Mesma altura do select */
+    line-height: 1.5; /* Para alinhar texto do botão verticalmente */
+}
+
+
+/* Tabela de Justificativas */
+#justificativasTable {
+  width: 100%;
+  border-collapse: separate; /* Para permitir border-spacing e melhor visual */
+  border-spacing: 0 5px;  /* Espaço vertical entre as linhas (tr) */
+  font-size: 0.9em;
+  margin-bottom: 20px; 
+}
+#justificativasTable thead th {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+  padding: 10px 12px; /* Mais padding */
+  text-align: left;
+  border-bottom: 2px solid var(--bg-primary);
+  font-weight: 600;
+  vertical-align: middle; 
+}
+#justificativasTable tbody tr.justification-item { /* Estiliza o TR */
+    background-color: var(--bg-primary); /* Fundo de cada item */
+    border-radius: var(--border-radius-sm); /* Borda arredondada para o item */
+}
+#justificativasTable tbody td {
+  padding: 12px 10px; /* Padding consistente */
+  /* Removendo border-bottom daqui, o TR tem o espaçamento */
+  border-bottom: none; 
+  vertical-align: middle; 
+  color: var(--text-secondary);
+}
+/* Bordas apenas nas laterais das células para um visual mais limpo */
+#justificativasTable tbody td:not(:first-child) {
+    border-left: 1px solid var(--bg-tertiary);
+}
+
+#justificativasTable td:first-child, 
+#justificativasTable th:first-child {
+    text-align: center; 
+    vertical-align: middle; /* Garante que o checkbox também fique alinhado */
+}
+#justificativasTable th input[type="checkbox"],
+#justificativasTable td input[type="checkbox"].bulk-select-justification {
+  width: 17px; 
+  height: 17px;
+  cursor: pointer;
+  accent-color: var(--accent-orange); 
+  margin: 0; 
+  display: inline-block; /* Para text-align:center funcionar bem */
+  vertical-align: middle;
+}
+
+
+.nf-numero-just strong { 
+    color: var(--accent-orange); 
+    font-size: 1.05em; /* Destaca o número da NF */
+}
+.nf-produtos-just { 
+  font-size: 0.85em; 
+  color: var(--text-muted); /* Mais sutil */
+  display: block; 
+  line-height: 1.4; 
+  margin-top: 4px;
+  max-width: 100%; /* Permite que o texto quebre e o pai controle a largura */
+  word-break: break-word;
+}
+
+#justificativasTable .justification-reason-select.form-control {
+  width: 100%;
+  font-size: 0.9em; 
+  padding: 0.5rem 0.75rem; /* Tamanho sm */
+  box-sizing: border-box;
+}
+
+
+/* Paginação para a lista de justificativas */
+#justificativasPaginationControlsContainer {
+  text-align: center;
+  margin-top: 25px; /* Mais espaço */
+  margin-bottom: 15px;
+}
+#justificativasPaginationControlsContainer button,
+#justificativasPaginationControlsContainer .page-info {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--bg-tertiary);
+  padding: 8px 12px; /* Um pouco maior */
+  margin: 0 4px;
+  border-radius: var(--border-radius-md); /* Consistente com outros botões */
+  font-size: 0.9em;
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+#justificativasPaginationControlsContainer button:hover:not(:disabled) {
+  background-color: var(--accent-orange-hover);
+  color: var(--accent-orange-text);
+}
+#justificativasPaginationControlsContainer button:disabled {
+  background-color: hsl(from var(--bg-tertiary) h s calc(l - 10%));
+  color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+#justificativasPaginationControlsContainer .page-info {
+  background-color: transparent;
+  border: none;
+  padding: 8px 12px;
+  color: var(--text-secondary);
+}
+
+#formJustificativas .form-actions {
+  border-top: 1px solid var(--bg-tertiary);
+  padding-top: 20px;
+  margin-top: 25px; /* Mais espaço */
+  display: flex; 
+  justify-content: flex-end; 
+  gap: 10px;
+}
+
+/* ==========================================================================
+   Página de NF-e Canceladas (canceladas.hbs)
+   ========================================================================== */
+#canceladasTable tbody td, 
+#canceladasTable thead th {
+  font-size: 0.88em;
+}
+#canceladasTable .table-actions .btn-reativar-nfe i {
+  margin-right: 5px; /* Já deve ser coberto pelo .btn i se existir */
+}
+#canceladasTable tr.removida-da-lista td { /* Efeito visual para item reativado (antes do reload) */
+  opacity: 0.4;
+  text-decoration: line-through;
+  background-color: hsl(from var(--color-danger) h s l / 0.1) !important; 
+  transition: all 0.5s ease-out;
+}
+
+
+/* Classe de acessibilidade (se ainda não estiver no seu theme.css ou components.css) */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Linha divisória entre as seções */
+hr.styled-divider {
+    border: none;
+    height: 1px;
+    background-color: var(--bg-tertiary);
+    margin: 40px 0;
+}
+
+.admin-section {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--bg-tertiary);
+    border-radius: var(--border-radius-lg);
+    padding: 20px 25px;
+    margin-bottom: 30px;
+}
+
+.section-title {
+    font-size: 1.5rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-top: 0;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--bg-tertiary);
+}
+
+/* Ajustes gerais para as novas tabelas de admin */
+#justificadasTable td, 
+#salvasTable td {
+    vertical-align: middle;
+    font-size: 0.9em;
+}
+
+/* Estilo para o dropdown de ações na tabela de justificadas */
+.action-select-status {
+    min-width: 180px;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.table-responsive-wrapper {
+    width: 100%;
+    overflow-x: auto; /* A mágica acontece aqui: a barra de rolagem fica NESTE container */
+}
+
+/* Garante que a tabela use os estilos do seu tables.css */
+.table-responsive-wrapper .dataTable {
+    border: none; /* Remove a borda da tabela em si, pois o .admin-section já tem */
+    border-radius: 0;
+}
+
+.table-responsive-wrapper .dataTable thead th {
+    background-color: var(--bg-tertiary);
+    position: sticky; /* Cabeçalho fixo no topo */
+    top: 0;
+    z-index: 2;
+}
+
+/* Estilo para os botões de ação na tabela de relações salvas */
+.table-actions {
+    display: flex;
+    gap: 8px; /* Espaço entre os botões de Imprimir e Baixar */
+    justify-content: flex-start; /* Alinha os botões à esquerda da célula */
+}
+
+/* Garante que os ícones nos botões da tabela fiquem bem alinhados */
+.table-actions .btn-icon i {
+    font-size: 0.9em;
+}
+
+.status-badge {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: bold;
+    text-transform: uppercase;
+    color: #fff;
+    white-space: nowrap;
+}
+.status-badge.status-relacionada { background-color: #6c757d; }
+.status-badge.status-justificada_adiada { background-color: #ffc107; color: #000; }
+.status-badge.status-cancelada_permanente { background-color: #dc3545; }
+.status-badge.status-validated { background-color: #28a745; }
+
+.table-actions .btn-info-custom {
+    background-color: #17a2b8;
+    color: white;
+}
+.table-actions .btn-info-custom:hover {
+    background-color: #138496;
+}
+
+.table-actions .btn-warning {
+    background-color: #ffc107;
+    color: #212529;
+}
+.table-actions .btn-warning:hover {
+    background-color: #e0a800;
+}
+
+.justification-reason-select.just-nao-tem-produto {
+    background-color: #fff3cd !important;
+    color: #bb9900 !important;
+    border-color: #ffeeba !important;
+}
+
+/* Cor para "Não deu tempo de etiquetar" (Ex: Azul) */
+.justification-reason-select.just-nao-deu-tempo {
+    background-color: #cff4fc !important;
+    color: #008099 !important;
+    border-color: #b6effb !important;
+}
+
+/* Cor para "NF não localizada fisicamente" (Ex: Laranja) */
+.justification-reason-select.just-nao-localizada {
+    background-color: #ffe5d4 !important;
+    color: #d17000 !important;
+    border-color: #ffc9a6 !important;
+}
+
+/* Cor para "NÃO VAI SAIR" (Ex: Vermelho) */
+.justification-reason-select.just-cancelar {
+    background-color: #f8d7da !important;
+    color: #ff0019 !important;
+    border-color: #f5c2c7 !important;
+}
+
+/* Estilo para o texto das opções no dropdown, para garantir a legibilidade */
+.justification-reason-select option {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+/* --- Estilos para o Novo Contador de Volumes --- */
+.volume-counter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 10px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--bg-tertiary);
+  border-radius: var(--border-radius-md);
+  font-weight: bold;
+  font-size: 1.1em;
+  min-width: 60px;
+  text-align: center;
+}
+.volume-counter .bipado-count {
+  color: var(--accent-orange);
+}
+.volume-counter .total-count {
+  color: var(--text-secondary);
+}
+
+/* Feedback visual para input de nota completa */
+.bipado-barcode-input.completed {
+    border-color: var(--color-success) !important;
+    background-color: hsl(from var(--color-success) h s l / 0.1);
+}
+
+/* Container para o total de volumes bipados */
+.total-bipado-container {
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px solid var(--bg-tertiary);
+  text-align: right;
+  font-size: 1.2rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.total-bipado-container strong {
+  color: var(--text-primary);
+  font-size: 1.5rem;
+  margin-left: 10px;
+}
+
+/* Botão de Criar Marcação */
+.btn-create-marker {
+  margin-left: 10px;
+  font-size: 0.8em !important;
+  padding: 4px 8px !important;
+}
+
+/* Divisória da Marcação */
+.bipagem-marker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+  margin: 15px 0;
+}
+.bipagem-marker hr {
+  flex-grow: 1;
+  border: none;
+  border-top: 1px dashed var(--bg-tertiary);
+}
+.bipagem-marker span {
+  font-size: 0.8em;
+  font-weight: bold;
+  background-color: var(--bg-secondary);
+  padding: 2px 5px;
+}
+
+@media (max-width: 768px) {
+    .bipagem-container {
+        /* Muda o layout de lado a lado para um em cima do outro */
+        flex-direction: column;
+        gap: 40px; /* Aumenta o espaçamento vertical entre as colunas */
+    }
+
+    .bipagem-coluna {
+        /* Garante que as colunas ocupem a largura total */
+        width: 100%;
+    }
+
+    .bipagem-list-scroll-wrapper {
+        /* Remove a altura máxima para que a lista possa crescer */
+        max-height: none;
+    }
+
+    /* Ajustes de fonte para melhor legibilidade em telas pequenas */
+    .transportadora-card h3, 
+    .bipagem-coluna h4 {
+        font-size: 1.2rem;
+    }
+
+    .bipagem-actions {
+        /* Faz o botão de finalizar ocupar a largura toda */
+        display: flex;
+    }
+    
+    #btnFinalizarRelacao {
+        flex-grow: 1;
+        padding: 15px; /* Deixa o botão maior e mais fácil de tocar */
+        font-size: 1rem;
+    }
+}

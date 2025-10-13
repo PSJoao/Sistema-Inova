@@ -1,0 +1,156 @@
+/* public/styles/nfeHistory.css */
+
+/* --- Controles e Filtros da Página --- */
+.nfe-history-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    padding: 1rem;
+    background-color: var(--bg-secondary);
+    border-radius: var(--border-radius-lg);
+    margin-bottom: 1.5rem;
+}
+.filter-group {
+    display: flex;
+    flex-direction: column;
+}
+.filter-group label {
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+.filter-group.search-group {
+    flex-grow: 1;
+}
+
+/* --- Estrutura com Barra de Rolagem --- */
+.table-container {
+    width: 100%;
+    overflow-x: auto;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+}
+
+.nfe-history-table {
+    display: table;
+    width: 100%;
+    min-width: 1400px;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.nfe-history-table-header,
+.nfe-history-card {
+    display: table-row;
+}
+
+.nfe-history-table-header > span,
+.nfe-history-card > div {
+    display: table-cell;
+    padding: 1rem;
+    vertical-align: middle;
+    border-bottom: 1px solid var(--bg-tertiary);
+    word-break: break-word;
+}
+
+.nfe-history-table-header > span {
+    background-color: var(--bg-tertiary);
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+
+.nfe-history-grid .nfe-history-card:last-child > div {
+    border-bottom: none;
+}
+.nfe-history-grid .nfe-history-card:hover {
+    background-color: var(--bg-tertiary);
+}
+
+
+/* --- [NOVO] CONTROLE DO TAMANHO DAS COLUNAS --- */
+/* Ajuste as porcentagens abaixo como desejar. A soma deve ser próxima de 100%. */
+
+.nfe-history-table-header > span:nth-child(1), /* Nº da NF-e */
+.nfe-history-card > div:nth-child(1) {
+    width: 10%;
+}
+.nfe-history-table-header > span:nth-child(2), /* Situação */
+.nfe-history-card > div:nth-child(2) {
+    width: 12%;
+}
+.nfe-history-table-header > span:nth-child(3), /* Transportadora */
+.nfe-history-card > div:nth-child(3) {
+    width: 13%;
+}
+.nfe-history-table-header > span:nth-child(4), /* Lista de Produtos */
+.nfe-history-card > div:nth-child(4) {
+    width: 25%;
+}
+.nfe-history-table-header > span:nth-child(5), /* Última Justificativa */
+.nfe-history-card > div:nth-child(5) {
+    width: 15%;
+}
+.nfe-history-table-header > span:nth-child(6), /* Data da Ação */
+.nfe-history-card > div:nth-child(6) {
+    width: 10%;
+}
+.nfe-history-table-header > span:nth-child(7), /* Nova Ação */
+.nfe-history-card > div:nth-child(7) {
+    width: 15%;
+}
+
+
+/* --- Componentes Internos da Linha --- */
+.nfe-status {
+    padding: 0.25rem 0.75rem;
+    border-radius: var(--border-radius-md);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #fff;
+    text-align: center;
+    white-space: nowrap;
+}
+.nfe-status.status-relacionada { background-color: var(--color-success); }
+.nfe-status.status-pendente { background-color: var(--accent-orange); }
+.nfe-status.status-justificada_adiada { background-color: var(--accent-blue); }
+
+.nfe-action-select {
+    width: 100%;
+    min-width: 180px;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 0.4rem;
+    border-radius: var(--border-radius-sm);
+}
+
+/* --- Contador de Estruturas (sem alterações) --- */
+.nfe-history-missing-products {
+    margin-top: 1.5rem;
+    padding: 1.5rem;
+    background-color: var(--bg-secondary);
+    border-radius: var(--border-radius-lg);
+    border: 1px solid var(--border-color);
+}
+.missing-products-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: 10px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 0.8rem;
+}
+.missing-products-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.6rem 0.8rem;
+    border-radius: var(--border-radius-md);
+    background-color: var(--bg-tertiary);
+}
