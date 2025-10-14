@@ -3,6 +3,8 @@
 const express = require('express');
 const router = express.Router();
 const rastreioController = require('../controllers/rastreioController');
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage() });
 
 // Rota para renderizar a página principal de rastreamento
 // GET /rastreio
@@ -15,6 +17,8 @@ router.get('/api', rastreioController.getPedidosRastreioApi);
 // Rota para renderizar a página de detalhes de um pedido específico
 // GET /rastreio/detalhe/:id
 router.get('/detalhe/:id', rastreioController.renderDetalheRastreioPage);
+
+router.post('/api/upload-dominalog-report', upload.single('relatorioDominalog'), rastreioController.processarBoletimDominalog);
 
 // (NOVA ROTA)
 // Rota da API para marcar todos os pedidos como conferidos

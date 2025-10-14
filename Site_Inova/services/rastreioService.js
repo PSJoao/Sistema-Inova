@@ -3,6 +3,7 @@
 const axios = require('axios');
 const { poolInova, poolMonitora } = require('../config/db');
 const gmailService = require('./gmailService');
+const ExcelJS = require('exceljs');
 const { atualizarStatusPedidosRisso } = require('./rissoRastreioService');
 const { atualizarStatusPedidosJew } = require('./jewRastreioService');
 
@@ -216,6 +217,66 @@ async function atualizarStatusPedidosEmRastreio() {
     console.log('[Rastreio Service] Orquestrador finalizou o ciclo de atualização.');
 }
 
+async function atualizarPrevisaoComBoletimDominalog(fileBuffer) {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(fileBuffer);
+    const worksheet = workbook.worksheets[0];
+
+    let atualizados = 0;
+    let naoEncontrados = 0;
+    let semAlteracao = 0;
+    const promises = [];
+
+    // Itera a partir da linha 2 (pulando o cabeçalho)
+    worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+        if (rowNumber === 1) return;
+
+        const nfeCrua = row.getCell('L').value;
+        const novaPrevisaoCrua = row.getCell('Q').value;
+
+        if (!nfeCrua || !novaPrevisaoCrua) return;
+
+        // Normaliza o número da NFe para ter 6 dígitos com zero à esquerda
+        const nfeNormalizada = String(nfeCrua).padStart(6, '0');
+        
+        // Converte a data do Excel para um formato que o DB entende
+        const novaPrevisao = new Date(novaPrevisaoCrua);
+        if (isNaN(novaPrevisao.getTime())) return; // Pula se a data for inválida
+
+        const promise = poolInova.query(
+            `UPDATE pedidos_em_rastreamento
+             SET 
+                data_previsao_entrega = $1,
+                observacao = 'Nova Previsão de Entrega via Boletim',
+                atualizado_em = NOW(),
+                status_manual = TRUE
+             WHERE 
+                transportadora = 'DOMINALOG' 
+                AND numero_nfe = $2 
+                AND data_previsao_entrega IS DISTINCT FROM $1`,
+            [novaPrevisao, nfeNormalizada]
+        ).then(result => {
+            if (result.rowCount > 0) {
+                atualizados++;
+            } else {
+                // Se não atualizou, pode ser que não encontrou ou a data já era a mesma
+                return poolInova.query('SELECT 1 FROM pedidos_em_rastreamento WHERE transportadora = $1 AND numero_nfe = $2', ['DOMINALOG', nfeNormalizada])
+                    .then(findResult => {
+                        if (findResult.rowCount > 0) {
+                            semAlteracao++;
+                        } else {
+                            naoEncontrados++;
+                        }
+                    });
+            }
+        });
+        promises.push(promise);
+    });
+
+    await Promise.all(promises);
+    return { atualizados, naoEncontrados, semAlteracao };
+}
+
 // =============================================================================
 // SEÇÃO DE FUNÇÕES AUXILIARES (CÓDIGO ORIGINAL MANTIDO)
 // =============================================================================
@@ -267,5 +328,6 @@ module.exports = {
     verificarRespostasDeEmails,
     getDistinctTransportadoras,
     getDistinctObservacoes,
-    getDistinctPlataformas
+    getDistinctPlataformas,
+    atualizarPrevisaoComBoletimDominalog
 };

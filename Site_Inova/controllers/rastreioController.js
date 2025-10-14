@@ -310,6 +310,40 @@ const rastreioController = {
 
             await poolInova.query(query, queryParams);
 
+            if (observacao === 'Comprovante de entrega solicitado') {
+                // 1. Busca os dados primários do pedido no banco de rastreio (Inova)
+                const pedidoRastreioResult = await poolInova.query(
+                    `SELECT numero_nfe, transportadora, documento_cliente FROM pedidos_em_rastreamento WHERE id = $1`,
+                    [pedidoId]
+                );
+
+                if (pedidoRastreioResult.rows.length > 0) {
+                    const { numero_nfe, transportadora, documento_cliente } = pedidoRastreioResult.rows[0];
+
+                    // 2. Com o numero_nfe, busca os dados do cliente no banco de monitoramento
+                    const clienteResult = await poolMonitora.query(
+                        `SELECT etiqueta_nome, etiqueta_municipio, etiqueta_uf FROM cached_nfe WHERE nfe_numero = $1 LIMIT 1`,
+                        [numero_nfe]
+                    );
+
+                    if (clienteResult.rows.length > 0) {
+                        // 3. Junta todas as informações necessárias
+                        const dadosCompletos = {
+                            nfe_numero: numero_nfe,
+                            transportadora: transportadora,
+                            documento_cliente: documento_cliente,
+                            ...clienteResult.rows[0] // adiciona etiqueta_nome, etc.
+                        };
+                        
+                        // 4. Envia o e-mail
+                        await gmailService.enviarEmailComprovanteEntrega(dadosCompletos);
+
+                        // Retorna uma mensagem específica para o frontend
+                        return res.status(200).json({ success: true, message: "Observação salva e e-mail de solicitação de comprovante enviado!", emailSent: true });
+                    }
+                }
+            }
+
             res.status(200).json({ success: true, message: "Observação salva com sucesso!" });
 
         } catch (error) {
@@ -483,6 +517,23 @@ const rastreioController = {
             console.error("[Gerar Relatório Rastreio] Erro:", error);
             res.status(500).send("Erro ao gerar o relatório.");
         }
+    },
+
+    processarBoletimDominalog: async (req, res) => {
+        if (!req.file) {
+            req.flash('error', 'Nenhum arquivo foi enviado.');
+            return res.redirect('/acompanhamento/pedidos'); // Redireciona para a página de uploads
+        }
+
+        try {
+            const results = await rastreioService.atualizarPrevisaoComBoletimDominalog(req.file.buffer);
+            req.flash('success', `Boletim da Dominalog processado! ${results.atualizados} previsões atualizadas, ${results.naoEncontrados} NF-e não encontradas, ${results.semAlteracao} já estavam corretas.`);
+        } catch (error) {
+            console.error("[Controller] Erro ao processar boletim Dominalog:", error);
+            req.flash('error', `Erro ao processar o arquivo: ${error.message}`);
+        }
+        
+        return res.redirect('/acompanhamento/pedidos');
     },
 
     enviarEmailCobranca: async (req, res) => {

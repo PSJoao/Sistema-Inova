@@ -4,7 +4,7 @@
     <h1 class="page-title">{{title}}</h1>
     <div class="action-buttons">
         <a href="/acompanhamento/pedidos/download" class="btn btn-success-alt">
-            <i class="fas fa-download"></i> Baixar Relatório Consolidado
+            <i class="fas fa-download"></i> Baixar Relatório Consolidado (Plataformas)
         </a>
     </div>
 </div>
@@ -52,7 +52,30 @@
 
         <div class="form-actions mt-2">
             <button type="submit" class="btn btn-accent">
-                <i class="fas fa-upload"></i> Enviar e Processar Arquivos
+                <i class="fas fa-upload"></i> Enviar Relatório (Plataformas)
+            </button>
+        </div>
+    </form>
+
+    <hr class="styled mt-5 mb-4">
+
+    <h2 class="section-title">Relatórios de Transportadoras</h2>
+    <p class="text-secondary">
+        Faça o upload de boletins ou relatórios específicos de transportadoras para atualizações em massa.
+    </p>
+
+    <form action="/rastreio/api/upload-dominalog-report" method="POST" enctype="multipart/form-data">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="form-group mb-3">
+                    <label for="relatorioDominalog">Boletim Dominalog</label>
+                    <input type="file" id="relatorioDominalog" name="relatorioDominalog" class="form-control" accept=".xlsx" required>
+                </div>
+            </div>
+        </div>
+        <div class="form-actions mt-2">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-sync-alt"></i> Processar Boletim Dominalog
             </button>
         </div>
     </form>

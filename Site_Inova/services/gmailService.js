@@ -462,11 +462,41 @@ async function verificarRespostas(pedido) {
     }
 }
 
+async function enviarEmailComprovanteEntrega(pedido) {
+    if (!pedido || !pedido.transportadora || !pedido.nfe_numero) {
+        throw new Error('Dados insuficientes para solicitar comprovante de entrega.');
+    }
+
+    const toEmails = getCarrierEmail(pedido.transportadora, pedido.etiqueta_uf);
+    if (!toEmails) {
+        // Para este caso, não lançamos um erro, apenas avisamos.
+        console.warn(`E-mails de destino não configurados para a transportadora: ${pedido.transportadora}. Não foi possível solicitar o comprovante.`);
+        return { success: false, message: 'E-mails não configurados para a transportadora.' };
+    }
+
+    const saudaçao = new Date().getHours() < 12 ? 'Bom dia' : 'Boa tarde';
+    const emailSubject = `Solicitação de Comprovante de Entrega - NF ${pedido.nfe_numero} - Inova Móveis`;
+    const emailBody = `
+        <p>${saudaçao}, equipe ${pedido.transportadora},</p>
+        <p>Gostaríamos de solicitar, por gentileza, o <strong>comprovante de entrega (canhoto)</strong> referente à Nota Fiscal nº <strong>${pedido.nfe_numero}</strong>.</p>
+        <p><strong>Destinatário:</strong> ${pedido.etiqueta_nome || 'Não informado'}</p>
+        <p><strong>Documento:</strong> ${pedido.documento_cliente || 'Não informado'}</p>
+        <p>Agradecemos a colaboração.</p>
+        <p>Atenciosamente,<br>Equipe de Rastreio - Inova Móveis</p>
+    `;
+
+    // Reutiliza a função de envio base
+    await sendEmail(toEmails, emailSubject, emailBody);
+    console.log(`[Gmail Service] E-mail de solicitação de comprovante para NF-e ${pedido.nfe_numero} enviado.`);
+    return { success: true, message: 'E-mail de solicitação de comprovante enviado com sucesso!' };
+}
+
 
 module.exports = {
     sendPositionRequestEmail,
     getThreadDetails,
     getMessageDetails,
     enviarEmailCobrancaManual,
-    verificarRespostas
+    verificarRespostas,
+    enviarEmailComprovanteEntrega
 };

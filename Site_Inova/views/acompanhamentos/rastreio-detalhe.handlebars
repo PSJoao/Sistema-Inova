@@ -231,7 +231,11 @@
                         });
                         const result = await response.json();
                         if (!response.ok) throw new Error(result.message || 'Ocorreu um erro no servidor.');
-                        ModalSystem.alert(result.message, 'Sucesso', () => { window.location.reload(); });
+
+                        ModalSystem.alert(result.message, 'Sucesso', () => {
+                            window.location.reload();
+                        });
+                        
                     } catch (error) {
                         ModalSystem.alert(`Erro: ${error.message}`, 'Falha na Operação');
                         salvarBtn.disabled = false;
