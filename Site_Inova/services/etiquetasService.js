@@ -560,7 +560,7 @@ async function gerarPdfOrganizado(etiquetasOrdenadas) {
                 });
                 currentY -= 5; // Move para a próxima linha de SKU
             }
-            currentY -= 48;
+            currentY -= 8;
 
             page.drawText('DANFE', {
                 x: padding + 235, y: currentY,
@@ -586,7 +586,7 @@ async function gerarPdfOrganizado(etiquetasOrdenadas) {
                     x: pageWidth - rotatedBarcodeWidth + 40, // 5 é um pequeno padding
                     
                     // Posição Y: Centralizado verticalmente na altura total da etiqueta.
-                    y: (pageHeight / 2) - (rotatedBarcodeHeight / 2),
+                    y: (pageHeight / 2) - (rotatedBarcodeHeight / 2) + 40,
                     
                     // Dimensões originais da imagem
                     width: barcodeDims.width,
