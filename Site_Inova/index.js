@@ -16,6 +16,7 @@ const authController = require('./controllers/authController');
 const rastreioService = require('./services/rastreioService');
 const nfeHistoryRoutes = require('./routes/nfeHistoryRoutes');
 const assistenciaRoutes = require('./routes/assistenciaRoutes');
+const etiquetasRoutes = require('./routes/etiquetasRoutes');
 //const { updatePrices } = require('./updatePrices.js');
 //const { runScheduledTokenRefresh } = require('./services/blingTokenManager');
 const { syncRecentEmittedNFe, syncNFeEliane, syncNFeLucas } = require('./blingSyncService.js');
@@ -90,6 +91,7 @@ app.use('/', relacaoRoutes); // Usar rotas de relações
 app.use('/rastreio', rastreioRoutes);
 app.use('/historico-nfe', nfeHistoryRoutes); // Define o prefixo da nova página
 app.use('/assistencias', assistenciaRoutes);
+app.use('/', etiquetasRoutes);
 
 //Agendar tarefa para atualizar preços da madeira a cada 20 minutos
 //cron.schedule('*/20 * * * *', async () => {
@@ -150,23 +152,23 @@ app.use('/assistencias', assistenciaRoutes);
     //}
 //});
 //console.log('Job de atualização de custos e dados de URLs agendado para rodar semanalmente.');
-let isRastreioJobRunning = false;
-console.log('[CRON] Agendando rotina de rastreio para executar a cada hora.');
+//let isRastreioJobRunning = false;
+//console.log('[CRON] Agendando rotina de rastreio para executar a cada hora.');
 // A expressão '0 * * * *' executa no minuto 0 de cada hora.
 //1-59/1 * * * *
-cron.schedule('*/1 * * * *', async () => {
-  const dataHora = new Date().toLocaleString('pt-BR');
+//cron.schedule('*/1 * * * *', async () => {
+//  const dataHora = new Date().toLocaleString('pt-BR');
+//
+//  if (isRastreioJobRunning) {
+//        console.log(`[CRON] A rotina de rastreio já está em execução. Pulando esta chamada. - ${dataHora}`);
+//        return; // Sai da função para não executar novamente
+//  }
 
-  if (isRastreioJobRunning) {
-        console.log(`[CRON] A rotina de rastreio já está em execução. Pulando esta chamada. - ${dataHora}`);
-        return; // Sai da função para não executar novamente
-  }
-
-  console.log('-------------------------------------');
-  console.log(`[CRON] INICIANDO rotina de rastreio de pedidos - ${dataHora}`);
+//  console.log('-------------------------------------');
+//  console.log(`[CRON] INICIANDO rotina de rastreio de pedidos - ${dataHora}`);
   
-  try {
-
+//  try {
+/*
     isRastreioJobRunning = true; 
     // Passo 1: Inserir novos pedidos que se tornaram elegíveis
     await rastreioService.inserirNovosPedidosParaRastreio();
@@ -187,7 +189,7 @@ cron.schedule('*/1 * * * *', async () => {
 }, {
   scheduled: true,
   timezone: "America/Sao_Paulo"
-});
+});*/
 
 // Rota para lidar com páginas não encontradas
 app.use((req, res) => {

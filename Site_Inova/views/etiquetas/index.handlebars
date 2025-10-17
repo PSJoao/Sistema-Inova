@@ -1,0 +1,34 @@
+<link rel="stylesheet" href="/public/styles/etiquetas.css">
+
+<div class="container etiquetas-container">
+    <div class="header">
+        <h1><i class="fas fa-barcode"></i> Organizador de Etiquetas do Mercado Livre</h1>
+        <p>Faça o upload dos arquivos PDF de etiquetas para organizá-los por SKU e gerar um novo PDF pronto para impressão.</p>
+    </div>
+
+    {{> messages }}
+
+    <div class="card">
+        <form id="uploadForm" action="/etiquetas/processar" method="POST" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="etiquetasPdfs">Selecionar Arquivos PDF:</label>
+                <div class="custom-file-upload">
+                    <input type="file" id="etiquetasPdfs" name="etiquetasPdfs" accept="application/pdf" multiple required>
+                    <label for="etiquetasPdfs" class="btn btn-secondary"><i class="fas fa-file-pdf"></i> Escolher Arquivos</label>
+                </div>
+                <small>Você pode selecionar múltiplos arquivos (até 20 por vez).</small>
+            </div>
+
+            <div id="file-list" class="file-list"></div>
+
+            <button type="submit" class="btn btn-primary btn-block"><i class="fas fa-cogs"></i> Gerar PDF Organizado</button>
+        </form>
+    </div>
+
+    <div id="loading-overlay" class="loading-overlay" style="display: none;">
+        <div class="loading-spinner"></div>
+        <p>Processando etiquetas... Isso pode levar alguns minutos, por favor, aguarde.</p>
+    </div>
+</div>
+
+<script src="/public/scripts/etiquetasManager.js"></script>
