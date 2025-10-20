@@ -220,6 +220,35 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target.id === 'page-select') { state.currentPage = parseInt(e.target.value, 10); handleFilterChange(false); }
     });
 
+    if (elements.listContainer) {
+        elements.listContainer.addEventListener('click', (event) => {
+            // Pega o elemento exato que foi clicado (ex: o texto, o div, etc.)
+            const target = event.target;
+
+            // 1. VERIFICAÇÃO IMPORTANTE:
+            // Se o que o usuário clicou foi o <select> ou algo dentro dele,
+            // não faça nada (permita que o dropdown abra).
+            if (target.closest('.status-select') || target.closest('.obs-value')) {
+                return; 
+            }
+
+            // 2. ACHAR A LINHA:
+            // A partir do que foi clicado, "sobe" até encontrar a linha principal
+            const listRow = target.closest('.list-row');
+
+            // 3. ABRIR A NOVA ABA:
+            // Se encontrou a linha E ela tem o atributo 'data-href'
+            if (listRow && listRow.dataset.href) {
+                const url = listRow.dataset.href;
+                
+                // Abre a URL em uma nova aba
+                window.open(url, '_blank');
+
+                event.stopPropagation(); 
+            }
+        });
+    }
+
     elements.listContainer.addEventListener('click', async (e) => {
         // Se o clique foi DENTRO do select, não faz nada.
         if (e.target.closest('.status-select-wrapper')) {

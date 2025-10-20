@@ -35,8 +35,8 @@ exports.renderNfeHistoryPage = async (req, res) => {
             LEFT JOIN cached_nfe cn ON enf.nfe_chave_acesso_44d = cn.chave_acesso
             WHERE enf.status_para_relacao IN ('justificada_adiada', 'relacionada', 'pendente', 'cancelada')
             AND
-            enf.transportadora_apelido NOT IN ('SHOPEE MAGAZINE', 'NOVO MERCADO LIVRE', 'MERCADO LIVRE ELIANE', 'MERCADO LIVRE MAGAZINE')
-            ORDER BY enf.nfe_numero DESC
+            enf.transportadora_apelido NOT IN ('SHOPEE MAGAZINE', 'NOVO MERCADO LIVRE', 'MERCADO LIVRE ELIANE', 'MERCADO LIVRE MAGAZINE', 'FRENET')
+            ORDER BY cn.data_emissao DESC
             LIMIT $1 OFFSET $2;
         `;
 
@@ -100,7 +100,7 @@ exports.getNfeHistoryApi = async (req, res) => {
 
         //whereClauses.push(`enf.cancelada = false`);
 
-        whereClauses.push(`enf.transportadora_apelido NOT IN ('SHOPEE MAGAZINE', 'NOVO MERCADO LIVRE', 'MERCADO LIVRE ELIANE', 'MERCADO LIVRE MAGAZINE')`);
+        whereClauses.push(`enf.transportadora_apelido NOT IN ('SHOPEE MAGAZINE', 'NOVO MERCADO LIVRE', 'MERCADO LIVRE ELIANE', 'MERCADO LIVRE MAGAZINE', 'FRENET')`);
 
         const whereCondition = `WHERE ${whereClauses.join(' AND ')}`;
         
@@ -119,7 +119,7 @@ exports.getNfeHistoryApi = async (req, res) => {
             LEFT JOIN transportation_relations tr ON tri.relation_id = tr.id
             LEFT JOIN cached_nfe cn ON enf.nfe_chave_acesso_44d = cn.chave_acesso
             ${whereCondition}
-            ORDER BY enf.id DESC
+            ORDER BY cn.data_emissao DESC
             LIMIT $${paramIndex++} OFFSET $${paramIndex++};
         `;
         const nfeResult = await pool.query(dataQuery, [...queryParams, limit, offset]);

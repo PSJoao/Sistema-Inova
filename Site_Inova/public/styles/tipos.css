@@ -1,8 +1,4 @@
-/* public/styles/etiquetas.css */
-
-/* Importa estilos de formulários e componentes se não estiverem no global */
-/* @import url('forms.css'); */
-/* @import url('components.css'); */
+/* public/styles/tipos.css */
 
 /* --- Abas --- */
 /* (Estilos copiados de assistencia.css para garantir) */
@@ -34,22 +30,32 @@
     color: var(--accent-orange);
 }
 
-/* --- Container de Upload --- */
-.upload-container {
-    max-width: 600px;
-    margin: 2rem auto;
-    padding: 2rem;
+/* --- Layout dos Forms --- */
+.form-container-wrapper {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    justify-content: center;
+    margin-top: 1.5rem;
+}
+
+.form-card {
+    flex: 1;
+    min-width: 350px;
+    max-width: 500px;
+    padding: 1.5rem;
     background-color: var(--bg-main);
     border-radius: var(--border-radius-md);
     border: 1px solid var(--bg-tertiary);
 }
 
-.upload-description {
-    font-size: 1rem;
-    color: var(--text-secondary);
+.form-card-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
     margin-bottom: 1.5rem;
-    text-align: center;
-    line-height: 1.5;
+    border-bottom: 1px solid var(--bg-tertiary);
+    padding-bottom: 0.75rem;
 }
 
 /* --- Estilos de Formulário --- */
@@ -63,6 +69,25 @@
     margin-bottom: 0.5rem;
     color: var(--text-primary);
 }
+
+/*.form-control {
+    width: 100%;
+    padding: 0.65rem 1rem;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    color: var(--text-primary);
+    background-color: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    box-sizing: border-box;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.form-control:focus {
+    border-color: var(--accent-blue);
+    outline: 0;
+    box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+}*/
 
 .form-text {
     display: block;
@@ -83,6 +108,7 @@
 
 .file-list {
     margin-top: 1rem;
+    font-size: 0.9rem;
     font-style: italic;
     color: var(--text-secondary);
     word-break: break-all;
@@ -90,45 +116,4 @@
 
 .btn-block {
     width: 100%;
-}
-
-/* Adicionar ao final de public/styles/etiquetas.css */
-
-.file-list ul {
-    list-style: none;
-    padding-left: 0;
-    margin-top: 10px;
-}
-
-.file-list li {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 6px 10px;
-    border: 1px solid var(--bg-tertiary);
-    border-radius: var(--border-radius-sm);
-    margin-bottom: 5px;
-    background-color: var(--bg-main);
-}
-
-.file-list li span {
-    display: flex;
-    align-items: center;
-    gap: 8px; /* Espaço entre o ícone e o texto */
-    word-break: break-all;
-}
-
-.remove-file-btn {
-    background: none;
-    border: none;
-    color: var(--accent-red);
-    font-size: 1.5rem;
-    font-weight: bold;
-    cursor: pointer;
-    padding: 0 5px;
-    line-height: 1;
-}
-
-.remove-file-btn:hover {
-    color: darkred;
 }

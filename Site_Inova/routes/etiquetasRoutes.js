@@ -15,5 +15,8 @@ router.get('/etiquetas', etiquetasController.renderEtiquetasPage);
 // POST /etiquetas/processar
 router.post('/etiquetas/processar', etiquetasController.processAndOrganizeEtiquetas);
 
+router.post('/etiquetas/buscar-nf', etiquetasController.buscarNfIndividual);
+
+router.get('/etiquetas/download-individual/:nf', etiquetasController.downloadNfIndividual);
 
 module.exports = router;

@@ -17,11 +17,15 @@ const rastreioService = require('./services/rastreioService');
 const nfeHistoryRoutes = require('./routes/nfeHistoryRoutes');
 const assistenciaRoutes = require('./routes/assistenciaRoutes');
 const etiquetasRoutes = require('./routes/etiquetasRoutes');
+const tiposRoutes = require('./routes/tiposRoutes');
 //const { updatePrices } = require('./updatePrices.js');
 //const { runScheduledTokenRefresh } = require('./services/blingTokenManager');
 const { syncRecentEmittedNFe, syncNFeEliane, syncNFeLucas } = require('./blingSyncService.js');
 //const { updateUrlCostsAndData } = require('./costUpdater.js');
 const path = require('path');
+const fs = require('fs').promises;
+const PDF_STORAGE_DIR_CLEANUP = path.join(__dirname, 'pdfEtiquetas');
+const MAX_FILE_AGE_DAYS = 7;
 const favicon = require('serve-favicon');
 const cron = require('node-cron'); 
 const { exec } = require('child_process');
@@ -92,6 +96,46 @@ app.use('/rastreio', rastreioRoutes);
 app.use('/historico-nfe', nfeHistoryRoutes); // Define o prefixo da nova página
 app.use('/assistencias', assistenciaRoutes);
 app.use('/', etiquetasRoutes);
+app.use('/', tiposRoutes);
+
+cron.schedule('0 3 * * *', async () => {
+    console.log(`[CRON Limpeza] Iniciando verificação de PDFs antigos em ${PDF_STORAGE_DIR_CLEANUP}...`);
+    try {
+        const files = await fs.readdir(PDF_STORAGE_DIR_CLEANUP);
+        const now = Date.now();
+        const maxAgeMs = MAX_FILE_AGE_DAYS * 24 * 60 * 60 * 1000;
+        let deletedCount = 0;
+
+        for (const file of files) {
+            // Considera apenas os arquivos gerados pelo sistema
+            if (file.startsWith('Etiquetas-Organizadas-') && file.endsWith('.pdf')) {
+                const filePath = path.join(PDF_STORAGE_DIR_CLEANUP, file);
+                try {
+                    const stats = await fs.stat(filePath);
+                    const fileAgeMs = now - stats.mtimeMs; // mtimeMs é o tempo da última modificação
+
+                    if (fileAgeMs > maxAgeMs) {
+                        await fs.unlink(filePath);
+                        console.log(`[CRON Limpeza] Arquivo antigo deletado: ${file}`);
+                        deletedCount++;
+                    }
+                } catch (statOrDeleteError) {
+                    console.error(`[CRON Limpeza] Erro ao processar/deletar ${file}:`, statOrDeleteError);
+                }
+            }
+        }
+        console.log(`[CRON Limpeza] Verificação concluída. ${deletedCount} arquivos antigos deletados.`);
+    } catch (readDirError) {
+        if (readDirError.code === 'ENOENT') {
+            console.log(`[CRON Limpeza] Diretório ${PDF_STORAGE_DIR_CLEANUP} não encontrado. Nenhuma limpeza necessária.`);
+        } else {
+            console.error('[CRON Limpeza] Erro ao ler o diretório de PDFs:', readDirError);
+        }
+    }
+}, {
+  scheduled: true,
+  timezone: "America/Sao_Paulo"
+});
 
 //Agendar tarefa para atualizar preços da madeira a cada 20 minutos
 //cron.schedule('*/20 * * * *', async () => {
