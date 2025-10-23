@@ -1156,15 +1156,33 @@ exports.getSkuDetailsAPI = async (req, res) => {
 
 exports.findNfInBlingAPI = async (req, res) => {
     const { numero } = req.params;
+
+    // 1. Validação básica
     if (!numero || !/^\d+$/.test(numero)) {
-        return res.status(400).json({ message: 'Número da NF inválido.' });
+        return res.status(400).json({ message: 'Número da NF inválido. Deve conter apenas dígitos.' });
     }
 
-    try {
-        // Chama a função que adiciona à fila e aguarda a conclusão
-        await findAndCacheNfeByNumber(numero);
+    // --- INÍCIO DA CORREÇÃO COM REGRA DE NEGÓCIO ---
+    let targetAccount;
 
-        // Após a conclusão, busca os dados agora cacheados (reutilizando a função existente)
+    // 2. Aplica a regra para determinar a conta correta
+    if (numero.length === 6 && numero.startsWith('0')) {
+        targetAccount = 'eliane';
+    } else {
+        // Assume 'lucas' para 6 dígitos que não começam com 0
+        // ou qualquer outro formato de número.
+        targetAccount = 'lucas';
+    }
+    
+    console.log(`[findNfInBlingAPI] NF ${numero} mapeada para a conta: ${targetAccount}`);
+    // --- FIM DA CORREÇÃO ---
+
+    try {
+        // 3. Chama a função da fila AGORA COM OS DOIS ARGUMENTOS CORRETOS
+        await findAndCacheNfeByNumber(numero, targetAccount);
+
+        // 4. O resto da função continua como antes, lendo do cache
+        console.log(`[findNfInBlingAPI] NF ${numero} encontrada e cacheada. Buscando dados do cache local...`);
         const cachedResult = await pool.query(
             'SELECT * FROM cached_nfe WHERE nfe_numero = $1',
             [numero]
@@ -1172,21 +1190,27 @@ exports.findNfInBlingAPI = async (req, res) => {
 
         if (cachedResult.rows.length > 0) {
             const nfData = cachedResult.rows[0];
+
+            // Busca os produtos da NF usando a conta correta que foi cacheada
             const productsResult = await pool.query(
                 `SELECT cp.sku, cp.nome as nome_produto, nqp.quantidade 
                  FROM nfe_quantidade_produto nqp 
                  JOIN cached_products cp ON nqp.produto_codigo = cp.sku 
                  WHERE nqp.nfe_numero = $1 AND cp.bling_account = $2`,
-                [numero, nfData.bling_account]
+                [numero, nfData.bling_account] // nfData.bling_account agora será 'lucas' ou 'eliane'
             );
+            
             nfData.produtos = productsResult.rows;
             res.json(nfData);
         } else {
-            // Isso não deveria acontecer se findAndCacheNfeByNumber funcionou, mas é uma segurança
-            res.status(404).json({ message: 'NF não encontrada no cache após a busca no Bling.' });
+            // Se o findAndCacheNfeByNumber não lançou um erro, mas não salvou no cache
+            // (o que é improvável, mas é uma segurança), informamos que não foi achada.
+            res.status(404).json({ message: `Nota Fiscal ${numero} não foi encontrada no Bling (${targetAccount}) após a busca.` });
         }
     } catch (error) {
-        console.error(`[findNfInBlingAPI] Erro ao buscar e cachear NF ${numero}:`, error);
+        // Pega erros vindos do findAndCacheNfeByNumber (ex: API do Bling falhou, ou a NF realmente não existe)
+        console.error(`[findNfInBlingAPI] Erro ao buscar/cachear NF ${numero} da conta ${targetAccount}:`, error.message);
+        // Retorna o erro vindo do Bling (ex: "NF 123456 não encontrada")
         res.status(404).json({ message: error.message });
     }
 };

@@ -54,157 +54,156 @@ async function apiRequestWithRetry(url, accountType, maxRetries = 8) {
     throw new Error(`Falha persistente na API do Bling. Último erro: ${lastError.message}`);
 }
 
+exports.findAndCachePedidoByLojaNumber = (numeroLoja, accountType) => {
+    return new Promise((resolve) => {
+        console.log(`[OnDemandQueue] Adicionando pedido ${numeroLoja} (${accountType}) à fila.`);
+        // --- CORREÇÃO APLICADA AQUI ---
+        // Garante que o 'accountType' seja adicionado ao objeto da fila.
+        onDemandNfeQueue.push({ numeroLoja, accountType, resolve });
+        if (!isOnDemandNfeRunning) {
+            processOnDemandNfeQueue();
+        }
+    });
+};
+
 async function processOnDemandNfeQueue() {
-    // Se já estiver processando ou a fila estiver vazia, sai.
-    if (isOnDemandNfeRunning || onDemandNfeQueue.length === 0) {
-        return;
-    }
-    // Trava para não processar mais de uma ao mesmo tempo.
+    if (isOnDemandNfeRunning) return;
     isOnDemandNfeRunning = true;
 
-    // Aguarda se uma sincronização em massa estiver em andamento.
-    while (isNFeLucasRunning || isNFeElianeRunning) {
-        console.log('[OnDemandQueue] Sincronização em massa ativa. Aguardando...');
-        await new Promise(resolve => setTimeout(resolve, 3000)); // Espera 3 segundos
+    while (onDemandNfeQueue.length > 0) {
+        // --- CORREÇÃO APLICADA AQUI ---
+        // Pega o item inteiro da fila (que pode conter nfeNumber ou numeroLoja)
+        const item = onDemandNfeQueue.shift();
+        
+        console.log(`[OnDemandQueue] Processando item da fila:`, item);
+        
+        // Passa o objeto 'item' inteiro para a processSingleNfe,
+        // que agora espera um único objeto como parâmetro.
+        await processSingleNfe(item); 
     }
 
-    const { nfeNumber, resolve, reject } = onDemandNfeQueue.shift();
-    console.log(`[OnDemandQueue] Processando busca para a NF: ${nfeNumber}`);
+    isOnDemandNfeRunning = false;
+}
 
+async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve }) {
+    const client = await pool.connect();
     try {
-        // A lógica principal da busca (será criada a seguir)
-        const result = await processSingleNfe(nfeNumber);
-        resolve(result);
-    } catch (error) {
-        reject(error);
-    } finally {
-        // Libera a trava e tenta processar o próximo item da fila.
-        isOnDemandNfeRunning = false;
-        processOnDemandNfeQueue();
-    }
-}
+        await client.query('BEGIN');
+        let nfeDetalhes;
 
-async function processSingleNfe(nfeNumber) {
-    // 1. Tenta encontrar o RESUMO da NFe para obter o ID do Bling
-    let nfeResumo = null;
-    let accountType = null;
-
-    for (const conta of ['lucas', 'eliane']) {
-        try {
-            // CORREÇÃO: Usa o endpoint de listagem filtrando pelo número da nota para encontrar o ID.
-            const response = await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe?numero=${nfeNumber}`, conta, 3);
-            if (response.data && response.data.length > 0) {
-                nfeResumo = response.data[0];
-                accountType = conta;
-                console.log(`[OnDemandQueue] NF ${nfeNumber} encontrada na conta ${accountType}. ID Bling: ${nfeResumo.id}`);
-                break; // Para a busca assim que encontrar
+        // Bloco para determinar os detalhes da NFe (pelo Pack ID ou pelo Número da NF)
+        if (numeroLoja) {
+            console.log(`[OnDemandQueue] Processando pelo PACK ID: ${numeroLoja}`);
+            const pedidoSearchResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas?numerosLojas[]=${numeroLoja}`, accountType);
+            if (!pedidoSearchResponse.data || pedidoSearchResponse.data.length === 0) {
+                throw new Error(`Pedido com numeroLoja ${numeroLoja} não encontrado no Bling.`);
             }
-        } catch (error) {
-            console.warn(`[OnDemandQueue] NF ${nfeNumber} não encontrada na conta ${conta} ou erro na busca. Detalhe: ${error.message}`);
+            const pedidoId = pedidoSearchResponse.data[0].id;
+            const pedidoDetalhes = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas/${pedidoId}`, accountType)).data;
+            if (!pedidoDetalhes.notaFiscal?.id) {
+                throw new Error(`Pedido ${pedidoId} (loja: ${numeroLoja}) não possui NFe emitida no Bling.`);
+            }
+            nfeDetalhes = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe/${pedidoDetalhes.notaFiscal.id}`, accountType)).data;
+
+        } else if (nfeNumber) {
+            console.log(`[OnDemandQueue] Processando pela NF: ${nfeNumber}`);
+            const nfeSearchResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe?numero=${nfeNumber}`, accountType);
+            if (!nfeSearchResponse.data || nfeSearchResponse.data.length === 0) {
+                throw new Error(`NF ${nfeNumber} não encontrada no Bling.`);
+            }
+            nfeDetalhes = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe/${nfeSearchResponse.data[0].id}`, accountType)).data;
         }
-    }
 
-    if (!nfeResumo || !nfeResumo.id) {
-        throw new Error(`Nota Fiscal ${nfeNumber} não foi encontrada em nenhuma conta do Bling.`);
-    }
-
-    // 2. Se encontrou, processa e salva no cache (reutilizando sua lógica)
-    const chaveDeAcesso = nfeResumo.chaveAcesso;
-    if (!chaveDeAcesso) throw new Error('A NF encontrada no Bling não possui chave de acesso.');
-
-    // Pula se por acaso já foi cacheada por outro processo
-    const checkCache = await pool.query('SELECT 1 FROM cached_nfe WHERE chave_acesso = $1', [chaveDeAcesso]);
-    if (checkCache.rows.length > 0) {
-        console.log(`[OnDemandQueue] NF ${nfeNumber} já estava no cache. Retornando dados existentes.`);
-        return true; // Sucesso, já está no cache
-    }
-
-    // Agora sim, busca os detalhes completos usando o ID que encontramos
-    const nfeDetalhes = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe/${nfeResumo.id}`, accountType)).data;
-    
-    // --- Início da lógica de processamento (permanece a mesma) ---
-    if (nfeDetalhes.numeroPedidoLoja) {
-        try {
-            const pedidoSearchResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas?numerosLojas[]=${nfeDetalhes.numeroPedidoLoja}`, accountType);
-            if (pedidoSearchResponse.data && pedidoSearchResponse.data.length > 0) {
-                const pedidoId = pedidoSearchResponse.data[0].id;
-                const p = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas/${pedidoId}`, accountType)).data;
-                await pool.query(`
-                    INSERT INTO cached_pedido_venda (
-                        bling_id, numero, numero_loja, data_pedido, data_saida, total_produtos, total_pedido, contato_id, contato_nome, contato_tipo_pessoa, contato_documento, situacao_id, situacao_valor, loja_id, desconto_valor, notafiscal_id, parcela_data_vencimento, parcela_valor, nfe_parent_numero, transporte_frete, intermediador_cnpj, taxa_comissao, custo_frete, valor_base, bling_account
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
-                    ON CONFLICT (bling_id, bling_account) DO UPDATE SET
-                        numero = EXCLUDED.numero, numero_loja = EXCLUDED.numero_loja, data_pedido = EXCLUDED.data_pedido, data_saida = EXCLUDED.data_saida, total_produtos = EXCLUDED.total_produtos, total_pedido = EXCLUDED.total_pedido, contato_id = EXCLUDED.contato_id, contato_nome = EXCLUDED.contato_nome, contato_tipo_pessoa = EXCLUDED.contato_tipo_pessoa, contato_documento = EXCLUDED.contato_documento, situacao_id = EXCLUDED.situacao_id, situacao_valor = EXCLUDED.situacao_valor, loja_id = EXCLUDED.loja_id, desconto_valor = EXCLUDED.desconto_valor, notafiscal_id = EXCLUDED.notafiscal_id, parcela_data_vencimento = EXCLUDED.parcela_data_vencimento, parcela_valor = EXCLUDED.parcela_valor, nfe_parent_numero = EXCLUDED.nfe_parent_numero, transporte_frete = EXCLUDED.transporte_frete, intermediador_cnpj = EXCLUDED.intermediador_cnpj, taxa_comissao = EXCLUDED.taxa_comissao, custo_frete = EXCLUDED.custo_frete, valor_base = EXCLUDED.valor_base;
-                `, [ p.id, p.numero, p.numeroLoja, p.data, p.dataSaida, p.totalProdutos, p.total, p.contato?.id, p.contato?.nome, p.contato?.tipoPessoa, p.contato?.numeroDocumento, p.situacao?.id, p.situacao?.valor, p.loja?.id, p.desconto?.valor, p.notaFiscal?.id, p.parcelas?.[0]?.dataVencimento, p.parcelas?.[0]?.valor, nfeDetalhes.numero, p.transporte?.frete, p.intermediador?.cnpj, p.taxas?.taxaComissao, p.taxas?.custoFrete, p.taxas?.valorBase, accountType ]);
-            }
-        } catch (pedidoError) { console.error(`[OnDemandQueue] Erro ao processar pedido para a NF ${nfeDetalhes.numero}. Detalhe: ${pedidoError.message}`); }
-    }
-
-    let totalVolumesCalculado = 0;
-    let idsBlingProduto = [];
-    let descricoesProdutos = [];
-    const quantidadesAgregadas = new Map();
-    if (nfeDetalhes.itens?.length > 0) {
-        for (const item of nfeDetalhes.itens) {
-            const produtoCodigo = item.codigo;
-            const quantidadeComprada = parseFloat(item.quantidade);
-            if (produtoCodigo && !isNaN(quantidadeComprada)) {
-                quantidadesAgregadas.set(produtoCodigo, (quantidadesAgregadas.get(produtoCodigo) || 0) + quantidadeComprada);
-            }
-            descricoesProdutos.push(String(item.descricao || 'S/ Descrição').substring(0, 100));
-        }
-    }
-    if (quantidadesAgregadas.size > 0) {
-        const skusDaNota = Array.from(quantidadesAgregadas.keys());
-        const cachedProductsMap = new Map();
-        const cachedProductsResult = await pool.query('SELECT sku, volumes FROM cached_products WHERE sku = ANY($1::text[]) AND bling_account = $2', [skusDaNota, accountType]);
-        cachedProductsResult.rows.forEach(p => cachedProductsMap.set(p.sku, p));
-        for (const [produtoCodigo, quantidadeTotal] of quantidadesAgregadas.entries()) {
-            await pool.query('INSERT INTO nfe_quantidade_produto (nfe_numero, produto_codigo, quantidade) VALUES ($1, $2, $3) ON CONFLICT (nfe_numero, produto_codigo) DO UPDATE SET quantidade = EXCLUDED.quantidade;', [nfeDetalhes.numero, produtoCodigo, quantidadeTotal]);
-            let volumesUnit = 0;
-            if (cachedProductsMap.has(produtoCodigo)) {
-                volumesUnit = parseFloat(cachedProductsMap.get(produtoCodigo).volumes || 0);
-            } else {
-                try {
-                    const prodSearchResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos?codigos[]=${produtoCodigo}`, accountType);
-                    if (prodSearchResp.data?.[0]?.id) {
-                        const prodDetailsResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${prodSearchResp.data[0].id}`, accountType);
-                        volumesUnit = parseFloat(prodDetailsResp.data.volumes || 0);
-                    }
-                } catch (productError) { console.error(`[OnDemandQueue] Erro ao buscar volumes do produto ${produtoCodigo}. Detalhe: ${productError.message}`); }
-            }
-            totalVolumesCalculado += volumesUnit * quantidadeTotal;
+        // --- LÓGICA DE PROCESSAMENTO UNIFICADA E CORRIGIDA (BASEADA NO SEU CÓDIGO) ---
+        
+        // 1. Processar e Salvar o Pedido de Venda associado (se houver)
+        if (nfeDetalhes.numeroPedidoLoja) {
             try {
-                const prodSearchResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos?codigos[]=${produtoCodigo}`, accountType);
-                if (prodSearchResp.data?.[0]?.id) {
-                    idsBlingProduto.push(String(prodSearchResp.data[0].id).substring(0, 100));
+                const pedidoSearchResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas?numerosLojas[]=${nfeDetalhes.numeroPedidoLoja}`, accountType);
+                if (pedidoSearchResponse.data && pedidoSearchResponse.data.length > 0) {
+                    const pedidoId = pedidoSearchResponse.data[0].id;
+                    const p = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas/${pedidoId}`, accountType)).data;
+                    await client.query(`
+                        INSERT INTO cached_pedido_venda (bling_id, numero, numero_loja, data_pedido, data_saida, total_produtos, total_pedido, contato_id, contato_nome, contato_tipo_pessoa, contato_documento, situacao_id, situacao_valor, loja_id, desconto_valor, notafiscal_id, nfe_parent_numero, bling_account)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) ON CONFLICT (bling_id, bling_account) DO UPDATE SET
+                        numero = EXCLUDED.numero, numero_loja = EXCLUDED.numero_loja, data_pedido = EXCLUDED.data_pedido, data_saida = EXCLUDED.data_saida, total_produtos = EXCLUDED.total_produtos, total_pedido = EXCLUDED.total_pedido, contato_id = EXCLUDED.contato_id, contato_nome = EXCLUDED.contato_nome, contato_tipo_pessoa = EXCLUDED.contato_tipo_pessoa, contato_documento = EXCLUDED.contato_documento, situacao_id = EXCLUDED.situacao_id, situacao_valor = EXCLUDED.situacao_valor, loja_id = EXCLUDED.loja_id, desconto_valor = EXCLUDED.desconto_valor, notafiscal_id = EXCLUDED.notafiscal_id, nfe_parent_numero = EXCLUDED.nfe_parent_numero;
+                    `, [ p.id, p.numero, p.numeroLoja, p.data, p.dataSaida, p.totalProdutos, p.total, p.contato?.id, p.contato?.nome, p.contato?.tipoPessoa, p.contato?.numeroDocumento, p.situacao?.id, p.situacao?.valor, p.loja?.id, p.desconto?.valor, p.notaFiscal?.id, nfeDetalhes.numero, accountType ]);
+                    console.log(`   [Cache] Pedido ${p.id} salvo no cache.`);
                 }
-            } catch (idError) { console.error(`[OnDemandQueue] Erro ao buscar ID do produto ${produtoCodigo}. Detalhe: ${idError.message}`); }
+            } catch (pedidoError) { console.error(`[OnDemandQueue] Erro ao buscar/salvar pedido para a NF ${nfeDetalhes.numero}. Detalhe: ${pedidoError.message}`); }
         }
+
+        // 2. Processar Itens, Produtos e Quantidades
+        const idsBlingProduto = [];
+        const descricoesProdutos = new Set();
+        if (nfeDetalhes.itens && nfeDetalhes.itens.length > 0) {
+            for (const item of nfeDetalhes.itens) {
+                descricoesProdutos.add(item.descricao || 'S/ Descrição');
+
+                // Garante que o produto será salvo no cache de produtos e quantidades
+                const sku = item.codigo;
+                if (!sku) continue;
+
+                await client.query(`
+                    INSERT INTO nfe_quantidade_produto (nfe_numero, produto_codigo, quantidade) VALUES ($1, $2, $3)
+                    ON CONFLICT (nfe_numero, produto_codigo) DO UPDATE SET quantidade = EXCLUDED.quantidade;
+                `, [nfeDetalhes.numero, sku, item.quantidade]);
+
+                // Busca o ID do produto (seja da NFe, do cache ou da API)
+                let productId = item.produto?.id;
+                if (!productId) {
+                    try {
+                        const prodSearchResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos?codigos[]=${sku}`, accountType);
+                        if (prodSearchResp.data?.[0]?.id) {
+                            productId = prodSearchResp.data[0].id;
+                            const prodDetails = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${productId}`, accountType)).data;
+                            await client.query(`
+                                INSERT INTO cached_products (bling_id, bling_account, sku, nome, preco_custo, volumes, last_updated_at) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+                                ON CONFLICT (bling_id, bling_account) DO UPDATE SET sku = EXCLUDED.sku, nome = EXCLUDED.nome, preco_custo = EXCLUDED.preco_custo, volumes = EXCLUDED.volumes, last_updated_at = CURRENT_TIMESTAMP;
+                            `, [prodDetails.id, accountType, prodDetails.codigo, prodDetails.nome, prodDetails.precoCusto, prodDetails.volumes || 1]);
+                        }
+                    } catch (idError) { console.error(`[OnDemandQueue] Erro ao buscar ID do produto ${sku}. Detalhe: ${idError.message}`); }
+                }
+                if (productId) {
+                    idsBlingProduto.push(productId);
+                }
+            }
+        }
+        
+        // 3. Salvar a Nota Fiscal com os dados compilados
+        const { id, numero, chaveAcesso, dataEmissao, situacao, transporte, contato } = nfeDetalhes;
+        const productIdsList = `${idsBlingProduto.join('};{')}`;
+        const productDescriptions = Array.from(descricoesProdutos).join('; ');
+
+        await client.query(`
+            INSERT INTO cached_nfe (bling_id, bling_account, nfe_numero, chave_acesso, data_emissao, situacao, transportador_nome, total_volumes, product_ids_list, product_descriptions_list, etiqueta_nome, etiqueta_endereco, etiqueta_numero, etiqueta_complemento, etiqueta_municipio, etiqueta_uf, etiqueta_cep, etiqueta_bairro, fone, last_updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, CURRENT_TIMESTAMP)
+            ON CONFLICT (bling_id, bling_account) DO UPDATE SET
+            nfe_numero = EXCLUDED.nfe_numero, chave_acesso = EXCLUDED.chave_acesso, data_emissao = EXCLUDED.data_emissao, situacao = EXCLUDED.situacao, transportador_nome = EXCLUDED.transportador_nome, total_volumes = EXCLUDED.total_volumes, product_ids_list = EXCLUDED.product_ids_list, product_descriptions_list = EXCLUDED.product_descriptions_list, etiqueta_nome = EXCLUDED.etiqueta_nome, etiqueta_endereco = EXCLUDED.etiqueta_endereco, etiqueta_numero = EXCLUDED.etiqueta_numero, etiqueta_complemento = EXCLUDED.etiqueta_complemento, etiqueta_municipio = EXCLUDED.etiqueta_municipio, etiqueta_uf = EXCLUDED.etiqueta_uf, etiqueta_cep = EXCLUDED.etiqueta_cep, etiqueta_bairro = EXCLUDED.etiqueta_bairro, fone = EXCLUDED.fone, last_updated_at = CURRENT_TIMESTAMP;
+        `, [id, accountType, numero, chaveAcesso, dataEmissao, situacao?.id, transporte?.transportador?.nome, nfeDetalhes.volumes, productIdsList, productDescriptions, transporte?.etiqueta?.nome, transporte?.etiqueta?.endereco, transporte?.etiqueta?.numero, transporte?.etiqueta?.complemento, transporte?.etiqueta?.municipio, transporte?.etiqueta?.uf, transporte?.etiqueta?.cep, transporte?.etiqueta?.bairro, contato?.fone]);
+        
+        await client.query('COMMIT');
+        console.log(`   [Cache] Processo de cache para NF ${numero} finalizado com sucesso.`);
+        resolve(true);
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error(`[OnDemandQueue] Erro crítico ao processar item: ${error.message}`);
+        resolve(false);
+    } finally {
+        client.release();
     }
-    const productListIds = idsBlingProduto.join('; ');
-    const productListString = [...new Set(descricoesProdutos)].join('; ');
-    const etiqueta = nfeDetalhes.transporte?.etiqueta || {};
-    const contato = nfeDetalhes.contato || {};
-    await pool.query(`
-        INSERT INTO cached_nfe (
-            bling_id, bling_account, nfe_numero, chave_acesso, transportador_nome, total_volumes, product_descriptions_list, data_emissao, etiqueta_nome, etiqueta_endereco, etiqueta_numero, etiqueta_complemento, etiqueta_municipio, etiqueta_uf, etiqueta_cep, etiqueta_bairro, fone, product_ids_list, situacao, last_updated_at
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,NOW())
-        ON CONFLICT (chave_acesso) DO NOTHING
-    `, [ nfeDetalhes.id, accountType, nfeDetalhes.numero, nfeDetalhes.chaveAcesso, nfeDetalhes.transporte?.transportador?.nome, totalVolumesCalculado, productListString, nfeDetalhes.dataEmissao, etiqueta.nome, etiqueta.endereco, etiqueta.numero, etiqueta.complemento, etiqueta.municipio, etiqueta.uf, etiqueta.cep, etiqueta.bairro, contato.telefone, productListIds, nfeDetalhes.situacao ]);
-    // --- Fim da lógica de processamento ---
-    
-    console.log(`[OnDemandQueue] NF ${nfeNumber} e seus dados foram salvos no cache com sucesso.`);
-    return true; // Sucesso
 }
 
-function findAndCacheNfeByNumber(nfeNumber) {
+exports.findAndCacheNfeByNumber = (nfeNumber, accountType) => {
     return new Promise((resolve, reject) => {
-        onDemandNfeQueue.push({ nfeNumber, resolve, reject });
-        console.log(`[OnDemandQueue] NF ${nfeNumber} adicionada à fila de busca.`);
-        processOnDemandNfeQueue(); // Inicia o processador se ele estiver ocioso
+        console.log(`[OnDemandQueue] Adicionando NF ${nfeNumber} (${accountType}) à fila.`);
+        onDemandNfeQueue.push({ nfeNumber, accountType, resolve, reject });
+        if (!isOnDemandNfeRunning) {
+            processOnDemandNfeQueue();
+        }
     });
-}
+};
 
 
 /**
@@ -220,8 +219,70 @@ function getSyncStatus() {
     return {
         isEmissaoPageActive,
         isNFeRunning: isNFeLucasRunning || isNFeElianeRunning,
-        isProductSyncRunning,
+        isProductSyncRunning
     };
+}
+
+async function syncNFeLucasOnDemand(nfeNumbers) {
+    if (!nfeNumbers || nfeNumbers.length === 0) {
+        return { success: true, found: [], notFound: [] };
+    }
+    
+    console.log(`[OnDemandSync] Iniciando busca por ${nfeNumbers.length} NF-e no Bling...`);
+    const status = getSyncStatus();
+    if (status.isNFeRunning || status.isProductSyncRunning) {
+        console.warn('[OnDemandSync] Abortado: Uma sincronização de rotina já está em andamento.');
+        throw new Error('Uma sincronização de rotina já está em andamento. Tente novamente mais tarde.');
+    }
+
+    isNFeLucasRunning = true; // Usa a mesma trava de execução para evitar concorrência
+    const client = await pool.connect();
+    let foundNfes = [];
+    let notFoundNfes = [...nfeNumbers];
+
+    try {
+        for (const nfeNumber of nfeNumbers) {
+            const filtro = `numero eq '${nfeNumber}'`;
+            const url = `${BLING_API_BASE_URL}/notafiscal/list?filters=${filtro}`;
+            const response = await blingApiGet(url, 'lucas');
+
+            if (response.data && response.data.length > 0) {
+                const nfeData = response.data[0];
+                const { id, numero, chaveAcesso, dataEmissao, situacao, itens, transporte, contato } = nfeData;
+                const totalVolumes = itens.reduce((acc, item) => acc + (item.volumes || 0), 0) || 1;
+                const productIdsList = `{${itens.map(item => item.produto.id).join('};{')}}`;
+                const productDescriptions = itens.map(item => item.descricao).join('; ');
+                
+                await client.query('BEGIN');
+                await upsertNfe(client, {
+                    bling_id: id, bling_account: 'lucas', nfe_numero: numero, chave_acesso: chaveAcesso, data_emissao: dataEmissao,
+                    situacao: situacao.id, transportador_nome: transporte?.transportador?.nome, total_volumes: totalVolumes,
+                    product_ids_list: productIdsList, product_descriptions_list: productDescriptions,
+                    etiqueta_nome: transporte?.etiqueta?.nome, etiqueta_endereco: transporte?.etiqueta?.endereco, etiqueta_numero: transporte?.etiqueta?.numero,
+                    etiqueta_complemento: transporte?.etiqueta?.complemento, etiqueta_municipio: transporte?.etiqueta?.municipio, etiqueta_uf: transporte?.etiqueta?.uf,
+                    etiqueta_cep: transporte?.etiqueta?.cep, etiqueta_bairro: transporte?.etiqueta?.bairro, fone: contato?.fone
+                });
+
+                for (const item of itens) {
+                    await upsertProduct(client, { bling_id: item.produto.id, bling_account: 'lucas', sku: item.codigo, nome: item.descricao, preco_custo: item.valor, volumes: item.volumes || 1 });
+                    await upsertNfeQuantidade(client, { nfe_numero: numero, produto_codigo: item.codigo, quantidade: item.quantidade });
+                }
+                await client.query('COMMIT');
+                
+                foundNfes.push(nfeNumber);
+                notFoundNfes = notFoundNfes.filter(n => n !== nfeNumber);
+            }
+        }
+        console.log(`[OnDemandSync] Finalizado. Encontradas: ${foundNfes.join(', ')}. Não encontradas: ${notFoundNfes.join(', ')}.`);
+        return { success: true, found: foundNfes, notFound: notFoundNfes };
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('[OnDemandSync] Erro durante a sincronização sob demanda:', error.message);
+        return { success: false, error: error.message, found: foundNfes, notFound: notFoundNfes };
+    } finally {
+        isNFeLucasRunning = false;
+        client.release();
+    }
 }
 
 async function processAndCacheStructuresLucas(productData, client) {
@@ -476,8 +537,11 @@ async function syncBlingProductsEliane() {
  */
 async function syncNFeLucas() {
     // Bloco de verificação inicial (trava) - Se já estiver rodando, ou produtos sincronizando, ou emissão aberta, a função para aqui.
-    if (isNFeLucasRunning || isProductLucasSyncRunning) return console.log('[LucasSync] Sincronização de NF-e ou produtos já em andamento. Pulando.');
-    if (isEmissaoPageActive) return console.log('[LucasSync] Página de emissão ativa. Sincronização de NF-e bloqueada.');
+    if (isNFeLucasRunning || isProductSyncRunning || isEmissaoPageActive) {
+        const reason = isNFeLucasRunning ? 'já está em execução' : isProductSyncRunning ? 'sinc. de produtos em andamento' : isEmissaoPageActive ? 'página de emissão em uso' : 'página de etiquetas em uso';
+        console.log(`[LucasSync] Sincronização de NF-e pulada: ${reason}.`);
+        return;
+    }
 
     isNFeLucasRunning = true;
     console.log('[LucasSync] Iniciando sincronização de NF-e e Pedidos da conta Lucas...');
@@ -718,8 +782,11 @@ async function syncNFeLucas() {
 
 async function syncNFeEliane() {
     // Bloco de verificação inicial (trava)
-    if (isNFeElianeRunning || isProductElianeSyncRunning) return console.log('[ElianeSync] Sincronização já em andamento. Pulando.');
-    if (isEmissaoPageActive) return console.log('[ElianeSync] Página de emissão ativa. Aguardando...');
+    if (isNFeElianeRunning || isProductSyncRunning || isEmissaoPageActive) {
+        const reason = isNFeElianeRunning ? 'já está em execução' : isProductSyncRunning ? 'sinc. de produtos em andamento' : isEmissaoPageActive ? 'página de emissão em uso' : 'página de etiquetas em uso';
+        console.log(`[ElianeSync] Sincronização de NF-e pulada: ${reason}.`);
+        return;
+    }
 
     isNFeElianeRunning = true;
     console.log('[ElianeSync] Iniciando sincronização de NF-e e Pedidos da conta Eliane...');
@@ -961,12 +1028,35 @@ async function syncNFeEliane() {
     }
 }
 
+async function upsertNfe(client, data) {
+    const query = `
+        INSERT INTO cached_nfe (bling_id, bling_account, nfe_numero, chave_acesso, data_emissao, situacao, transportador_nome, total_volumes, product_ids_list, product_descriptions_list, etiqueta_nome, etiqueta_endereco, etiqueta_numero, etiqueta_complemento, etiqueta_municipio, etiqueta_uf, etiqueta_cep, etiqueta_bairro, fone, last_updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, CURRENT_TIMESTAMP)
+        ON CONFLICT (bling_id, bling_account) DO UPDATE SET
+        nfe_numero = EXCLUDED.nfe_numero, chave_acesso = EXCLUDED.chave_acesso, data_emissao = EXCLUDED.data_emissao, situacao = EXCLUDED.situacao, transportador_nome = EXCLUDED.transportador_nome, total_volumes = EXCLUDED.total_volumes, product_ids_list = EXCLUDED.product_ids_list, product_descriptions_list = EXCLUDED.product_descriptions_list, etiqueta_nome = EXCLUDED.etiqueta_nome, etiqueta_endereco = EXCLUDED.etiqueta_endereco, etiqueta_numero = EXCLUDED.etiqueta_numero, etiqueta_complemento = EXCLUDED.etiqueta_complemento, etiqueta_municipio = EXCLUDED.etiqueta_municipio, etiqueta_uf = EXCLUDED.etiqueta_uf, etiqueta_cep = EXCLUDED.etiqueta_cep, etiqueta_bairro = EXCLUDED.etiqueta_bairro, fone = EXCLUDED.fone, last_updated_at = CURRENT_TIMESTAMP;`;
+    await client.query(query, [ data.bling_id, data.bling_account, data.nfe_numero, data.chave_acesso, data.data_emissao, data.situacao, data.transportador_nome, data.total_volumes, data.product_ids_list, data.product_descriptions_list, data.etiqueta_nome, data.etiqueta_endereco, data.etiqueta_numero, data.etiqueta_complemento, data.etiqueta_municipio, data.etiqueta_uf, data.etiqueta_cep, data.etiqueta_bairro, data.fone ]);
+}
+async function upsertProduct(client, data) {
+    const query = `
+        INSERT INTO cached_products (bling_id, bling_account, sku, nome, preco_custo, volumes, last_updated_at) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+        ON CONFLICT (bling_id, bling_account) DO UPDATE SET sku = EXCLUDED.sku, nome = EXCLUDED.nome, preco_custo = EXCLUDED.preco_custo, volumes = EXCLUDED.volumes, last_updated_at = CURRENT_TIMESTAMP;`;
+    await client.query(query, [data.bling_id, data.bling_account, data.sku, data.nome, data.preco_custo, data.volumes]);
+}
+async function upsertNfeQuantidade(client, data) {
+    const query = `
+        INSERT INTO nfe_quantidade_produto (nfe_numero, produto_codigo, quantidade) VALUES ($1, $2, $3)
+        ON CONFLICT (nfe_numero, produto_codigo) DO UPDATE SET quantidade = EXCLUDED.quantidade;`;
+    await client.query(query, [data.nfe_numero, data.produto_codigo, data.quantidade]);
+}
+
 module.exports = {
     syncNFeLucas,
     syncNFeEliane,
     getSyncStatus,
     syncBlingProductsLucas,
+    syncNFeLucasOnDemand,
     syncBlingProductsEliane,
     setEmissaoPageStatus,
-    findAndCacheNfeByNumber 
+    findAndCacheNfeByNumber: exports.findAndCacheNfeByNumber,
+    findAndCachePedidoByLojaNumber: exports.findAndCachePedidoByLojaNumber
 };

@@ -1,0 +1,77 @@
+{{! views/etiquetas/bipagem.handlebars }}
+<link rel="stylesheet" href="/public/styles/etiquetasBipagem.css">
+
+<div class="content-card">
+    
+    {{! Cabeçalho com contadores (inalterado) }}
+    <div class="bipagem-header">
+        <h1 class="page-title">{{title}}</h1>
+        <div class="bipagem-stats">
+            <div>
+                <span class="stat-label">Produtos:</span>
+                <span class="stat-value" id="statProdutosCompletos">0</span>
+            </div>
+            <div>
+                <span class="stat-label">Estruturas:</span>
+                <span class="stat-value" id="statEstruturasBipadas">0</span>
+            </div>
+            <div>
+                <span class="stat-label">Palete Atual:</span>
+                <span class="stat-value" id="statPaleteAtual">1</span>
+            </div>
+        </div>
+    </div>
+
+    {{! Botões de Ação Principais (inalterado) }}
+    <div class="bipagem-actions">
+        <button type="button" class="btn btn-accent" id="bipagemAddPalletBtn">
+            <i class="fas fa-pallet"></i> Adicionar Palete
+        </button>
+        <button type="button" class="btn btn-accent" id="bipagemFinalizeBtn">
+            <i class="fas fa-check-circle"></i> Finalizar Bipagem
+        </button>
+    </div>
+
+    {{! Nova Área para Bipagem Atual }}
+    <div class="bipagem-current-scan">
+        <div class="current-scan-header">
+            <h5>Bipagem Atual</h5>
+            <div class="current-scan-actions">
+                <button type="button" class="btn btn-danger btn-sm" id="bipagemClearCurrentBtn" title="Limpar Bipagem Atual">
+                    <i class="fas fa-times"></i> Limpar
+                </button>
+                <button type="button" class="btn btn-danger btn-sm" id="bipagemCancelarKitBtn" title="Cancelar Montagem do Kit" style="display: none;">
+                     <i class="fas fa-ban"></i> Cancelar Kit
+                </button>
+                {{! Botão Montar/Fechar Kit }}
+                <button type="button" class="btn btn-success" id="bipagemMontarKitBtn">
+                    <i class="fas fa-box-check"></i> <span>Montar Kit</span>
+                </button>
+            </div>
+        </div>
+        <ul id="currentScanList" class="current-scan-list">
+            {{! Bips atuais entram aqui }}
+            <li class="current-scan-placeholder">Bipe as estruturas deste produto...</li>
+        </ul>
+    </div>
+    {{! Lista de itens bipados (agora são produtos fechados) }}
+    <div class="bipagem-list" id="bipagemListContainer">
+        {{! Itens serão adicionados dinamicamente pelo JS }}
+        <div class="bipagem-placeholder">
+            <i class="fas fa-barcode-read"></i>
+            <p>Aguardando produtos fechados...</p>
+        </div>
+    </div>
+
+    {{! Footer fixo com o input de bipagem (inalterado) }}
+    <div class="bipagem-footer">
+        <div class="form-group">
+            <i class="fas fa-barcode-scan input-icon"></i>
+            <input type="text" class="form-control" id="bipagemInput" placeholder="Bipar SKU ou EAN da estrutura..." autocomplete="off">
+        </div>
+    </div>
+</div>
+
+{{#section "scripts"}}
+    <script src="/public/scripts/etiquetasBipagemManager.js"></script>
+{{/section}}

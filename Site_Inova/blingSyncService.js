@@ -86,6 +86,10 @@ async function processOnDemandNfeQueue() {
 }
 
 async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve }) {
+    // --- (Adicionado na Etapa 1) ---
+    // Esta variável armazenará a conta correta ('lucas' ou 'eliane') para ser usada em todo o processamento.
+    let accountTypeEncontrada = accountType; 
+    
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -93,25 +97,59 @@ async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve })
 
         // Bloco para determinar os detalhes da NFe (pelo Pack ID ou pelo Número da NF)
         if (numeroLoja) {
-            console.log(`[OnDemandQueue] Processando pelo PACK ID: ${numeroLoja}`);
-            const pedidoSearchResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas?numerosLojas[]=${numeroLoja}`, accountType);
+            // (Lógica do numeroLoja permanece a mesma)
+            if (!accountTypeEncontrada) { // Garante que a conta foi passada
+                 throw new Error(`Busca por numeroLoja ${numeroLoja} falhou: accountType não foi fornecido.`);
+            }
+            console.log(`[OnDemandQueue] Processando pelo PACK ID: ${numeroLoja} (${accountTypeEncontrada})`);
+            const pedidoSearchResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas?numerosLojas[]=${numeroLoja}`, accountTypeEncontrada);
             if (!pedidoSearchResponse.data || pedidoSearchResponse.data.length === 0) {
                 throw new Error(`Pedido com numeroLoja ${numeroLoja} não encontrado no Bling.`);
             }
             const pedidoId = pedidoSearchResponse.data[0].id;
-            const pedidoDetalhes = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas/${pedidoId}`, accountType)).data;
+            const pedidoDetalhes = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas/${pedidoId}`, accountTypeEncontrada)).data;
             if (!pedidoDetalhes.notaFiscal?.id) {
                 throw new Error(`Pedido ${pedidoId} (loja: ${numeroLoja}) não possui NFe emitida no Bling.`);
             }
-            nfeDetalhes = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe/${pedidoDetalhes.notaFiscal.id}`, accountType)).data;
+            nfeDetalhes = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe/${pedidoDetalhes.notaFiscal.id}`, accountTypeEncontrada)).data;
 
         } else if (nfeNumber) {
             console.log(`[OnDemandQueue] Processando pela NF: ${nfeNumber}`);
-            const nfeSearchResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe?numero=${nfeNumber}`, accountType);
-            if (!nfeSearchResponse.data || nfeSearchResponse.data.length === 0) {
-                throw new Error(`NF ${nfeNumber} não encontrada no Bling.`);
+            
+            // --- (Modificado na Etapa 1) ---
+            // Lógica para iterar e encontrar a NF se a conta não foi definida (ex: vindo da assistenciaController)
+            if (!accountTypeEncontrada) {
+                let nfeEncontrada = false;
+                for (const conta of ['lucas', 'eliane']) {
+                    try {
+                        const nfeSearchResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe?numero=${nfeNumber}`, conta, 3); // 3 retentativas
+                        if (nfeSearchResponse.data && nfeSearchResponse.data.length > 0) {
+                            nfeDetalhes = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe/${nfeSearchResponse.data[0].id}`, conta)).data;
+                            accountTypeEncontrada = conta; // Define a conta correta
+                            console.log(`[OnDemandQueue] NF ${nfeNumber} encontrada na conta ${conta}.`);
+                            nfeEncontrada = true;
+                            break; 
+                        }
+                    } catch (e) {
+                        console.warn(`[OnDemandQueue] NF ${nfeNumber} não encontrada na conta ${conta}.`);
+                    }
+                }
+                if (!nfeEncontrada) {
+                    throw new Error(`NF ${nfeNumber} não encontrada em nenhuma conta (Lucas ou Eliane).`);
+                }
+            } else {
+                 // Se a accountType FOI passada, busca direto nela
+                const nfeSearchResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe?numero=${nfeNumber}`, accountTypeEncontrada);
+                if (!nfeSearchResponse.data || nfeSearchResponse.data.length === 0) {
+                    throw new Error(`NF ${nfeNumber} não encontrada no Bling (${accountTypeEncontrada}).`);
+                }
+                nfeDetalhes = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe/${nfeSearchResponse.data[0].id}`, accountTypeEncontrada)).data;
             }
-            nfeDetalhes = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe/${nfeSearchResponse.data[0].id}`, accountType)).data;
+        }
+        
+        // Se nfeDetalhes não foi definido por algum motivo (ex: falha na lógica)
+        if (!nfeDetalhes) {
+            throw new Error('Não foi possível obter os detalhes da NFe.');
         }
 
         // --- LÓGICA DE PROCESSAMENTO UNIFICADA E CORRIGIDA (BASEADA NO SEU CÓDIGO) ---
@@ -119,71 +157,140 @@ async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve })
         // 1. Processar e Salvar o Pedido de Venda associado (se houver)
         if (nfeDetalhes.numeroPedidoLoja) {
             try {
-                const pedidoSearchResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas?numerosLojas[]=${nfeDetalhes.numeroPedidoLoja}`, accountType);
+                // (Lógica do pedido permanece a mesma, mas usando accountTypeEncontrada)
+                const pedidoSearchResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas?numerosLojas[]=${nfeDetalhes.numeroPedidoLoja}`, accountTypeEncontrada);
                 if (pedidoSearchResponse.data && pedidoSearchResponse.data.length > 0) {
                     const pedidoId = pedidoSearchResponse.data[0].id;
-                    const p = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas/${pedidoId}`, accountType)).data;
+                    const p = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas/${pedidoId}`, accountTypeEncontrada)).data;
                     await client.query(`
                         INSERT INTO cached_pedido_venda (bling_id, numero, numero_loja, data_pedido, data_saida, total_produtos, total_pedido, contato_id, contato_nome, contato_tipo_pessoa, contato_documento, situacao_id, situacao_valor, loja_id, desconto_valor, notafiscal_id, nfe_parent_numero, bling_account)
                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) ON CONFLICT (bling_id, bling_account) DO UPDATE SET
                         numero = EXCLUDED.numero, numero_loja = EXCLUDED.numero_loja, data_pedido = EXCLUDED.data_pedido, data_saida = EXCLUDED.data_saida, total_produtos = EXCLUDED.total_produtos, total_pedido = EXCLUDED.total_pedido, contato_id = EXCLUDED.contato_id, contato_nome = EXCLUDED.contato_nome, contato_tipo_pessoa = EXCLUDED.contato_tipo_pessoa, contato_documento = EXCLUDED.contato_documento, situacao_id = EXCLUDED.situacao_id, situacao_valor = EXCLUDED.situacao_valor, loja_id = EXCLUDED.loja_id, desconto_valor = EXCLUDED.desconto_valor, notafiscal_id = EXCLUDED.notafiscal_id, nfe_parent_numero = EXCLUDED.nfe_parent_numero;
-                    `, [ p.id, p.numero, p.numeroLoja, p.data, p.dataSaida, p.totalProdutos, p.total, p.contato?.id, p.contato?.nome, p.contato?.tipoPessoa, p.contato?.numeroDocumento, p.situacao?.id, p.situacao?.valor, p.loja?.id, p.desconto?.valor, p.notaFiscal?.id, nfeDetalhes.numero, accountType ]);
+                    `, [ p.id, p.numero, p.numeroLoja, p.data, p.dataSaida, p.totalProdutos, p.total, p.contato?.id, p.contato?.nome, p.contato?.tipoPessoa, p.contato?.numeroDocumento, p.situacao?.id, p.situacao?.valor, p.loja?.id, p.desconto?.valor, p.notaFiscal?.id, nfeDetalhes.numero, accountTypeEncontrada ]);
                     console.log(`   [Cache] Pedido ${p.id} salvo no cache.`);
                 }
             } catch (pedidoError) { console.error(`[OnDemandQueue] Erro ao buscar/salvar pedido para a NF ${nfeDetalhes.numero}. Detalhe: ${pedidoError.message}`); }
         }
 
-        // 2. Processar Itens, Produtos e Quantidades
+        // --- INÍCIO DA CORREÇÃO DE CÁLCULO DE VOLUME ---
+        
+        // 2. Processar Itens, Produtos e Quantidades (Refatorado)
+        let totalVolumesCalculado = 0; // Variável para o cálculo
         const idsBlingProduto = [];
         const descricoesProdutos = new Set();
+        const quantidadesAgregadas = new Map(); // Mapa para agregar SKUs
+
+        // 2a. Primeira passagem: Coletar descrições e agregar quantidades
         if (nfeDetalhes.itens && nfeDetalhes.itens.length > 0) {
             for (const item of nfeDetalhes.itens) {
                 descricoesProdutos.add(item.descricao || 'S/ Descrição');
-
-                // Garante que o produto será salvo no cache de produtos e quantidades
                 const sku = item.codigo;
-                if (!sku) continue;
-
-                await client.query(`
-                    INSERT INTO nfe_quantidade_produto (nfe_numero, produto_codigo, quantidade) VALUES ($1, $2, $3)
-                    ON CONFLICT (nfe_numero, produto_codigo) DO UPDATE SET quantidade = EXCLUDED.quantidade;
-                `, [nfeDetalhes.numero, sku, item.quantidade]);
-
-                // Busca o ID do produto (seja da NFe, do cache ou da API)
-                let productId = item.produto?.id;
-                if (!productId) {
-                    try {
-                        const prodSearchResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos?codigos[]=${sku}`, accountType);
-                        if (prodSearchResp.data?.[0]?.id) {
-                            productId = prodSearchResp.data[0].id;
-                            const prodDetails = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${productId}`, accountType)).data;
-                            await client.query(`
-                                INSERT INTO cached_products (bling_id, bling_account, sku, nome, preco_custo, volumes, last_updated_at) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
-                                ON CONFLICT (bling_id, bling_account) DO UPDATE SET sku = EXCLUDED.sku, nome = EXCLUDED.nome, preco_custo = EXCLUDED.preco_custo, volumes = EXCLUDED.volumes, last_updated_at = CURRENT_TIMESTAMP;
-                            `, [prodDetails.id, accountType, prodDetails.codigo, prodDetails.nome, prodDetails.precoCusto, prodDetails.volumes || 1]);
-                        }
-                    } catch (idError) { console.error(`[OnDemandQueue] Erro ao buscar ID do produto ${sku}. Detalhe: ${idError.message}`); }
-                }
-                if (productId) {
-                    idsBlingProduto.push(productId);
+                const quantidadeComprada = parseFloat(item.quantidade) || 0;
+                
+                if (sku && !isNaN(quantidadeComprada)) {
+                    // Agrega as quantidades (ex: 2x SKU-A e 3x SKU-A = 5x SKU-A)
+                    quantidadesAgregadas.set(sku, (quantidadesAgregadas.get(sku) || 0) + quantidadeComprada);
                 }
             }
         }
         
-        // 3. Salvar a Nota Fiscal com os dados compilados
-        const { id, numero, chaveAcesso, dataEmissao, situacao, transporte, contato } = nfeDetalhes;
-        const productIdsList = `${idsBlingProduto.join('};{')}`;
-        const productDescriptions = Array.from(descricoesProdutos).join('; ');
+        // 2b. Segunda passagem: Iterar sobre os SKUs agregados para calcular volumes
+        if (quantidadesAgregadas.size > 0) {
+            const skusDaNota = Array.from(quantidadesAgregadas.keys());
+            const cachedProductsMap = new Map();
 
+            // Busca todos os produtos da nota que já estão no cache
+            if (skusDaNota.length > 0) {
+                const cachedProductsResult = await client.query(
+                    'SELECT sku, volumes, bling_id FROM cached_products WHERE sku = ANY($1::text[]) AND bling_account = $2',
+                    [skusDaNota, accountTypeEncontrada]
+                );
+                cachedProductsResult.rows.forEach(p => cachedProductsMap.set(p.sku, p));
+            }
+
+            // Agora processa cada SKU único
+            for (const [produtoCodigo, quantidadeTotal] of quantidadesAgregadas.entries()) {
+                
+                // Salva a quantidade total do produto na tabela nfe_quantidade_produto
+                await client.query(`
+                    INSERT INTO nfe_quantidade_produto (nfe_numero, produto_codigo, quantidade) VALUES ($1, $2, $3)
+                    ON CONFLICT (nfe_numero, produto_codigo) DO UPDATE SET quantidade = EXCLUDED.quantidade;
+                `, [nfeDetalhes.numero, produtoCodigo, quantidadeTotal]);
+
+                let volumesUnit = 0;
+                let productId = null;
+
+                // Verifica se o produto estava no cache
+                if (cachedProductsMap.has(produtoCodigo)) {
+                    const cachedProd = cachedProductsMap.get(produtoCodigo);
+                    volumesUnit = parseFloat(cachedProd.volumes || 0);
+                    productId = cachedProd.bling_id;
+                    
+                } else {
+                    // Se não estava no cache, busca no Bling (lógica que já existia)
+                    try {
+                        await new Promise(resolve => setTimeout(resolve, 500)); // Rate limit
+                        const prodSearchResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos?codigos[]=${produtoCodigo}`, accountTypeEncontrada);
+                        
+                        if (prodSearchResp.data?.[0]?.id) {
+                            productId = prodSearchResp.data[0].id;
+                            await new Promise(resolve => setTimeout(resolve, 500)); // Rate limit
+                            const prodDetails = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${productId}`, accountTypeEncontrada)).data;
+                            
+                            volumesUnit = parseFloat(prodDetails.volumes || 0); // Pega o volume unitário
+                            
+                            // Salva o produto recém-buscado no cache
+                            await client.query(`
+                                INSERT INTO cached_products (bling_id, bling_account, sku, nome, preco_custo, volumes, last_updated_at) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+                                ON CONFLICT (bling_id, bling_account) DO UPDATE SET sku = EXCLUDED.sku, nome = EXCLUDED.nome, preco_custo = EXCLUDED.preco_custo, volumes = EXCLUDED.volumes, last_updated_at = CURRENT_TIMESTAMP;
+                            `, [prodDetails.id, accountTypeEncontrada, prodDetails.codigo, prodDetails.nome, prodDetails.precoCusto, prodDetails.volumes || 1]);
+                        }
+                    } catch (idError) { 
+                        console.error(`[OnDemandQueue] Erro ao buscar ID/Volumes do produto ${produtoCodigo}. Detalhe: ${idError.message}`); 
+                    }
+                }
+                
+                if (productId) {
+                    idsBlingProduto.push(productId);
+                }
+
+                // Soma o volume total (volume unitário * quantidade)
+                totalVolumesCalculado += (volumesUnit * quantidadeTotal);
+            }
+        }
+        
+        // --- FIM DA CORREÇÃO DE CÁLCULO DE VOLUME ---
+
+        
+        // 3. Salvar a Nota Fiscal com os dados compilados
+        const { id, numero, chaveAcesso, dataEmissao, situacao, transporte } = nfeDetalhes;
+        const productIdsList = `${idsBlingProduto.join('};{')}`; // IDs dos produtos
+        const productDescriptions = Array.from(descricoesProdutos).join('; '); // Nomes dos produtos
+        
         await client.query(`
             INSERT INTO cached_nfe (bling_id, bling_account, nfe_numero, chave_acesso, data_emissao, situacao, transportador_nome, total_volumes, product_ids_list, product_descriptions_list, etiqueta_nome, etiqueta_endereco, etiqueta_numero, etiqueta_complemento, etiqueta_municipio, etiqueta_uf, etiqueta_cep, etiqueta_bairro, fone, last_updated_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, CURRENT_TIMESTAMP)
             ON CONFLICT (bling_id, bling_account) DO UPDATE SET
-            nfe_numero = EXCLUDED.nfe_numero, chave_acesso = EXCLUDED.chave_acesso, data_emissao = EXCLUDED.data_emissao, situacao = EXCLUDED.situacao, transportador_nome = EXCLUDED.transportador_nome, total_volumes = EXCLUDED.total_volumes, product_ids_list = EXCLUDED.product_ids_list, product_descriptions_list = EXCLUDED.product_descriptions_list, etiqueta_nome = EXCLUDED.etiqueta_nome, etiqueta_endereco = EXCLUDED.etiqueta_endereco, etiqueta_numero = EXCLUDED.etiqueta_numero, etiqueta_complemento = EXCLUDED.etiqueta_complemento, etiqueta_municipio = EXCLUDED.etiqueta_municipio, etiqueta_uf = EXCLUDED.etiqueta_uf, etiqueta_cep = EXCLUDED.etiqueta_cep, etiqueta_bairro = EXCLUDED.etiqueta_bairro, fone = EXCLUDED.fone, last_updated_at = CURRENT_TIMESTAMP;
-        `, [id, accountType, numero, chaveAcesso, dataEmissao, situacao?.id, transporte?.transportador?.nome, nfeDetalhes.volumes, productIdsList, productDescriptions, transporte?.etiqueta?.nome, transporte?.etiqueta?.endereco, transporte?.etiqueta?.numero, transporte?.etiqueta?.complemento, transporte?.etiqueta?.municipio, transporte?.etiqueta?.uf, transporte?.etiqueta?.cep, transporte?.etiqueta?.bairro, contato?.fone]);
+            nfe_numero = EXCLUDED.nfe_numero, chave_acesso = EXCLUDED.chave_acesso, data_emissao = EXCLUDED.data_emissao, situacao = EXCLUDED.situacao, transportador_nome = EXCLUDED.transportador_nome, 
+            
+            -- AQUI ESTÁ A CORREÇÃO FINAL --
+            total_volumes = EXCLUDED.total_volumes, 
+            -- FIM DA CORREÇÃO FINAL --
+            
+            product_ids_list = EXCLUDED.product_ids_list, product_descriptions_list = EXCLUDED.product_descriptions_list, etiqueta_nome = EXCLUDED.etiqueta_nome, etiqueta_endereco = EXCLUDED.etiqueta_endereco, etiqueta_numero = EXCLUDED.etiqueta_numero, etiqueta_complemento = EXCLUDED.etiqueta_complemento, etiqueta_municipio = EXCLUDED.etiqueta_municipio, etiqueta_uf = EXCLUDED.etiqueta_uf, etiqueta_cep = EXCLUDED.etiqueta_cep, etiqueta_bairro = EXCLUDED.etiqueta_bairro, fone = EXCLUDED.fone, last_updated_at = CURRENT_TIMESTAMP;
+        `, [
+            id, accountTypeEncontrada, numero, chaveAcesso, dataEmissao, situacao, transporte?.transportador?.nome, 
+            
+            // --- (Modificado na Etapa 3) ---
+            // Substitui nfeDetalhes.volumes pelo totalVolumesCalculado
+            totalVolumesCalculado, 
+            // ---
+            
+            productIdsList, productDescriptions, transporte?.etiqueta?.nome, transporte?.etiqueta?.endereco, transporte?.etiqueta?.numero, transporte?.etiqueta?.complemento, transporte?.etiqueta?.municipio, transporte?.etiqueta?.uf, transporte?.etiqueta?.cep, transporte?.etiqueta?.bairro, nfeDetalhes.contato?.telefone
+        ]);
         
         await client.query('COMMIT');
-        console.log(`   [Cache] Processo de cache para NF ${numero} finalizado com sucesso.`);
+        console.log(`   [Cache] Processo de cache para NF ${numero} finalizado com sucesso. Volumes: ${totalVolumesCalculado}`);
         resolve(true);
 
     } catch (error) {
@@ -300,12 +407,12 @@ async function processAndCacheStructuresLucas(productData, client) {
 
             await new Promise(resolve => setTimeout(resolve, 500));
             const componenteDetails = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${componenteId}`, 'lucas')).data;
-
+            console.log(componenteDetails);
             await client.query(
                 `INSERT INTO cached_structures (
                     parent_product_bling_id, parent_product_bling_account, component_sku,
-                    component_location, structure_name
-                ) VALUES ($1, $2, $3, $4, $5)
+                    component_location, structure_name, gtin, gtin_embalagem
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7)
                 ON CONFLICT (parent_product_bling_id, parent_product_bling_account, component_sku)
                 DO NOTHING`,
                 [
@@ -313,7 +420,9 @@ async function processAndCacheStructuresLucas(productData, client) {
                     'lucas',
                     componenteDetails.codigo,
                     componenteDetails.estoque?.localizacao,
-                    componenteDetails.nome
+                    componenteDetails.nome,
+                    componenteDetails.gtin,
+                    componenteDetails.gtinEmbalagem
                 ]
             );
         } catch (error) {

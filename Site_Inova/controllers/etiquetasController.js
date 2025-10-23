@@ -1,6 +1,6 @@
 // controllers/etiquetasController.js
 const multer = require('multer');
-const { processarEtiquetas, buscarEtiquetaPorNF } = require('../services/etiquetasService');
+const { processarEtiquetas, buscarEtiquetaPorNF, validarProdutoPorEstruturas, finalizarBipagem } = require('../services/etiquetasService');
 const archiver = require('archiver');
 const fs = require('fs').promises;
 const path = require('path');
@@ -47,6 +47,61 @@ exports.renderEtiquetasPage = (req, res) => {
     }
 };
 
+exports.renderBipagemPage = (req, res) => {
+    try {
+        res.render('etiquetas/bipagem', {
+            title: 'Bipagem de Etiquetas por Palete',
+            layout: 'main'
+        });
+    } catch (error) {
+        console.error('Erro ao renderizar a página de bipagem:', error);
+        req.flash('error_msg', 'Não foi possível carregar a página de bipagem.');
+        res.redirect('/');
+    }
+};
+
+exports.validarProdutoFechado = async (req, res) => {
+    const { componentSkus: scannedCodes } = req.body;
+
+    if (!scannedCodes || !Array.isArray(scannedCodes) || scannedCodes.length === 0) {
+        return res.status(400).json({ success: false, message: 'Nenhum código de estrutura fornecido.' });
+    }
+
+    try {
+        const resultado = await validarProdutoPorEstruturas(scannedCodes);
+        return res.json(resultado);
+    } catch (error) {
+        console.error(`[Validar Produto] Erro ao processar conjunto de códigos:`, error);
+        return res.status(500).json({ success: false, message: `Erro interno: ${error.message}` });
+    }
+};
+
+exports.finalizarBipagem = async (req, res) => {
+    const { scanList } = req.body;
+
+    if (!scanList || !Array.isArray(scanList) || scanList.length === 0) {
+        return res.status(400).json({ success: false, message: 'Nenhum item bipado para finalizar.' });
+    }
+
+    try {
+        // O serviço irá processar a lista, atualizar o DB e gerar o PDF
+        const pdfBytes = await finalizarBipagem(scanList);
+
+        const timestamp = Date.now();
+        const pdfName = `Bipagem-Finalizada-${timestamp}.pdf`;
+
+        // Envia o PDF como resposta
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${pdfName}"`);
+        res.send(pdfBytes);
+
+    } catch (error) {
+        console.error('[Finalizar Bipagem] Erro catastrófico:', error);
+        // Retorna um JSON de erro em vez de um PDF
+        return res.status(500).json({ success: false, message: `Erro ao gerar PDF: ${error.message}` });
+    }
+};
+
 /**
  * Processa os arquivos PDF enviados, organiza e gera o relatório.
  */
@@ -71,11 +126,15 @@ exports.processAndOrganizeEtiquetas = (req, res) => {
                 originalFilename: file.originalname // Captura o nome original aqui
             }));
 
-            // O serviço agora retorna um objeto com os dois PDFs
-            const { etiquetasPdf, relatorioPdf } = await processarEtiquetas(pdfInputs);
-
+            // 1. Geramos o nome do arquivo ANTES de chamar o serviço.
             const timestamp = Date.now();
             const organizedPdfFilename = `Etiquetas-Organizadas-${timestamp}.pdf`;
+
+            // 2. Passamos o nome do arquivo gerado (organizedPdfFilename) como segundo argumento.
+            const { etiquetasPdf, relatorioPdf } = await processarEtiquetas(pdfInputs, organizedPdfFilename);
+
+            //const timestamp = Date.now();
+            //const organizedPdfFilename = `Etiquetas-Organizadas-${timestamp}.pdf`;
             const organizedPdfPath = path.join(PDF_STORAGE_DIR, organizedPdfFilename);
             try {
                 await fs.writeFile(organizedPdfPath, etiquetasPdf);

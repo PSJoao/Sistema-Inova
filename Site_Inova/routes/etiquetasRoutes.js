@@ -11,6 +11,14 @@ router.use('/etiquetas', authController.requireAuth);
 // GET /etiquetas
 router.get('/etiquetas', etiquetasController.renderEtiquetasPage);
 
+router.get('/etiquetas/bipagem', etiquetasController.renderBipagemPage);
+
+router.post('/etiquetas/validar-produto-fechado', etiquetasController.validarProdutoFechado);
+
+// Rota para finalizar a bipagem e gerar o PDF
+// POST /etiquetas/finalizar-bipagem
+router.post('/etiquetas/finalizar-bipagem', etiquetasController.finalizarBipagem);
+
 // Rota para processar os arquivos PDF enviados
 // POST /etiquetas/processar
 router.post('/etiquetas/processar', etiquetasController.processAndOrganizeEtiquetas);

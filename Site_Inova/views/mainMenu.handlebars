@@ -43,7 +43,7 @@
           <a href="/relacoes" class="btn btn-accent btn-card"><i class="fas fa-truck fa-fw"></i> Gerenciar Relações</a>
           <a href="/rastreio" class="btn btn-accent btn-card"><i class="fas fa-paper-plane"></i> Acompanhamentos</a>
           <a href="/historico-nfe" class="btn btn-accent btn-card"><i class="fas fa-solid fa-sim-card"></i> Histórico de Notas</a>
-          <a href="/etiquetas" class="btn btn-accent btn-card"><i class="fas fa-tags"></i> Etiquetas ML</a>
+          <a id="etiquetas-btn" href="/etiquetas" class="btn btn-accent btn-card"><i class="fas fa-tags"></i> Etiquetas ML</a>
         {{!-- Adicione mais botões para outros módulos ou funcionalidades globais aqui --}}
       </div>
     {{/if}}
@@ -54,7 +54,7 @@
           <a href="/emissao/nfe-management" class="btn btn-accent btn-card"><i class="fas fa-sticky-note"></i> Gerar Etiquetas</a>
           <a href="/historico-nfe" class="btn btn-accent btn-card"><i class="fas fa-solid fa-sim-card"></i> Histórico de Notas</a>
           <a href="/assistencias" class="btn btn-accent btn-card"><i class="fas fa-solid fa-file-invoice"></i> Assistências</a>
-          <a href="/etiquetas" class="btn btn-accent btn-card"><i class="fas fa-tags"></i> Etiquetas ML</a>
+          <a id="etiquetas-btn" href="/etiquetas" class="btn btn-accent btn-card"><i class="fas fa-tags"></i> Etiquetas ML</a>
         {{!-- Adicione mais botões para outros módulos ou funcionalidades globais aqui --}}
       </div>
     {{/if}}
@@ -64,7 +64,7 @@
           <a href="/relacoes" class="btn btn-accent btn-card"><i class="fas fa-truck fa-fw"></i> Gerenciar Relações</a>
           <a href="/historico-nfe" class="btn btn-accent btn-card"><i class="fas fa-solid fa-sim-card"></i> Histórico de Notas</a>
           <a href="/emissao" class="btn btn-accent btn-card"><i class="fas fa-barcode"></i> Gerenciar Emissões</a>
-          <a href="/etiquetas" class="btn btn-accent btn-card"><i class="fas fa-tags"></i> Etiquetas ML</a>
+          <a id="etiquetas-btn" href="/etiquetas" class="btn btn-accent btn-card"><i class="fas fa-tags"></i> Etiquetas ML</a>
         {{!-- Adicione mais botões para outros módulos ou funcionalidades globais aqui --}}
       </div>
     {{/if}}
@@ -79,6 +79,18 @@
     </div>
     --}}
   </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const etiquetasBtn = document.getElementById('etiquetas-btn');
+      if (etiquetasBtn) {
+        const isMobile = window.innerWidth <= 768;
+        etiquetasBtn.href = isMobile ? '/etiquetas/bipagem' : '/etiquetas';
+        console.log(isMobile);
+        console.log(etiquetasBtn.href);
+      }
+    });
+  </script>
 
 </body>
 </html>

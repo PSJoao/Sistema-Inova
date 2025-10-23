@@ -1,0 +1,484 @@
+/*
+ * public/styles/etiquetasBipagem.css
+ * CSS responsivo e temático para a página de Bipagem de Etiquetas,
+ * com scroll interno para a lista principal e destaque na bipagem atual.
+ */
+
+/* --- Variáveis de Altura (Ajuste se necessário) --- */
+:root {
+	--header-height-desktop: 80px;
+	--header-height-mobile: 60px;
+	/* Alturas estimadas dos outros blocos fixos (incluindo paddings/borders) */
+	--actions-height: 60px;
+	/* Altura MÁXIMA da área de bipagem atual (lista + header) */
+	--current-scan-container-max-height: 255px;
+	--footer-height-desktop: 82px;
+	--footer-height-mobile: 78px;
+}
+
+/* --- 1. Estrutura Principal --- */
+
+.bipagem-container {
+	display: flex;
+	flex-direction: column;
+	/* Altura total - altura do header desktop */
+	height: calc(100vh - var(--header-height-desktop));
+	background-color: var(--medium-bg); /* Fundo cinza padrão do layout */
+	overflow: hidden; /* MUITO IMPORTANTE: Impede a rolagem da PÁGINA */
+}
+
+/* --- 2. Cabeçalho (Stats) --- */
+/* (Fundo azul primário com detalhe laranja) */
+.bipagem-header {
+	padding: 1rem 1.5rem;
+	background-color: var(--primary-color); /* AZUL DARK */
+	color: var(--white);
+	border-bottom: 3px solid var(--secondary-color); /* Detalhe LARANJA */
+	box-shadow: var(--shadow-sm);
+	z-index: 10; /* Garante que fique acima */
+	flex-shrink: 0; /* Não encolhe */
+}
+
+.bipagem-header .page-title {
+	margin-bottom: 0.75rem;
+	text-align: center;
+	font-size: 1.5rem; /* Tamanho padrão de título */
+	color: var(--white);
+	font-weight: 600; /* Padrão de títulos */
+}
+
+.bipagem-stats {
+	display: flex;
+	justify-content: space-around;
+	text-align: center;
+}
+
+.bipagem-stats .stat-label {
+	font-size: 0.8rem;
+	color: var(--white);
+	opacity: 0.8;
+	display: block;
+	text-transform: uppercase;
+	font-weight: 500;
+}
+
+.bipagem-stats .stat-value {
+	font-size: 1.6rem; /* Um pouco maior para destaque */
+	font-weight: 700;
+	color: var(--white);
+	line-height: 1.2;
+}
+
+/* --- 3. Ações Principais (Palete / Finalizar) --- */
+/* (Fundo branco padrão, botões primário e secundário) */
+.bipagem-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.75rem;
+	padding: 0.75rem 1.5rem;
+	background-color: var(--white);
+	border-bottom: 1px solid var(--border-color);
+	flex-shrink: 0; /* Não encolhe */
+	/* Altura usada no cálculo do scroll */
+	min-height: var(--actions-height);
+	box-sizing: border-box;
+}
+
+.bipagem-actions .btn {
+	flex-grow: 1; /* Divide o espaço */
+	flex-basis: 200px; /* Base para quebra de linha */
+	/* Estilos .btn-primary (azul) e .btn-secondary (laranja) vêm de components.css */
+	/* Garante ícones alinhados */
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+.bipagem-actions .btn .fas {
+	margin-right: 0.5em;
+}
+
+
+/* --- 4. Área de Bipagem Atual --- */
+/* (Fundo branco, layout limpo) */
+.bipagem-current-scan {
+	background-color: var(--white);
+	border-bottom: 1px solid var(--border-color);
+	padding: 1rem 1.5rem;
+	box-shadow: var(--shadow-sm);
+	z-index: 5; /* Abaixo do header, acima da lista */
+	flex-shrink: 0; /* Não encolhe */
+	/* Altura máxima usada no cálculo do scroll */
+	max-height: var(--current-scan-container-max-height);
+	display: flex;
+	flex-direction: column;
+}
+
+.current-scan-header {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 0.75rem;
+	gap: 0.75rem;
+}
+
+.current-scan-header h5 {
+	margin: 0;
+	font-size: 1.15rem;
+	font-weight: 600; /* Padrão de subtítulos */
+	color: var(--dark-text);
+	flex-grow: 1;
+}
+
+.current-scan-actions {
+	display: flex;
+	gap: 0.75rem;
+	flex-shrink: 0;
+}
+
+/* Botões pequenos herdam de .btn-sm ou definimos aqui */
+.current-scan-actions .btn {
+	padding: .25rem .75rem;
+	font-size: .875rem;
+	line-height: 1.5;
+	border-radius: var(--border-radius-sm);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	/* Estilos .btn-success e .btn-danger vêm de components.css */
+}
+.current-scan-actions .btn .fas {
+	margin-right: 0.35em;
+}
+
+.current-scan-list {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+	/* Altura MÁXIMA era 160px, agora deixa flexível */
+	/* max-height: 160px; */
+	overflow-y: auto; /* Scroll para ESTA lista */
+	background-color: var(--light-bg);
+	border: 1px dashed var(--border-color);
+	border-radius: var(--border-radius);
+	padding: 0.75rem;
+	flex-grow: 1; /* Ocupa o espaço restante dentro do .bipagem-current-scan */
+}
+
+/* --- DESTAQUE PARA ITENS NA LISTA ATUAL --- */
+.current-scan-list li {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	background-color: var(--white);
+	padding: 0.6rem 0.9rem; /* Padding para dar espaço à borda */
+	border-radius: var(--border-radius-sm);
+	margin-bottom: 0.6rem;
+	font-size: 0.95rem;
+	color: var(--dark-text);
+	border: 1px solid var(--border-color);
+	/* Borda de destaque na cor primária */
+	border-left: 4px solid var(--primary-color);
+	box-shadow: 0 1px 2px rgba(0,0,0,0.05); /* Leve sombra */
+	transition: background-color 0.2s ease;
+}
+.current-scan-list li:last-child {
+	margin-bottom: 0;
+}
+.current-scan-list li:hover {
+	background-color: #f8f9fa; /* Leve destaque no hover */
+}
+/* --- FIM DO DESTAQUE --- */
+
+.current-scan-list .current-scan-placeholder {
+	display: flex; /* Garante que 'justify-content' funcione */
+	justify-content: center;
+	align-items: center; /* Centraliza verticalmente */
+	height: 100%; /* Ocupa toda a altura disponível na lista */
+	color: var(--light-text);
+	font-style: italic;
+	background-color: transparent;
+	border: none;
+	border-left: none; /* Remove borda do placeholder */
+	box-shadow: none; /* Remove sombra do placeholder */
+	padding: 1rem;
+	text-align: center;
+}
+
+.remove-structure-btn {
+	background: none;
+	border: none;
+	color: var(--danger-color);
+	font-size: 1.3rem;
+	font-weight: 700;
+	line-height: 1;
+	cursor: pointer;
+	padding: 0 0.25rem;
+	opacity: 0.6; /* Menos chamativo */
+	transition: opacity 0.2s ease;
+}
+.remove-structure-btn:hover {
+	opacity: 1;
+}
+
+/* --- 5. Lista Principal (Produtos Fechados e Paletes) --- */
+/* (Fundo cinza, itens como "cards" brancos, com scroll interno) */
+.bipagem-list {
+	flex-grow: 1; /* Ocupa todo o espaço vertical restante */
+	/* --- SCROLL INTERNO --- */
+	overflow-y: auto; /* Adiciona scroll VERTICAL a ESTE container */
+	/* --- ALTURA FIXA --- */
+	/* Altura calculada: Viewport - Header - Actions - CurrentScan - Footer */
+	/* Usamos height (em vez de max-height) para forçar o scroll */
+	height: calc(100vh - var(--header-height-desktop) - var(--actions-height) - var(--current-scan-container-max-height) - var(--footer-height-desktop));
+	/* --- FIM SCROLL/ALTURA --- */
+	padding: 0.75rem 1.5rem; /* Padding normal, o scroll cuida do espaço */
+	background-color: var(--medium-bg);
+	box-sizing: border-box; /* Garante que padding não aumente a altura */
+}
+
+.bipagem-placeholder {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	height: 100%;
+	color: var(--light-text);
+	text-align: center;
+}
+
+.bipagem-placeholder .fas {
+	font-size: 3.5rem; /* Ícone maior */
+	margin-bottom: 1rem;
+	opacity: 0.5;
+}
+.bipagem-placeholder p {
+	font-size: 1.1rem;
+}
+
+.bipagem-item {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	background-color: var(--white);
+	border-radius: var(--border-radius);
+	padding: 0.85rem 1.1rem; /* Mais padding interno */
+	margin-bottom: 0.75rem; /* Mais espaçamento entre itens */
+	box-shadow: var(--shadow-sm);
+	border-left: 5px solid transparent; /* Bordas coloridas para tipo */
+}
+/* Espaçamento extra no final da lista para o scroll */
+.bipagem-list > *:last-child {
+	margin-bottom: 1rem;
+}
+
+
+/* Item de Produto Fechado */
+.bipagem-produto-fechado {
+	border-left-color: var(--success-color); /* Verde */
+	align-items: flex-start;
+}
+
+.bipagem-produto-fechado div { /* Container do texto */
+	flex-grow: 1;
+	padding-right: 0.75rem; /* Espaço antes do botão 'X' */
+}
+
+.bipagem-produto-fechado .item-sku-parent {
+	font-size: 1rem;
+	font-weight: 600; /* Um pouco menos forte que o título */
+	color: var(--dark-text);
+	display: block;
+	margin-bottom: 0.25rem; /* Espaço entre nome e SKUs */
+}
+
+.bipagem-produto-fechado .item-components {
+	font-size: 0.85rem; /* Um pouco maior */
+	color: var(--light-text);
+	display: block;
+	word-break: break-word; /* Quebra SKUs longos */
+	line-height: 1.4;
+}
+
+/* Item de Palete */
+.bipagem-pallet {
+	border-left-color: var(--secondary-color); /* LARANJA */
+	font-weight: 700;
+	font-size: 1.15rem; /* Maior */
+	color: var(--dark-text);
+}
+
+.bipagem-pallet .fas {
+	margin-right: 0.6rem;
+	color: var(--secondary-color); /* LARANJA */
+}
+
+/* Botão de Remover da Lista Principal */
+.remove-main-item-btn {
+	background: none;
+	border: none;
+	color: var(--danger-color);
+	font-size: 1.4rem; /* Maior e mais fácil de clicar */
+	font-weight: 700;
+	line-height: 1;
+	cursor: pointer;
+	padding: 0 0.25rem;
+	opacity: 0.6;
+	align-self: flex-start; /* Alinha o 'X' ao topo */
+	transition: opacity 0.2s ease;
+}
+.remove-main-item-btn:hover {
+	opacity: 1;
+}
+
+/* --- 6. Footer (Input de Bipagem) --- */
+/* (Fundo branco, sombra, input grande com ícone) */
+.bipagem-footer {
+	position: fixed; /* Mantém fixo */
+	bottom: 0;
+	left: var(--sidebar-width, 250px);
+	right: 0;
+	background-color: var(--white);
+	padding: 1rem 1.5rem;
+	box-shadow: 0 -2px 5px rgba(0,0,0,0.1);
+	z-index: 1000;
+	transition: left 0.3s ease-in-out;
+	flex-shrink: 0; /* Não encolhe */
+	/* Altura usada no cálculo do scroll */
+	min-height: var(--footer-height-desktop);
+	box-sizing: border-box;
+}
+
+/* Ajuste QUANDO o sidebar está COLAPSADO */
+.sidebar.collapsed ~ .main-content .bipagem-footer {
+	left: var(--sidebar-collapsed-width, 80px);
+}
+
+.bipagem-footer .form-group {
+	position: relative;
+	margin: 0;
+}
+
+.bipagem-footer .input-icon {
+	position: absolute;
+	left: 1rem;
+	top: 50%;
+	transform: translateY(-50%);
+	color: var(--light-text);
+	font-size: 1.3rem; /* Ícone um pouco maior */
+}
+
+/* Input de Bipagem herda de forms.css */
+.bipagem-footer .form-control {
+	height: 52px; /* Altura generosa */
+	font-size: 1.15rem; /* Fonte maior para leitura rápida */
+	padding-left: 3.2rem; /* Espaço para o ícone */
+	/* Foco azul primário (de forms.css) */
+}
+
+/* --- 7. Responsividade (Mobile - 768px) --- */
+@media (max-width: 768px) {
+	.bipagem-container {
+		/* Altura total - cabeçalho mobile */
+		height: calc(100vh - var(--header-height-mobile));
+	}
+
+	/* Ajusta alturas dos blocos fixos para recalcular o height da lista */
+	:root {
+		--actions-height-mobile: 100px; /* Estimativa com botões empilhados */
+		--current-scan-container-max-height-mobile: 230px; /* Altura máxima da lista atual + header */
+	}
+
+	.bipagem-header { padding: 0.75rem 1rem; }
+	.bipagem-header .page-title { font-size: 1.25rem; margin-bottom: 0.5rem; }
+	.bipagem-stats .stat-value { font-size: 1.3rem; }
+
+	.bipagem-actions {
+		padding: 0.75rem 1rem;
+		/* Altura estimada usada no cálculo */
+		min-height: var(--actions-height-mobile);
+	}
+	.bipagem-actions .btn { flex-basis: 100%; font-size: 1rem; padding: 0.75rem; }
+
+	.bipagem-current-scan {
+		padding: 0.75rem 1rem;
+		/* Altura máxima usada no cálculo */
+		max-height: var(--current-scan-container-max-height-mobile);
+	}
+	.current-scan-header { flex-direction: column; align-items: stretch; gap: 0.5rem; }
+	.current-scan-header h5 { text-align: center; }
+	.current-scan-actions { flex-grow: 1; }
+	.current-scan-actions .btn { flex-grow: 1; flex-basis: 50%; padding: .5rem .75rem; font-size: .9rem; }
+	.current-scan-list { max-height: 120px; }
+	.current-scan-list li { font-size: 0.9rem; padding: 0.5rem 0.75rem; border-left-width: 3px; }
+
+	/* --- SCROLL INTERNO (Mobile) --- */
+	.bipagem-list {
+		padding: 0.5rem 1rem; /* Padding normal */
+		/* Recalcula height para mobile */
+		height: calc(100vh - var(--header-height-mobile) - var(--actions-height-mobile) - var(--current-scan-container-max-height-mobile) - var(--footer-height-mobile));
+	}
+	/* --- FIM SCROLL INTERNO (Mobile) --- */
+
+	.bipagem-item { padding: 0.7rem 0.9rem; margin-bottom: 0.6rem; }
+	.bipagem-produto-fechado .item-sku-parent { font-size: 0.95rem; }
+	.bipagem-produto-fechado .item-components { font-size: 0.8rem; }
+	.bipagem-pallet { font-size: 1.05rem; }
+	.remove-structure-btn, .remove-main-item-btn { font-size: 1.2rem; }
+
+	.bipagem-footer {
+		left: 0 !important; /* Footer sempre 100% no mobile */
+		padding: 0.75rem 1rem;
+		/* Altura usada no cálculo */
+		min-height: var(--footer-height-mobile);
+	}
+	.sidebar.show ~ .main-content .bipagem-footer { left: 0 !important; }
+
+	.bipagem-footer .form-control { height: 48px; font-size: 1rem; padding-left: 2.75rem; }
+	.bipagem-footer .input-icon { left: 0.75rem; font-size: 1.1rem; }
+}
+
+/* --- 8. Responsividade (Mobile Muito Pequeno - 435px) --- */
+@media (max-width: 435px) {
+    /* Reduz paddings gerais */
+    .bipagem-header,
+    .bipagem-actions,
+    .bipagem-current-scan,
+    .bipagem-list,
+    .bipagem-footer {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+    .bipagem-header { padding-top: 0.6rem; padding-bottom: 0.6rem; }
+    .bipagem-actions { padding-top: 0.6rem; padding-bottom: 0.6rem; gap: 0.5rem; }
+    .bipagem-current-scan { padding-top: 0.6rem; padding-bottom: 0.6rem; }
+    .bipagem-list { padding-top: 0.5rem; }
+    .bipagem-footer { padding-top: 0.6rem; padding-bottom: 0.6rem; }
+
+    /* Reduz fontes */
+    .bipagem-header .page-title { font-size: 1.1rem; }
+    .bipagem-stats .stat-value { font-size: 1.15rem; }
+    .bipagem-stats .stat-label { font-size: 0.7rem; }
+
+    .bipagem-actions .btn { font-size: 0.9rem; padding: 0.6rem; }
+
+    .current-scan-header h5 { font-size: 1rem; }
+    .current-scan-actions .btn { font-size: 0.8rem; padding: 0.4rem 0.6rem; }
+    .current-scan-list { padding: 0.5rem; }
+    .current-scan-list li { font-size: 0.85rem; padding: 0.4rem 0.6rem; margin-bottom: 0.4rem; border-left-width: 3px;}
+
+    .bipagem-item { padding: 0.6rem 0.8rem; margin-bottom: 0.5rem; }
+    .bipagem-produto-fechado .item-sku-parent { font-size: 0.9rem; }
+    .bipagem-produto-fechado .item-components { font-size: 0.7rem; }
+    .bipagem-pallet { font-size: 1rem; }
+    .remove-main-item-btn { font-size: 1.1rem; }
+
+    .bipagem-footer .form-control { height: 44px; font-size: 0.95rem; padding-left: 2.5rem; }
+    .bipagem-footer .input-icon { left: 0.6rem; font-size: 1rem; }
+
+    /* Recalcula altura da lista para telas muito pequenas, se necessário */
+    /* (Pode precisar ajustar as variáveis --*-height-mobile se o layout mudar muito) */
+     .bipagem-list {
+        height: calc(100vh - var(--header-height-mobile) - var(--actions-height-mobile) - var(--current-scan-container-max-height-mobile) - var(--footer-height-mobile) - 10px); /* Subtrai um pouco mais para garantir */
+    }
+}

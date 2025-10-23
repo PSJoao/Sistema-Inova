@@ -189,7 +189,7 @@ async function gerarPdfRelatorio(etiquetasCompletas, etiquetasOrdenadas) {
  * @param {Array<Buffer>} pdfInputs - Um array com os buffers dos arquivos PDF enviados.
  * @returns {Buffer} - O buffer do novo PDF gerado e organizado.
  */
-async function processarEtiquetas(pdfInputs) {
+async function processarEtiquetas(pdfInputs, organizedPdfFilename) {
     console.log('==================================================');
     console.log('[ETAPA 1] Iniciando extração de dados das etiquetas...');
     const etiquetasExtraidas = await extrairDadosDosPdfs(pdfInputs);
@@ -201,7 +201,7 @@ async function processarEtiquetas(pdfInputs) {
     }
 
     console.log('[ETAPA 2] Iniciando busca de informações cruciais (cache/Bling)...');
-    const etiquetasCompletas = await buscarInformacoesCruciais(etiquetasExtraidas);
+    const etiquetasCompletas = await buscarInformacoesCruciais(etiquetasExtraidas, organizedPdfFilename);
     console.log('[ETAPA 2] Busca de informações finalizada.');
     console.log('==================================================');
     
@@ -210,7 +210,12 @@ async function processarEtiquetas(pdfInputs) {
     console.log('[ETAPA 3] Etiquetas ordenadas com sucesso.');
     console.log('==================================================');
 
-    // --- NOVO: ETAPA 3.5 ---
+    console.log('[ETAPA 3.1] Atualizando índices de página corretos no banco de dados...');
+    await atualizarPaginasCorretasNoDB(etiquetasOrdenadas, organizedPdfFilename);
+    console.log('[ETAPA 3.1] Índices de página atualizados.');
+    console.log('==================================================');
+
+    // --- ETAPA 3.5 ---
     console.log('[ETAPA 3.5] Atribuindo sequência por SKU...');
     atribuirSequenciaPorSku(etiquetasOrdenadas); // Modifica o array 'etiquetasOrdenadas' por referência
     console.log('[ETAPA 3.5] Sequência de SKUs atribuída.');
@@ -404,12 +409,15 @@ async function buscarInformacoesCruciais(etiquetasExtraidas, nomeArquivoGerado) 
                                 situacao = 'pendente',
                                 last_processed_at = NOW();
                         `;
+
+                        const skusOriginais = info.skus.map(s => s.original).join(',');
+
                         await client.query(insertQuery, [
                             info.nfeNumero,
                             numeroLojaFinal,
                             packIdOriginal,
                             info.chaveAcesso,
-                            info.skus.join(','),
+                            skusOriginais,
                             info.totalQuantidade,
                             info.locations.join(','),
                             etiqueta.pageIndex,
@@ -905,8 +913,391 @@ async function buscarEtiquetaPorNF(nfNumero) {
     }
 }
 
+async function atualizarPaginasCorretasNoDB(etiquetasOrdenadas, nomeArquivoGerado) {
+    if (!etiquetasOrdenadas || etiquetasOrdenadas.length === 0) {
+        console.log('[DB Page Update] Nenhuma etiqueta para atualizar.');
+        return;
+    }
+
+    const client = await pool.connect();
+    try {
+        console.log(`[DB Page Update] Iniciando atualização de ${etiquetasOrdenadas.length} páginas para o arquivo: ${nomeArquivoGerado}`);
+        
+        // Prepara todas as queries de atualização
+        const updatePromises = etiquetasOrdenadas.map((etiqueta, index) => {
+            const novaPaginaIndex = index; // O índice 0-based do array é a nova página
+            const chaveAcesso = etiqueta.chaveAcesso; // Usamos a chave de acesso como ID único
+
+            if (!chaveAcesso) {
+                // Se não houver chave de acesso (erro raro), não podemos atualizar
+                console.warn(`[DB Page Update] Etiqueta (ID: ${etiqueta.idOriginal}, Pg Orig: ${etiqueta.pageIndex}) sem chave de acesso, não foi possível atualizar a página.`);
+                return Promise.resolve(); // Pula esta promessa
+            }
+            
+            const query = `
+                UPDATE cached_etiquetas_ml
+                SET pdf_pagina = $1
+                WHERE chave_acesso = $2 AND pdf_arquivo_origem = $3;
+            `;
+            
+            // Atualiza a linha baseado na Chave de Acesso E no nome do arquivo que geramos
+            return client.query(query, [novaPaginaIndex, chaveAcesso, nomeArquivoGerado]);
+        });
+
+        // Executa todas as atualizações em paralelo
+        await Promise.all(updatePromises);
+        
+        console.log(`[DB Page Update] Atualização de páginas concluída para ${nomeArquivoGerado}.`);
+
+    } catch (error) {
+        console.error('[DB Page Update] Erro catastrófico ao atualizar índices de página:', error);
+        // Não lança erro, apenas loga, para não parar o processo principal de geração do PDF
+    } finally {
+        client.release();
+    }
+}
+
+async function validarProdutoPorEstruturas(scannedCodes) { // 1. Parâmetro renomeado
+    let client;
+    try {
+        client = await pool.connect();
+        const blingAccount = 'lucas'; // Assumindo
+
+        // ETAPA 1: Traduzir os códigos bipados para os component_sku internos.
+        
+        const trueComponentSkus = [];
+        const translationQuery = `
+            SELECT component_sku
+            FROM cached_structures
+            WHERE component_sku = $1  -- 1ª Tentativa: SKU
+               OR gtin = $1           -- 2ª Tentativa: GTIN
+               OR gtin_embalagem = $1 -- 3ª Tentativa: GTIN Embalagem
+            LIMIT 1;
+        `;
+
+        for (const code of scannedCodes) {
+            const res = await client.query(translationQuery, [code]);
+            
+            if (res.rows.length === 0) {
+                // Se nenhum dos 3 campos bateu, o código é inválido.
+                return { success: false, message: `Código bipado "${code}" não foi encontrado em nenhuma estrutura (SKU, GTIN ou GTIN Embalagem).` };
+            }
+            
+            const foundSku = res.rows[0].component_sku;
+            
+            // Adiciona (sem duplicatas)
+            if (!trueComponentSkus.includes(foundSku)) {
+                trueComponentSkus.push(foundSku);
+            }
+        }
+        // Ao final deste loop, 'trueComponentSkus' contém os SKUs internos corretos,
+        // ex: ['E-5678', 'E-7890']
+
+        const skuCount = trueComponentSkus.length; // Usa a contagem da lista traduzida
+
+        const parentQuery = `
+            SELECT
+                p.bling_id,
+                p.sku,
+                p.nome
+            FROM cached_products p
+            WHERE
+                p.bling_account = $1
+            AND
+                -- Garante que o produto contenha TODOS os SKUs da lista traduzida
+                (SELECT COUNT(DISTINCT component_sku)
+                 FROM cached_structures s1
+                 WHERE s1.parent_product_bling_id = p.bling_id
+                   AND s1.component_sku = ANY($2::text[]) -- Usa trueComponentSkus
+                ) = $3 -- Usa skuCount
+            AND
+                -- Garante que o produto tenha EXATAMENTE esse número de estruturas
+                (SELECT COUNT(DISTINCT component_sku)
+                 FROM cached_structures s2
+                 WHERE s2.parent_product_bling_id = p.bling_id
+                ) = $3; -- Usa skuCount
+        `;
+        
+        // Passa os parâmetros corretos
+        const parentResult = await client.query(parentQuery, [blingAccount, trueComponentSkus, skuCount]);
+
+        if (parentResult.rows.length === 0) {
+            return { success: false, message: 'Nenhum produto encontrado que corresponda exatamente a esta combinação de estruturas.' };
+        }
+        
+        // --- LÓGICA DE ITERAÇÃO CORRIGIDA ---
+        
+        // Agora iteramos por CADA produto estruturalmente idêntico (ex: "Kit-Berço" e "Combo-Berço")
+        for (const row of parentResult.rows) {
+            const parentProduct = {
+                sku: row.sku,
+                name: row.nome,
+                id: row.bling_id
+            };
+
+            // 2. Conta o total de etiquetas PENDENTES para ESTE produto pai específico
+            const pendingQuery = `
+                SELECT COUNT(DISTINCT e.chave_acesso) AS totalPendente
+                FROM cached_etiquetas_ml e
+                LEFT JOIN cached_nfe n ON e.nfe_numero = n.nfe_numero
+                WHERE e.situacao = 'pendente'
+                AND (
+                    $1 = ANY(string_to_array(e.skus, ','))
+                    OR 
+                    (e.skus LIKE '%[object Object]%' AND n.product_ids_list LIKE '%' || $2::text || '%')
+                );
+            `;
+            const pendingResult = await client.query(pendingQuery, [parentProduct.sku, parentProduct.id]);
+            const totalPendente = parseInt(pendingResult.rows[0]?.totalpendente || 0, 10);
+            
+            // 3. Se este produto tiver etiquetas pendentes, ele é o vencedor!
+            if (totalPendente > 0) {
+                console.log(`[Validar Produto] Match encontrado: Produto ${parentProduct.sku} tem ${totalPendente} etiquetas pendentes.`);
+                // Retorna o produto validado e para a iteração
+                return {
+                    success: true,
+                    productFound: {
+                        parentProduct: parentProduct,
+                        requiredSkus: trueComponentSkus, // Retorna os SKUs que o formaram
+                        totalPendente: totalPendente
+                    }
+                };
+            }
+            
+            // Se totalPendente === 0, o loop continua e testa o próximo produto da lista.
+            console.log(`[Validar Produto] Match estrutural ${parentProduct.sku} ignorado (0 etiquetas pendentes).`);
+        }
+
+        // 4. Se o loop terminar e NENHUM produto tiver etiquetas pendentes
+        return { success: false, message: 'Produto(s) estruturalmente corretos foram encontrados, mas nenhum deles possui etiquetas pendentes.' };
+
+    } catch (error) {
+        console.error(`[Service - Validar Produto] Erro ao validar conjunto ${scannedCodes.join(',')}:`, error);
+        return { success: false, message: `Erro interno no servidor: ${error.message}` };
+    } finally {
+        if (client) client.release();
+    }
+}
+
+async function finalizarBipagem(scanList) {
+    console.log('[Finalizar Bipagem] Iniciando processamento da lista...');
+    let client;
+    const blingAccount = 'lucas'; // Assumindo
+    
+    // Mapas para gerenciar o estado durante o processamento
+    const productAggregates = new Map(); // Key: parentSku, Value: { requiredSkus: Set, scannedSkus: Set, totalPendente: int, timesCompleted: int }
+    const labelsToPrint = []; // Array ordenado de { chave_acesso, pdf_arquivo_origem, pdf_pagina }
+    const palletMarkers = []; // Array de { index: int, number: int }
+    const labelsToUpdate = new Set(); // Set de 'chave_acesso' para atualizar no DB
+
+    try {
+        client = await pool.connect();
+
+        for (const item of scanList) {
+            if (item.type === 'pallet') {
+                // Adiciona um marcador de palete. O 'index' é o número de etiquetas já processadas.
+                palletMarkers.push({ index: labelsToPrint.length, number: item.number });
+                console.log(`[Finalizar Bipagem] Marcador de Palete ${item.number} adicionado no índice ${labelsToPrint.length}`);
+                continue;
+            }
+
+            if (item.type === 'item') {
+                const parentSku = item.parentProduct.sku;
+                // O frontend já fez a varredura e nos deu o ID (bling_id) correto
+                const parentProductId = item.parentProduct.id; 
+                
+                let agg = productAggregates.get(parentSku);
+
+                // Se for a primeira vez que vemos este produto *nesta transação*,
+                // buscamos seus dados (requiredSkus e totalPendente) UMA VEZ.
+                if (!agg) {
+                    console.log(`[Finalizar Bipagem] Primeira vez do SKU ${parentSku}. Buscando dados de agregação...`);
+
+                    // 1. Busca as estruturas necessárias UMA VEZ
+                    const requiredQuery = `
+                        SELECT component_sku 
+                        FROM cached_structures 
+                        WHERE parent_product_bling_id = $1;
+                    `;
+                    const requiredResult = await client.query(requiredQuery, [parentProductId]);
+                    const requiredSkus = new Set(requiredResult.rows.map(r => r.component_sku));
+
+                    // 2. Busca o total pendente UMA VEZ (usando a lógica robusta)
+                    const pendingQuery = `
+                        SELECT COUNT(DISTINCT e.chave_acesso) AS totalPendente
+                        FROM cached_etiquetas_ml e
+                        LEFT JOIN cached_nfe n ON e.nfe_numero = n.nfe_numero
+                        WHERE e.situacao = 'pendente'
+                        AND (
+                            $1 = ANY(string_to_array(e.skus, ','))
+                            OR 
+                            (e.skus LIKE '%[object Object]%' AND n.product_ids_list LIKE '%' || $2::text || '%')
+                        );
+                    `;
+                    const pendingResult = await client.query(pendingQuery, [parentSku, parentProductId]);
+                    const totalPendente = parseInt(pendingResult.rows[0]?.totalpendente || 0, 10);
+                    
+                    agg = {
+                        requiredSkus: requiredSkus,
+                        scannedSkus: new Set(),
+                        totalPendente: totalPendente,
+                        timesCompleted: 0,
+                        parentProductId: parentProductId // Salva o ID
+                    };
+                    productAggregates.set(parentSku, agg);
+                    console.log(`[Finalizar Bipagem] Agregado para ${parentSku} criado. ${requiredSkus.size} estruturas necessárias. ${totalPendente} pendentes.`);
+                }
+
+                // Adiciona a estrutura bipada ao conjunto
+                agg.scannedSkus.add(item.scannedComponent);
+
+                // Verifica se o produto foi completado
+                if (agg.scannedSkus.size === agg.requiredSkus.size) {
+                    console.log(`[Finalizar Bipagem] Produto ${parentSku} (completado ${agg.timesCompleted + 1} vez(es)) está completo.`);
+                    agg.timesCompleted++;
+                    agg.scannedSkus.clear(); // Reseta para o próximo produto do mesmo tipo
+
+                    // Busca a próxima etiqueta PENDENTE para este produto (Query Corrigida)
+                    const labelQuery = `
+                        SELECT e.chave_acesso, e.pdf_arquivo_origem, e.pdf_pagina
+                        FROM cached_etiquetas_ml e
+                        LEFT JOIN cached_nfe n ON e.nfe_numero = n.nfe_numero
+                        WHERE e.situacao = 'pendente' 
+                          AND (
+                              $1 = ANY(string_to_array(e.skus, ',')) -- Lógica 1 (SKU)
+                              OR 
+                              (
+                                  e.skus LIKE '%[object Object]%' -- Lógica 2 (Fallback)
+                                  AND n.product_ids_list LIKE '%' || $2::text || '%'
+                              )
+                          )
+                        LIMIT 1;
+                    `;
+                    // Passa os DOIS argumentos (SKU e ID) para a query
+                    const labelResult = await client.query(labelQuery, [parentSku, agg.parentProductId]);
+
+                    if (labelResult.rows.length === 0) {
+                        // Isso pode acontecer se o frontend e o backend ficarem fora de sincronia
+                        console.warn(`[Finalizar Bipagem] Produto ${parentSku} completado, mas NENHUMA etiqueta 'pendente' foi encontrada!`);
+                        // Não lança erro, mas loga. O PDF não terá esta etiqueta.
+                    } else {
+                        const labelInfo = labelResult.rows[0];
+                        labelsToPrint.push(labelInfo);
+                        labelsToUpdate.add(labelInfo.chave_acesso);
+                        console.log(`[Finalizar Bipagem] Etiqueta ${labelInfo.chave_acesso} adicionada à fila de impressão.`);
+                        
+                        // Marca a etiqueta como 'associado' (em transação) para não ser pega 2x
+                        // Usamos UPDATE ... RETURNING para garantir que pegamos apenas uma
+                        const updateTempQuery = `
+                            UPDATE cached_etiquetas_ml 
+                            SET situacao = 'associado' 
+                            WHERE chave_acesso = $1 
+                            RETURNING chave_acesso;
+                        `;
+                        await client.query(updateTempQuery, [labelInfo.chave_acesso]);
+                    }
+                }
+            }
+        }
+
+        // Todos os itens processados, agora gera o PDF
+        console.log(`[Finalizar Bipagem] Gerando PDF com ${labelsToPrint.length} etiquetas e ${palletMarkers.length} paletes...`);
+        const pdfBytes = await gerarPdfBipagem(labelsToPrint, palletMarkers);
+
+        // Se o PDF foi gerado, atualiza o status de todas as etiquetas para 'impresso'
+        if (labelsToUpdate.size > 0) {
+            console.log(`[Finalizar Bipagem] Atualizando ${labelsToUpdate.size} etiquetas para 'impresso'...`);
+            const finalUpdateQuery = `
+                UPDATE cached_etiquetas_ml
+                SET situacao = 'impresso'
+                WHERE chave_acesso = ANY($1::text[]);
+            `;
+            await client.query(finalUpdateQuery, [Array.from(labelsToUpdate)]);
+        }
+
+        return pdfBytes;
+
+    } catch (error) {
+        console.error('[Service - Finalizar Bipagem] Erro:', error);
+        // Rollback das etiquetas 'associado' para 'pendente' em caso de falha na geração do PDF
+        if (labelsToUpdate.size > 0) {
+            console.log("[Finalizar Bipagem] Revertendo status das etiquetas para 'pendente'...");
+            const rollbackQuery = `
+                UPDATE cached_etiquetas_ml
+                SET situacao = 'pendente'
+                WHERE chave_acesso = ANY($1::text[]);
+            `;
+            await client.query(rollbackQuery, [Array.from(labelsToUpdate)]);
+        }
+        throw error; // Lança o erro para o controller
+    } finally {
+        if (client) client.release();
+    }
+}
+
+async function gerarPdfBipagem(labelsToPrint, palletMarkers) {
+    const finalPdfDoc = await PDFDocument.create();
+    const font = await finalPdfDoc.embedFont(StandardFonts.HelveticaBold);
+    
+    // Agrupa as etiquetas por arquivo de origem para carregar cada PDF apenas uma vez
+    const sourceFileMap = new Map(); // Key: 'nome-arquivo.pdf', Value: { doc: PDFDocument, labels: [...] }
+    
+    for (const label of labelsToPrint) {
+        if (!sourceFileMap.has(label.pdf_arquivo_origem)) {
+            sourceFileMap.set(label.pdf_arquivo_origem, { doc: null, labels: [] });
+        }
+        sourceFileMap.get(label.pdf_arquivo_origem).labels.push(label);
+    }
+
+    // Carrega os PDFs de origem
+    for (const [filename, data] of sourceFileMap.entries()) {
+        try {
+            const filePath = path.join(PDF_STORAGE_DIR, filename);
+            const pdfBytes = await fs.readFile(filePath);
+            data.doc = await PDFDocument.load(pdfBytes);
+        } catch (e) {
+            console.error(`Erro ao carregar o PDF de origem ${filename}: ${e.message}`);
+            throw new Error(`Arquivo ${filename} não encontrado ou corrompido.`);
+        }
+    }
+
+    let labelCounter = 0;
+    let currentPallet = palletMarkers.shift();
+
+    // Adiciona a primeira página de palete (se houver)
+    if (currentPallet && currentPallet.index === 0) {
+        const page = finalPdfDoc.addPage();
+        page.drawText(`Palete ${currentPallet.number}`, { x: 50, y: page.getHeight() / 2, size: 50, font: font });
+        currentPallet = palletMarkers.shift();
+    }
+
+    // Itera na ordem de impressão
+    for (const label of labelsToPrint) {
+        // Verifica se devemos adicionar a *próxima* página de palete
+        if (currentPallet && labelCounter === currentPallet.index) {
+            const page = finalPdfDoc.addPage();
+            page.drawText(`Palete ${currentPallet.number}`, { x: 50, y: page.getHeight() / 2, size: 50, font: font });
+            currentPallet = palletMarkers.shift();
+        }
+
+        // Copia a página da etiqueta
+        const source = sourceFileMap.get(label.pdf_arquivo_origem);
+        if (source && source.doc) {
+            const [copiedPage] = await finalPdfDoc.copyPages(source.doc, [label.pdf_pagina]);
+            finalPdfDoc.addPage(copiedPage);
+        }
+        
+        labelCounter++;
+    }
+
+    const pdfBytes = await finalPdfDoc.save();
+    return Buffer.from(pdfBytes);
+}
+
 
 module.exports = {
     processarEtiquetas,
-    buscarEtiquetaPorNF
+    buscarEtiquetaPorNF,
+    validarProdutoPorEstruturas,
+    finalizarBipagem
 };
