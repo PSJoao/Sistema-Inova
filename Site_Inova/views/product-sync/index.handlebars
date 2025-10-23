@@ -1,0 +1,37 @@
+{{!-- views/product-sync/index.handlebars --}}
+<div class="container mt-4">
+    <h2>Sincronizar Produtos do Bling por Planilha</h2>
+    <p>Faça o upload de arquivos .xlsx ou .xls contendo os SKUs dos produtos a serem sincronizados. Os SKUs devem estar na primeira coluna, começando da segunda linha (a primeira linha é ignorada como cabeçalho).</p>
+
+    {{> messages}} {{!-- Inclui o partial para exibir mensagens flash --}}
+
+    <form action="/product-sync/upload" method="POST" enctype="multipart/form-data" class="mt-3">
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label for="planilhaLucas" class="form-label">Planilha Conta Lucas:</label>
+                <input class="form-control" type="file" id="planilhaLucas" name="planilhaLucas" accept=".xlsx, .xls">
+                <div class="form-text">Envie a planilha com os SKUs para a conta Lucas.</div>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label for="planilhaEliane" class="form-label">Planilha Conta Eliane:</label>
+                <input class="form-control" type="file" id="planilhaEliane" name="planilhaEliane" accept=".xlsx, .xls">
+                 <div class="form-text">Envie a planilha com os SKUs para a conta Eliane.</div>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary mt-3">
+            <i class="fas fa-sync-alt"></i> Sincronizar Produtos
+        </button>
+         <div class="form-text mt-2">A sincronização será iniciada em segundo plano. Você pode continuar usando o sistema. Os resultados serão exibidos no console do servidor ao final.</div>
+    </form>
+
+     <hr>
+
+    <a href="/" class="btn btn-secondary mt-3">
+        <i class="fas fa-arrow-left"></i> Voltar ao Menu Principal
+    </a>
+</div>
+
+{{#section 'scripts'}}
+    <script src="/public/scripts/productSyncManager.js"></script>
+{{/section}}

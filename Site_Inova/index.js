@@ -18,6 +18,7 @@ const nfeHistoryRoutes = require('./routes/nfeHistoryRoutes');
 const assistenciaRoutes = require('./routes/assistenciaRoutes');
 const etiquetasRoutes = require('./routes/etiquetasRoutes');
 const tiposRoutes = require('./routes/tiposRoutes');
+const prodSyncRoutes = require('./routes/productSyncRoutes')
 //const { updatePrices } = require('./updatePrices.js');
 //const { runScheduledTokenRefresh } = require('./services/blingTokenManager');
 const { syncRecentEmittedNFe, syncNFeEliane, syncNFeLucas } = require('./blingSyncService.js');
@@ -97,6 +98,7 @@ app.use('/historico-nfe', nfeHistoryRoutes); // Define o prefixo da nova página
 app.use('/assistencias', assistenciaRoutes);
 app.use('/', etiquetasRoutes);
 app.use('/', tiposRoutes);
+app.use('/product-sync', prodSyncRoutes);
 
 cron.schedule('0 3 * * *', async () => {
     console.log(`[CRON Limpeza] Iniciando verificação de PDFs antigos em ${PDF_STORAGE_DIR_CLEANUP}...`);

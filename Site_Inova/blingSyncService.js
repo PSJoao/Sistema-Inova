@@ -1166,6 +1166,7 @@ module.exports = {
     syncNFeLucasOnDemand,
     syncBlingProductsEliane,
     setEmissaoPageStatus,
+    apiRequestWithRetry,
     findAndCacheNfeByNumber: exports.findAndCacheNfeByNumber,
     findAndCachePedidoByLojaNumber: exports.findAndCachePedidoByLojaNumber
 };
