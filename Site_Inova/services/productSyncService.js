@@ -74,20 +74,62 @@ async function syncProductsBySku(skus, accountType) {
             const skuTrimmed = sku.trim();
             if (!skuTrimmed) continue; // Pula SKUs vazios
 
-            console.log(`[ProductSync-${accountType}] Processando SKU: ${skuTrimmed}`);
+            let skuToProcess = skuTrimmed; // SKU que será efetivamente usado na API
+            let originalSku = skuTrimmed; // SKU da planilha
+
+            // *** INÍCIO DA NOVA LÓGICA DE VERIFICAÇÃO ***
+            try {
+                // 1. Verifica se o SKU é um produto principal
+                const productCheck = await client.query(
+                    `SELECT 1 FROM cached_products WHERE sku = $1 AND bling_account = $2`,
+                    [skuTrimmed, accountType]
+                );
+
+                if (productCheck.rowCount === 0) {
+                    // 2. Se não for, verifica se é um componente (estrutura)
+                    console.log(`[ProductSync-${accountType}] SKU ${skuTrimmed} não é um produto. Verificando se é um componente...`);
+                    
+                    const structureCheck = await client.query(
+                        `SELECT p.sku AS parent_sku 
+                         FROM cached_structures s
+                         JOIN cached_products p ON s.parent_product_bling_id = p.bling_id 
+                         WHERE s.component_sku = $1 
+                           AND s.parent_product_bling_account = $2
+                           AND p.bling_account = $2
+                         LIMIT 1`,
+                        [skuTrimmed, accountType]
+                    );
+
+                    if (structureCheck.rowCount > 0) {
+                        // 3. É um componente! Define o 'skuToProcess' como o SKU do produto pai
+                        skuToProcess = structureCheck.rows[0].parent_sku;
+                        console.log(`[ProductSync-${accountType}] SKU ${skuTrimmed} é um componente. Sincronizando produto PAI: ${skuToProcess}`);
+                    } else {
+                        // 4. Não é produto nem componente. Trata como SKU novo (mantém skuToProcess = skuTrimmed)
+                        console.log(`[ProductSync-${accountType}] SKU ${skuTrimmed} não encontrado no cache. Tentando buscar no Bling como SKU principal.`);
+                    }
+                }
+            } catch (dbError) {
+                console.error(`[ProductSync-${accountType}] Erro ao verificar SKU ${skuTrimmed} no cache: ${dbError.message}. Tentando como SKU principal.`);
+                // Se houver erro no DB, apenas continua usando o SKU original
+                skuToProcess = skuTrimmed;
+            }
+            // *** FIM DA NOVA LÓGICA DE VERIFICAÇÃO ***
+
+
+            console.log(`[ProductSync-${accountType}] Processando SKU: ${originalSku} (como ${skuToProcess})`);
 
             try {
                 // Inicia transação por produto
                 await client.query('BEGIN');
 
-                // 1. Busca produto (usando await com a função que já tem retry)
-                const productSearchResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos?codigos[]=${encodeURIComponent(skuTrimmed)}&tipo=P&ativos=true`, accountType);
+                // 1. Busca produto (usando skuToProcess)
+                const productSearchResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos?codigos[]=${encodeURIComponent(skuToProcess)}&tipo=P&ativos=true`, accountType);
 
-                // O wrapper apiRequestWithRetry já retorna { data: [...] } ou lança erro
                 const productSearchResult = productSearchResponse.data;
 
                 if (!productSearchResult || productSearchResult.length === 0) {
-                    throw new Error(`Produto com SKU ${skuTrimmed} não encontrado ou inativo no Bling.`);
+                    throw new Error(`Produto com SKU ${skuToProcess} (planilha: ${originalSku}) não encontrado ou inativo no Bling.`);
                 }
                 const productId = productSearchResult[0].id;
 
@@ -110,7 +152,7 @@ async function syncProductsBySku(skus, accountType) {
                         produtoDetalhes.volumes
                     ]
                 );
-                // console.log(`   [ProductSync-${accountType}] Produto ${skuTrimmed} salvo/atualizado.`);
+                // console.log(`   [ProductSync-${accountType}] Produto ${skuToProcess} salvo/atualizado.`);
 
                 // 4. Processa estruturas
                 await processAndCacheStructuresForSku(produtoDetalhes, accountType, client);
@@ -122,9 +164,10 @@ async function syncProductsBySku(skus, accountType) {
             } catch (error) {
                 // Desfaz transação em caso de erro para este SKU
                 await client.query('ROLLBACK');
-                console.error(`[ProductSync-${accountType}] Erro ao processar SKU ${skuTrimmed}: ${error.message}`);
+                console.error(`[ProductSync-${accountType}] Erro ao processar SKU ${originalSku} (processado como ${skuToProcess}): ${error.message}`);
                 errorCount++;
-                errors.push({ sku: skuTrimmed, message: error.message }); // Adiciona ao array 'errors'
+                // Reporta o erro usando o SKU original da planilha
+                errors.push({ sku: originalSku, message: error.message }); 
                 // Continua para o próximo SKU
             }
 

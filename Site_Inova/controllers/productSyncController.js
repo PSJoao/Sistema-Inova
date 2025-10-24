@@ -95,6 +95,7 @@ exports.handleProductSyncUpload = async (req, res) => {
     upload(req, res, async (err) => {
         if (err) {
             console.error("Erro no upload:", err.message);
+            // Erros de upload (ex: arquivo errado) AINDA retornam JSON
             return res.status(400).json({ success: false, message: `Erro no upload: ${err.message}` });
         }
 
@@ -103,6 +104,7 @@ exports.handleProductSyncUpload = async (req, res) => {
         // 1. Tenta adquirir a trava ANTES de processar os arquivos
         const lockResult = await acquireProductSyncLock(username);
         if (!lockResult.success) {
+            // Erro de trava AINDA retorna JSON (para o modal de erro funcionar)
             return res.status(409).json({ success: false, message: lockResult.message }); // 409 Conflict
         }
 
@@ -141,90 +143,65 @@ exports.handleProductSyncUpload = async (req, res) => {
         // Se houve erro na leitura das planilhas
         if (parseErrors.length > 0) {
             await releaseProductSyncLock(username); // Libera a trava
+             // Erro de parse AINDA retorna JSON
             return res.status(400).json({ success: false, message: parseErrors.join('<br>') });
         }
 
         // Se não há SKUs para processar
         if (skusLucas.length === 0 && skusEliane.length === 0) {
             await releaseProductSyncLock(username); // Libera a trava
+            // Erro de "nada a fazer" AINDA retorna JSON
             return res.status(400).json({ success: false, message: 'Nenhuma planilha com SKUs válida foi enviada.' });
         }
 
-        // 2. Executa as sincronizações em paralelo
+        // 2. Executa as sincronizações em background
         console.log(`[ProductSyncUpload] Iniciando sincronizações por ${username}... Lucas: ${skusLucas.length}, Eliane: ${skusEliane.length}`);
-        let syncResults;
-        try {
-            syncResults = await Promise.allSettled([
-                // Chama o serviço OU resolve imediatamente com a estrutura correta se não houver SKUs
-                skusLucas.length > 0
-                    ? productSyncService.syncProductsBySku(skusLucas, 'lucas')
-                    : Promise.resolve({ successCount: 0, errorCount: 0, errors: [] }),
-                skusEliane.length > 0
-                    ? productSyncService.syncProductsBySku(skusEliane, 'eliane')
-                    : Promise.resolve({ successCount: 0, errorCount: 0, errors: [] })
-            ]);
-            console.log('[ProductSyncUpload] Sincronizações concluídas.');
-        } catch (syncError) {
-             // Captura erros inesperados durante o Promise.allSettled (raro, mas possível)
-             console.error('[ProductSyncUpload] Erro inesperado durante Promise.allSettled:', syncError);
-             // Libera a trava ANTES de retornar o erro
-             await releaseProductSyncLock(username);
-             return res.status(500).json({ success: false, message: 'Erro inesperado durante a execução das sincronizações.' });
-        } finally {
-             // 3. Garante que a trava seja liberada APÓS a conclusão (ou falha) das sincronizações
-             // Colocar no finally garante a liberação mesmo se o Promise.allSettled falhar internamente
-             await releaseProductSyncLock(username);
-        }
+        
+        // Função assíncrona que roda em background
+        const runSyncInBackground = async () => {
+            try {
+                const syncResults = await Promise.allSettled([
+                    // Chama o serviço OU resolve imediatamente com a estrutura correta se não houver SKUs
+                    skusLucas.length > 0
+                        ? productSyncService.syncProductsBySku(skusLucas, 'lucas')
+                        : Promise.resolve({ successCount: 0, errorCount: 0, errors: [] }),
+                    skusEliane.length > 0
+                        ? productSyncService.syncProductsBySku(skusEliane, 'eliane')
+                        : Promise.resolve({ successCount: 0, errorCount: 0, errors: [] })
+                ]);
+                console.log('[ProductSyncUpload] Sincronizações em background concluídas.');
 
-        // 4. Formata a resposta JSON
-        const [lucasResult, elianeResult] = syncResults;
-        const responseData = {
-            success: true, // Começa assumindo sucesso
-            message: "Sincronização concluída.", // Mensagem padrão
-            results: {}
+                // Log dos resultados para debug do servidor
+                const [lucasResult, elianeResult] = syncResults;
+                if (lucasResult.status === 'fulfilled') {
+                    console.log(`  Resultado BKG Lucas: ${lucasResult.value.successCount} sucesso(s), ${lucasResult.value.errorCount} erro(s).`);
+                } else {
+                    console.error('  Erro GERAL BKG na sincronização Lucas:', lucasResult.reason?.message || lucasResult.reason);
+                }
+                if (elianeResult.status === 'fulfilled') {
+                     console.log(`  Resultado BKG Eliane: ${elianeResult.value.successCount} sucesso(s), ${elianeResult.value.errorCount} erro(s).`);
+                } else {
+                    console.error('  Erro GERAL BKG na sincronização Eliane:', elianeResult.reason?.message || elianeResult.reason);
+                }
+
+            } catch (syncError) {
+                 // Captura erros inesperados durante o Promise.allSettled (raro, mas possível)
+                 console.error('[ProductSyncUpload] Erro inesperado durante Promise.allSettled (background):', syncError);
+            } finally {
+                 // 3. Garante que a trava seja liberada APÓS a conclusão (ou falha) das sincronizações
+                 await releaseProductSyncLock(username);
+                 console.log('[ProductSyncUpload] Trava liberada (job em background finalizado).');
+            }
         };
 
-        // Processa resultado Lucas
-        if (lucasResult.status === 'fulfilled') {
-            // Garante que value exista e tenha a estrutura esperada
-            responseData.results.lucas = lucasResult.value || { successCount: 0, errorCount: 0, errors: [] };
-            console.log(`  Resultado Lucas: ${responseData.results.lucas.successCount} sucesso(s), ${responseData.results.lucas.errorCount} erro(s).`);
-            // Verifica se errors é um array antes de logar
-            if (Array.isArray(responseData.results.lucas.errors) && responseData.results.lucas.errors.length > 0) {
-                 console.error('  Erros Lucas:', responseData.results.lucas.errors);
-            }
-        } else { // status === 'rejected'
-            responseData.success = false; // Falha geral
-            responseData.results.lucas = { error: lucasResult.reason?.message || 'Erro desconhecido' };
-            console.error('  Erro GERAL na sincronização Lucas:', lucasResult.reason);
-        }
+        // *** AQUI ESTÁ A MUDANÇA PRINCIPAL ***
+        // Dispara a função acima em background e NÃO espera (await) por ela.
+        runSyncInBackground();
 
-        // Processa resultado Eliane
-        if (elianeResult.status === 'fulfilled') {
-            // Garante que value exista e tenha a estrutura esperada
-            responseData.results.eliane = elianeResult.value || { successCount: 0, errorCount: 0, errors: [] };
-            console.log(`  Resultado Eliane: ${responseData.results.eliane.successCount} sucesso(s), ${responseData.results.eliane.errorCount} erro(s).`);
-             // Verifica se errors é um array antes de logar
-             if (Array.isArray(responseData.results.eliane.errors) && responseData.results.eliane.errors.length > 0) {
-                 console.error('  Erros Eliane:', responseData.results.eliane.errors);
-            }
-        } else { // status === 'rejected'
-             responseData.success = false; // Falha geral
-             responseData.results.eliane = { error: elianeResult.reason?.message || 'Erro desconhecido' };
-            console.error('  Erro GERAL na sincronização Eliane:', elianeResult.reason);
-        }
-
-        // Ajusta a mensagem final se houve alguma falha
-        if (!responseData.success) {
-            responseData.message = "Sincronização concluída com erros em uma ou ambas as contas.";
-        }
-
-        // Define o status HTTP apropriado
-        // 200 OK: Tudo sucesso OU processo rodou mas SKUs tiveram erros individuais (ex: não encontrado)
-        // 500 Internal Server Error: Se uma das promessas foi rejeitada (erro geral na sincronização da conta)
-        const httpStatus = (lucasResult.status === 'rejected' || elianeResult.status === 'rejected') ? 500 : 200;
-
-        // Envia a resposta JSON detalhada
-        return res.status(httpStatus).json(responseData);
+        // 4. Retorna uma resposta VAZIA (204 No Content) IMEDIATAMENTE.
+        // O front-end (productSyncManager.js) vai receber isso, fechar o modal
+        // de "carregando" e resetar o form. O processo de sync continuará
+        // rodando no servidor em background.
+        return res.status(204).end();
     });
 };
