@@ -1,5 +1,5 @@
 // public/scripts/etiquetasBipagemManager.js
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() { // Tornar async
     
     // Elementos da UI
     const bipagemInput = document.getElementById('bipagemInput');
@@ -21,9 +21,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const statEstruturas = document.getElementById('statEstruturasBipadas');
     const statPalete = document.getElementById('statPaleteAtual');
     const placeholder = document.querySelector('.bipagem-placeholder');
-
-    // Chave do LocalStorage
-    const STORAGE_KEY = 'etiquetasBipagemState';
 
     // Estado da Aplicação
     // scanList armazena {type: 'product'} ou {type: 'pallet'}
@@ -78,40 +75,79 @@ document.addEventListener('DOMContentLoaded', function() {
     /**
      * Salva o estado atual no localStorage
      */
-    function saveState() {
-        const state = {
-            scanList: scanList,
-            productAggregates: serializeAggregates(productAggregates),
-            palletCount: palletCount,
-            currentBips: currentBips,
-            isKitMode: isKitMode 
+    async function saveStateToBackend() {
+        console.log('Salvando estado da bipagem ML no backend...');
+        const stateToSave = {
+            scanList,
+            productAggregates,
+            palletCount,
+            currentBips,
+            isKitMode
         };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        try {
+            // URL da API sem parâmetro de transportadora
+            const response = await fetch('/etiquetas/bipagem/save-state', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(stateToSave)
+            });
+            if (!response.ok) {
+                const errorData = await response.json();
+                console.error('Erro ao salvar estado:', errorData.message);
+                ModalSystem.showToast('Falha ao salvar progresso no servidor.', 'error', { duration: 2000 });
+            } else {
+                console.log('Estado salvo com sucesso.');
+                // Opcional: Mostrar indicador de sucesso (ex: ícone verde)
+            }
+        } catch (error) {
+            console.error('Erro de rede ao salvar estado:', error);
+            ModalSystem.showToast('Erro de rede ao salvar progresso.', 'error', { duration: 2000 });
+        }
     }
 
     /**
      * Carrega o estado do localStorage
      */
-    function loadState() {
-        const savedState = localStorage.getItem(STORAGE_KEY);
-        if (savedState) {
-            try {
-                const state = JSON.parse(savedState);
-                scanList = state.scanList || [];
-                productAggregates = deserializeAggregates(state.productAggregates || {});
-                palletCount = state.palletCount || 1;
-                currentBips = state.currentBips || [];
-                isKitMode = state.isKitMode || false; // Carrega o modo kit
-
-                updatePalletCountFromScanList();
-
-            } catch (e) {
-                console.error("Erro ao carregar estado do localStorage:", e);
-                localStorage.removeItem(STORAGE_KEY);
+    async function loadStateFromBackend() {
+        console.log('Carregando estado da bipagem ML do backend...');
+        ModalSystem.showLoading('Carregando progresso anterior...');
+        try {
+            // URL da API sem parâmetro de transportadora
+            const response = await fetch('/etiquetas/bipagem/load-state');
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.state && Object.keys(data.state).length > 0) { // Verifica se state não é null ou {}
+                    console.log('Estado anterior encontrado:', data.state);
+                    // Restaura o estado (com valores padrão se algo faltar)
+                    scanList = data.state.scanList || [];
+                    productAggregates = data.state.productAggregates || {};
+                    palletCount = data.state.palletCount || 1;
+                    currentBips = data.state.currentBips || [];
+                    isKitMode = data.state.isKitMode || false;
+                    renderUI(); // Atualiza a interface com os dados carregados
+                    console.log('Estado restaurado do backend.');
+                } else if (data.success && (data.state === null || Object.keys(data.state).length === 0)) {
+                    console.log('Nenhum estado salvo encontrado para a bipagem ML.');
+                    // Mantém o estado inicial padrão
+                    renderUI(); // Renderiza a UI vazia
+                } else {
+                    console.error('Erro ao carregar estado:', data.message);
+                    ModalSystem.alert(data.message || 'Falha ao buscar estado anterior.', 'Erro');
+                    renderUI(); // Renderiza a UI vazia mesmo em caso de erro
+                }
+            } else {
+                console.error('Erro HTTP ao carregar estado:', response.statusText);
+                ModalSystem.alert(`Erro ${response.status} ao buscar estado anterior. Iniciando nova sessão.`, 'Erro');
+                renderUI(); // Renderiza a UI vazia
             }
+        } catch (error) {
+            console.error('Erro de rede ao carregar estado:', error);
+            ModalSystem.alert('Erro de comunicação ao buscar estado anterior. Iniciando nova sessão.', 'Erro de Rede');
+            renderUI(); // Renderiza a UI vazia
+        } finally {
+            ModalSystem.hideLoading();
+            bipagemInput?.focus(); // Foca no input após carregar (Adicionado '?')
         }
-        // Renderiza o estado carregado, incluindo o estado dos botões do kit
-        renderUI();
     }
 
     /**
@@ -241,7 +277,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // successSound.play(); // Talvez tocar só no sucesso da validação
         currentBips.push(componentSku);
         renderUI(); // Atualiza a lista de bipagem atual e o estado dos botões
-
+        await saveStateToBackend();
         bipagemInput.value = ''; // Limpa o input
         bipagemInput.focus();
 
@@ -274,6 +310,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (!isKitMode) {
                     currentBips = []; // Limpa o bip inválido
                     renderUI(); // Atualiza a UI para refletir a limpeza
+                    await saveStateToBackend();
                 }
                 // Mostra o erro (seja kit ou não)
                 return ModalSystem.alert(data.message, 'Falha na Validação');
@@ -287,6 +324,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (isKitMode) {
                 isKitMode = false;
                 renderUI(); // Atualiza os botões do kit
+                await saveStateToBackend();
             }
 
         } catch (error) {
@@ -296,6 +334,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!isKitMode) {
                  currentBips = [];
                  renderUI();
+                 await saveStateToBackend();
             }
             ModalSystem.alert(`Erro de comunicação com o servidor: ${error.message}`, 'Erro de Rede');
         } finally {
@@ -306,20 +345,22 @@ document.addEventListener('DOMContentLoaded', function() {
     /**
      * Limpa o grupo de bipagem atual (botão Limpar)
      */
-    function handleClearCurrent() {
+    async function handleClearCurrent() {
         currentBips = [];
         renderUI();
+        await saveStateToBackend();
         bipagemInput.focus();
     }
     
     /**
      * Remove uma estrutura específica do grupo de bipagem atual (botão X interno)
      */
-    function handleRemoveStructure(e) {
+    async function handleRemoveStructure(e) {
          if (e.target && e.target.classList.contains('remove-structure-btn')) {
             const index = parseInt(e.target.getAttribute('data-index'), 10);
             currentBips.splice(index, 1);
             renderUI();
+            await saveStateToBackend();
             bipagemInput.focus();
         }
     }
@@ -347,10 +388,11 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    function handleCancelarKit() {
+    async function handleCancelarKit() {
          isKitMode = false;
          currentBips = []; // Limpa as estruturas do kit cancelado
          renderUI(); // Atualiza botões e lista atual
+         await saveStateToBackend();
          bipagemInput.focus();
      }
 
@@ -396,7 +438,7 @@ document.addEventListener('DOMContentLoaded', function() {
     /**
      * Aplica o grupo validado ao estado principal (scanList e aggregates).
      */
-    function commitScannedGroupToState(productData) {
+    async function commitScannedGroupToState(productData) {
         const parentSku = productData.parentProduct.sku;
 
         // 1. Inicializa o agregado se for a primeira vez
@@ -438,13 +480,13 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // 6. Atualiza UI e salva o estado
         renderUI();
-        saveState();
+        await saveStateToBackend();
     }
 
     /**
      * Adiciona um marcador de palete
      */
-    function handleAddPallet() {
+    async function handleAddPallet() {
         if (scanList.length === 0) {
             return ModalSystem.alert('Feche pelo menos um produto antes de adicionar um novo palete.', 'Aviso');
         }
@@ -461,7 +503,7 @@ document.addEventListener('DOMContentLoaded', function() {
         palletCount++; // Incrementa para o próximo
 
         renderUI();
-        saveState();
+        await saveStateToBackend();
         bipagemInput.focus();
     }
 
@@ -549,8 +591,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     window.URL.revokeObjectURL(url);
                     a.remove();
 
+                    await saveStateToBackend();
                     ModalSystem.alert('Bipagem finalizada com sucesso! O PDF foi baixado. A página será reiniciada.', 'Sucesso', function() {
-                        localStorage.removeItem(STORAGE_KEY);
                         location.reload();
                     });
 
@@ -567,7 +609,7 @@ document.addEventListener('DOMContentLoaded', function() {
     /**
      * Remove um item da lista principal (Produto ou Palete)
      */
-    function handleRemoveMainItem(e) {
+    async function handleRemoveMainItem(e) {
         if (!e.target.classList.contains('remove-main-item-btn')) return;
         
         const index = parseInt(e.target.getAttribute('data-index'), 10);
@@ -579,7 +621,7 @@ document.addEventListener('DOMContentLoaded', function() {
         ModalSystem.confirm(
             `Deseja realmente remover o item <strong>${itemName}</strong> da lista?`,
             "Confirmar Remoção",
-            function() { // onConfirm
+            async () => { // onConfirm
                 // 1. Remove o item do scanList
                 scanList.splice(index, 1);
 
@@ -596,7 +638,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 updatePalletCountFromScanList();
                 
                 // 4. Salva e Renderiza
-                saveState();
+                await saveStateToBackend();
                 renderUI();
             },
             null, // onCancel
@@ -639,7 +681,7 @@ document.addEventListener('DOMContentLoaded', function() {
         listContainer.addEventListener('click', handleRemoveMainItem);
     }
 
-    // --- Inicialização ---
-    loadState(); // loadState agora chama renderUI() no final
+    // --- Carregamento Inicial ---
+    await loadStateFromBackend(); // Carrega o estado do backend ao iniciar
     bipagemInput.focus();
 });

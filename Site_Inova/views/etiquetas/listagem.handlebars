@@ -1,0 +1,79 @@
+{{!< main}}
+
+{{#section "head"}}
+    {{!-- Usa o mesmo CSS do histórico de NFe para manter o estilo --}}
+    <link href="/public/styles/nfeHistory.css" rel="stylesheet">
+    {{!-- Adiciona um CSS específico se precisar de ajustes --}}
+    <link href="/public/styles/mlEtiquetasList.css" rel="stylesheet">
+{{/section}}
+
+<div class="content-card">
+    {{!-- Cabeçalho --}}
+    <div class="page-header-actions">
+        <h1 class="page-title">{{title}}</h1>
+        {{!-- Botão de Download Excel --}}
+        <button id="ml-etiquetas-sku-qtd-report-btn" class="btn btn-success"> {{!-- Cor diferente --}}
+            <i class="fas fa-boxes"></i> Baixar Pendentes (SKU/Qtd)
+        </button>
+        <button id="ml-etiquetas-report-btn" class="btn btn-success">
+            <i class="fas fa-file-excel"></i> Baixar Relatório (Excel)
+        </button>
+    </div>
+
+    {{!-- Filtros (Estrutura idêntica ao nfe-history) --}}
+    <div class="nfe-history-filters">
+        <div class="filter-group search-group">
+            <label for="ml-etiquetas-search-input">Buscar:</label>
+            <input type="text" id="ml-etiquetas-search-input" class="form-control" placeholder="NF, Venda, Pack ID, SKU, Arquivo..." style="min-width: 280px;">
+        </div>
+        <div class="filter-group">
+            <label for="ml-etiquetas-situacao-filter">Situação:</label>
+            <select id="ml-etiquetas-situacao-filter" class="form-control form-control-sm">
+                <option value="">Todas</option>
+                <option value="pendente">Pendente</option>
+                <option value="impresso">Impresso</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label for="ml-etiquetas-start-date">Data Início:</label>
+            <input type="date" id="ml-etiquetas-start-date" class="form-control form-control-sm">
+        </div>
+        <div class="filter-group">
+            <label for="ml-etiquetas-end-date">Data Fim:</label>
+            <input type="date" id="ml-etiquetas-end-date" class="form-control form-control-sm">
+        </div>
+    </div>
+
+    {{!-- Tabela Container (Estrutura idêntica ao nfe-history) --}}
+    <div class="table-container">
+        <table class="nfe-history-table">
+            <thead>
+                <tr>
+                    <th>NF-e</th>
+                    <th>Venda</th>
+                    <th>SKUs</th>
+                    <th>Qtd.</th>
+                    <th>Localização</th>
+                    <th>Situação</th>
+                    <th>Última Atualização</th>
+                </tr>
+            </thead>
+            {{!-- Corpo da tabela onde o JS vai inserir as linhas --}}
+            <tbody id="ml-etiquetas-table-body">
+                <tr><td colspan="10" class="text-center p-5">Carregando...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    {{!-- Paginação (Estrutura idêntica ao nfe-history) --}}
+    <div id="ml-etiquetas-pagination" class="nfe-history-pagination">
+        {{!-- Controles de paginação serão inseridos pelo JavaScript --}}
+    </div>
+</div>
+
+{{!-- REMOVIDO O ELEMENTO <template> --}}
+
+{{#section "scripts"}}
+    {{!-- Inclui o script JS --}}
+    <script src="/public/scripts/mlEtiquetasListManager.js"></script>
+{{/section}}

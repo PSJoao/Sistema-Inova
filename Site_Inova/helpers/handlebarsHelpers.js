@@ -72,6 +72,8 @@ module.exports = {
     return number.toFixed(digits);
   },
 
+  sum: (a, b) => (Number(a) || 0) + (Number(b) || 0),
+
   // --- [NOVOS HELPERS ADICIONADOS PARA O MÓDULO DE RASTREIO] ---
 
   /**

@@ -30,7 +30,7 @@
         </div>
         <div class="filter-group search-group">
              <label for="nfe-history-search-input">Busca Rápida:</label>
-             <input type="text" id="nfe-history-search-input" class="form-control form-control-sm" placeholder="Buscar por NFE, transportadora...">
+             <input type="text" id="nfe-history-search-input" class="form-control form-control-sm" placeholder="Buscar por NFE, transportadora..." style="min-width: 280px;">
         </div>
         <div class="filter-group">
             <label>&nbsp;</label> {{!-- Label vazia para alinhar --}}
@@ -66,7 +66,7 @@
                             <td>{{this.nfe_numero}}</td>
                             <td>{{formatDate this.data_emissao}}</td>
                             <td><span class="nfe-status status-{{this.status_para_relacao}}">{{this.status_para_relacao}}</span></td>
-                            <td>{{this.transportadora_apelido}}</td>
+                            <td style="text-align: center;">{{this.transportadora_apelido}}</td>
                             <td class="product-list" title="{{this.product_descriptions_list}}">{{truncate this.product_descriptions_list 50}}</td>
                             <td>{{this.justificativa}}</td>
                             <td>{{formatDate this.data_acao}}</td>
