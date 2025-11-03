@@ -1,100 +1,141 @@
 // public/scripts/productSyncManager.js
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('productSyncManager.js: DOMContentLoaded'); // Log para verificar execução
+    console.log('productSyncManager.js: DOMContentLoaded');
 
-    const syncForm = document.getElementById('productSyncForm');
-    const submitButton = syncForm ? syncForm.querySelector('button[type="submit"]') : null;
+    // (MODIFICADO) Seleciona os dois formulários e botões
+    const uploadForm = document.getElementById('uploadForm');
+    const nameSyncForm = document.getElementById('nameSyncForm');
 
-    //if (!syncForm || !submitButton) {
-    /*    console.error('ERRO CRÍTICO: Formulário de sincronização (id="productSyncForm") ou botão de submit não encontrado.');
-        // Tenta alertar o usuário se o ModalSystem estiver disponível
-        if (typeof ModalSystem !== 'undefined' && ModalSystem.alert) {
-             ModalSystem.alert('<p class="text-danger">Erro interno na página. Não foi possível encontrar o formulário de envio. Recarregue a página ou contate o suporte.</p>', 'Erro de Interface');
-        }
-        return; // Impede a execução do resto do script
-    }*/
+    const uploadButton = uploadForm ? uploadForm.querySelector('button[type="submit"]') : null;
+    const nameSyncButton = nameSyncForm ? nameSyncForm.querySelector('button[type="submit"]') : null;
 
-    // Verifica se ModalSystem está disponível logo no início
     if (typeof ModalSystem === 'undefined' || !ModalSystem.showLoading || !ModalSystem.hideLoading || !ModalSystem.alert) {
-        console.error('ERRO CRÍTICO: ModalSystem não está definido ou inicializado corretamente. Verifique a inclusão e ordem dos scripts (modal.js deve vir antes).');
-        // Desabilita o botão para evitar envio padrão que mostraria JSON
-        submitButton.disabled = true;
-        submitButton.textContent = 'Erro de Interface';
-         // Tenta alertar o usuário de forma nativa como último recurso
+        console.error('ERRO CRÍTICO: ModalSystem não está definido.');
+        if (uploadButton) uploadButton.disabled = true;
+        if (nameSyncButton) nameSyncButton.disabled = true;
         alert('Erro crítico: O sistema de modais não carregou corretamente. A funcionalidade de sincronização está desabilitada.');
-        return; // Impede a execução do resto do script
+        return;
     } else {
-        // Se ModalSystem existe, tenta inicializar (caso ainda não tenha sido)
         if (ModalSystem.initialize) ModalSystem.initialize();
         console.log('ModalSystem verificado e pronto.');
     }
 
+    if (!uploadForm || !uploadButton) {
+        console.warn('Formulário de Upload (uploadForm) não encontrado.');
+    }
+    if (!nameSyncForm || !nameSyncButton) {
+        console.warn('Formulário de Nome (nameSyncForm) não encontrado.');
+    }
 
-    syncForm.addEventListener('submit', async (event) => {
-        // *** 1. Impedir o envio padrão IMEDIATAMENTE ***
+    /**
+     * (NOVO) Helper para lidar com o envio de ambos os formulários
+     * @param {Event} event O evento de submit
+     * @param {HTMLFormElement} form O formulário sendo enviado
+     * @param {HTMLButtonElement} button O botão de submit
+     * @param {string} url A URL para onde enviar
+     */
+    const handleSyncSubmit = async (event, form, button, url) => {
         event.preventDefault();
-        console.log('Form submit intercepted, default prevented.');
+        console.log(`Form submit interceptado para: ${url}`);
 
-        // Desabilita o botão e mostra estado de carregamento
-        submitButton.disabled = true;
-        const originalButtonText = submitButton.innerHTML;
-        submitButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Sincronizando...';
+        if (form.id === 'nameSyncForm') {
+            const productNameInput = form.querySelector('#productName');
+            const productName = productNameInput ? productNameInput.value.trim() : '';
 
-        // *** 2. Mostra o modal de carregamento com a mensagem solicitada ***
+            // Padrão 1: "ESTOQUE" (case-insensitive)
+            // Padrão 2: "V" (ou "v"), espaço, número, barra, número (ex: "V 1/2")
+            // A regex /i torna a busca case-insensitive.
+            const structurePattern = /(estoque|v \d+\/\d+)/i;
+
+            if (structurePattern.test(productName)) {
+                console.warn('Detecção de nome de estrutura. Bloqueando envio.');
+                
+                // "Avisar"
+                ModalSystem.alert(
+                    'O nome digitado parece ser de uma estrutura (contém "ESTOQUE" ou "V 1/2"). Por favor, digite o nome exato do produto principal.',
+                    'Nome de Produto Inválido'
+                );
+                
+                // "Impedir" - para a execução aqui e não envia o form.
+                return; 
+            }
+        }
+
+        button.disabled = true;
+        const originalButtonText = button.innerHTML;
+        button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Sincronizando...';
+
         ModalSystem.showLoading(
-            'Iniciando sincronização. Este processo pode demorar alguns minutos.', 
+            'Iniciando sincronização. Este processo pode demorar alguns minutos.',
             'Sincronização Iniciada'
         );
 
-        const formData = new FormData(syncForm);
+        const formData = new FormData(form);
 
         try {
-            console.log('Sending fetch request to /product-sync/upload');
+            console.log(`Sending fetch request to ${url}`);
             
-            // *** 3. Executa a sincronização e ESPERA ela terminar ***
-            const response = await fetch('/product-sync/upload', {
+            // O backend responde com 204 (No Content) quase imediatamente.
+            // O fetch vai terminar rápido, e o 'finally' será chamado.
+            const response = await fetch(url, {
                 method: 'POST',
                 body: formData,
-                headers: { 'Accept': 'application/json' } 
+                headers: { 'Accept': 'application/json' }
             });
-            
+
             console.log('Fetch response received, status:', response.status);
 
-            // *** 4. Lógica de sucesso/erro REMOVIDA ***
-            // Não fazemos nada com a resposta, apenas logamos no console para debug.
-            if (!response.ok) {
-                 console.error('Sincronização falhou no backend, status:', response.status);
-                 try {
-                     const errResult = await response.json();
-                     console.error('Detalhe do erro:', errResult.message);
-                 } catch (e) {
-                     console.error('Não foi possível parsear o JSON do erro.');
-                 }
+            // Se o backend falhar *antes* de iniciar o job (ex: 400, 409)
+            if (!response.ok && response.status !== 204) {
+                console.error('Sincronização falhou no backend, status:', response.status);
+                // Tenta mostrar um erro se o backend enviou um JSON
+                try {
+                    const errResult = await response.json();
+                    console.error('Detalhe do erro:', errResult.message);
+                    // (Opcional) Mostrar erro ao usuário, mas o modal de loading já fechou
+                    // ModalSystem.alert(errResult.message, 'Falha ao Iniciar'); 
+                } catch (e) {
+                    console.error('Não foi possível parsear o JSON do erro.');
+                    // ModalSystem.alert('Ocorreu uma falha desconhecida ao iniciar.', 'Erro');
+                }
             } else {
-                 console.log('Sincronização concluída no backend.');
+                console.log('Sincronização iniciada com sucesso (ou 204 recebido).');
             }
 
         } catch (networkError) {
-            // Erro de rede ou fetch falhou completamente
-            // Loga no console, mas não mostra modal de erro ao usuário
             console.error('Erro de rede durante o fetch:', networkError);
+            // (Opcional) Mostrar erro de rede
+            // ModalSystem.alert(`Erro de rede: ${networkError.message}`, 'Erro de Conexão');
         
         } finally {
-            // *** 5. SEMPRE executa isso quando o fetch termina (sucesso ou erro) ***
+            // Este 'finally' executa assim que o fetch (rápido) termina.
+            // O modal de loading fecha, e o usuário vê o form resetado,
+            // enquanto o job continua rodando no backend.
             
-            // Esconde o modal de carregamento
             ModalSystem.hideLoading();
 
-            // Reabilita o botão e restaura o texto original
-            submitButton.disabled = false;
-            submitButton.innerHTML = originalButtonText;
+            button.disabled = false;
+            button.innerHTML = originalButtonText;
             
-            // Limpa os campos de arquivo para evitar reenvio acidental
-            syncForm.reset();
+            form.reset(); // Limpa o formulário
             
             console.log('Form submission handler finished.');
         }
-    });
+    };
 
-    console.log('productSyncManager.js: Event listeners ADDED.');
+    // (MODIFICADO) Adiciona listener para o formulário de UPLOAD
+    if (uploadForm && uploadButton) {
+        uploadForm.addEventListener('submit', (event) => {
+            handleSyncSubmit(event, uploadForm, uploadButton, '/product-sync/upload');
+        });
+        console.log('productSyncManager.js: Event listener ADICIONADO para uploadForm.');
+    }
+
+    // (MODIFICADO) Adiciona listener para o formulário de NOME
+    if (nameSyncForm && nameSyncButton) {
+        nameSyncForm.addEventListener('submit', (event) => {
+            handleSyncSubmit(event, nameSyncForm, nameSyncButton, '/product-sync/by-name');
+        });
+        console.log('productSyncManager.js: Event listener ADICIONADO para nameSyncForm.');
+    }
 });

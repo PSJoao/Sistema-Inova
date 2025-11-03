@@ -11,11 +11,9 @@
             <a href="/rastreio" class="back-link"><i class="fas fa-arrow-left"></i> Voltar para a listagem</a>
             <h1 class="page-title">{{title}}</h1>
         </div>
-        {{#if (isRissoOrJew pedido.transportadora)}}
-            <div class="header-actions-buttons">
-                <button id="btn-enviar-email" class="btn btn-warning"><i class="fas fa-envelope"></i> Enviar Posição de Entrega</button>
-            </div>
-        {{/if}}    
+        <div class="header-actions-buttons">
+            <button id="btn-enviar-email" class="btn btn-warning"><i class="fas fa-envelope"></i> Enviar Posição de Entrega</button>
+        </div>
     </div>
 
     {{!-- Grid para organizar os cards de informação --}}

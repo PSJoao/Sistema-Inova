@@ -101,7 +101,7 @@ exports.getNfeHistoryApi = async (req, res) => {
         //whereClauses.push(`enf.cancelada = false`);
 
         whereClauses.push(`enf.transportadora_apelido NOT IN ('SHOPEE MAGAZINE', 'NOVO MERCADO LIVRE', 'MERCADO LIVRE ELIANE', 'MERCADO LIVRE MAGAZINE', 'FRENET')`);
-
+        whereClauses.push(`cn.data_emissao is NOT NULL`);
         const whereCondition = `WHERE ${whereClauses.join(' AND ')}`;
         
         const countQuery = `SELECT COUNT(DISTINCT enf.id) FROM emission_nfe_reports enf LEFT JOIN cached_nfe cn ON enf.nfe_chave_acesso_44d = cn.chave_acesso ${whereCondition};`;

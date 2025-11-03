@@ -2,6 +2,7 @@
 const { Pool } = require('pg');
 const pdfParse = require('pdf-parse');
 const { PDFDocument, rgb, StandardFonts, degrees } = require('pdf-lib');
+const ExcelJS = require('exceljs');
 const bwip = require('bwip-js');
 const { findAndCacheNfeByNumber, findAndCachePedidoByLojaNumber } = require('../blingSyncService');
 const fs = require('fs').promises;
@@ -1294,10 +1295,88 @@ async function gerarPdfBipagem(labelsToPrint, palletMarkers) {
     return Buffer.from(pdfBytes);
 }
 
+async function lerExcel(buffer) {
+    const nfs = [];
+    const workbook = new ExcelJS.Workbook();
+    try {
+        await workbook.xlsx.load(buffer);
+        const worksheet = workbook.worksheets[0]; // Pega a primeira planilha
+
+        // Itera sobre a Coluna A
+        worksheet.getColumn(1).eachCell((cell, rowNumber) => {
+            if (rowNumber > 1) { // Pula a linha 1 (cabeçalho)
+                const nfValue = cell.value ? cell.value.toString().trim() : '';
+                if (nfValue.length > 0 && /^\d+$/.test(nfValue)) {
+                    nfs.push(nfValue);
+                }
+            }
+        });
+        
+        return [...new Set(nfs)]; // Retorna apenas NFs únicas
+    } catch (error) {
+        console.error('[Service - Ler Excel] Erro ao ler o arquivo Excel:', error);
+        throw new Error('Não foi possível ler o arquivo Excel. Verifique se o formato está correto.');
+    }
+}
+
+async function processarLoteNf(excelBuffer) {
+    console.log('[Service - Lote NF] Iniciando processamento do lote...');
+    const nfList = await lerExcel(excelBuffer);
+    
+    if (nfList.length === 0) {
+        throw new Error('Nenhuma NF válida encontrada na Coluna A do Excel (pulando a linha 1).');
+    }
+
+    console.log(`[Service - Lote NF] ${nfList.length} NFs únicas encontradas no Excel. Buscando etiquetas...`);
+
+    const foundLabelsBuffers = [];
+    const notFoundNfs = [];
+
+    for (const nf of nfList) {
+        try {
+            // Reutiliza a função de busca individual existente
+            const resultado = await buscarEtiquetaPorNF(nf);
+
+            if (resultado.success && resultado.pdfBuffer) {
+                foundLabelsBuffers.push(resultado.pdfBuffer);
+            } else {
+                notFoundNfs.push(nf);
+            }
+        } catch (error) {
+            console.error(`[Service - Lote NF] Erro ao buscar NF ${nf}:`, error);
+            notFoundNfs.push(nf);
+        }
+    }
+
+    if (foundLabelsBuffers.length === 0) {
+        throw new Error('Nenhuma das NFs fornecidas foi encontrada ou pôde ser processada.');
+    }
+
+    // Mescla todos os PDFs encontrados
+    console.log(`[Service - Lote NF] Mesclando ${foundLabelsBuffers.length} etiquetas encontradas...`);
+    const mergedPdf = await PDFDocument.create();
+
+    for (const pdfBuffer of foundLabelsBuffers) {
+        const individualPdf = await PDFDocument.load(pdfBuffer);
+        // Assumindo que buscarEtiquetaPorNF sempre retorna 1 página
+        const [copiedPage] = await mergedPdf.copyPages(individualPdf, [0]);
+        mergedPdf.addPage(copiedPage);
+    }
+
+    const pdfBytes = await mergedPdf.save();
+    console.log(`[Service - Lote NF] PDF mesclado gerado. ${notFoundNfs.length} NFs não encontradas.`);
+
+    return {
+        pdfBuffer: Buffer.from(pdfBytes),
+        notFoundNfs: notFoundNfs
+    };
+}
+
 
 module.exports = {
     processarEtiquetas,
     buscarEtiquetaPorNF,
     validarProdutoPorEstruturas,
-    finalizarBipagem
+    finalizarBipagem,
+    processarLoteNf
 };

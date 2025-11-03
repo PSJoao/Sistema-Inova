@@ -205,3 +205,59 @@ exports.handleProductSyncUpload = async (req, res) => {
         return res.status(204).end();
     });
 };
+
+exports.handleProductSyncByName = async (req, res) => {
+    const username = req.session.username || 'desconhecido';
+    const { productName } = req.body;
+
+    if (!productName || productName.trim() === '') {
+        return res.status(400).json({ success: false, message: 'O nome do produto não pode estar vazio.' });
+    }
+
+    // 1. Tenta adquirir a trava
+    const lockResult = await acquireProductSyncLock(username);
+    if (!lockResult.success) {
+        return res.status(409).json({ success: false, message: lockResult.message }); // 409 Conflict
+    }
+
+    // 2. Executa as sincronizações em background (para ambas as contas)
+    console.log(`[ProductSyncByName] Iniciando sincronização por NOME "${productName}" (por ${username})...`);
+
+    const runSyncInBackground = async () => {
+        const name = productName.trim();
+        try {
+            const syncResults = await Promise.allSettled([
+                productSyncService.syncProductsByName(name, 'lucas'), // Chama o novo serviço
+                productSyncService.syncProductsByName(name, 'eliane') // Chama o novo serviço
+            ]);
+
+            console.log('[ProductSyncByName] Sincronizações por NOME em background concluídas.');
+            const [lucasResult, elianeResult] = syncResults;
+            
+            // Log dos resultados
+            if (lucasResult.status === 'fulfilled') {
+                console.log(`  Resultado BKG (Nome) Lucas: ${lucasResult.value.successCount} sucesso(s), ${lucasResult.value.errorCount} erro(s).`);
+            } else {
+                console.error('  Erro GERAL BKG (Nome) na sincronização Lucas:', lucasResult.reason?.message || lucasResult.reason);
+            }
+            if (elianeResult.status === 'fulfilled') {
+                console.log(`  Resultado BKG (Nome) Eliane: ${elianeResult.value.successCount} sucesso(s), ${elianeResult.value.errorCount} erro(s).`);
+            } else {
+                console.error('  Erro GERAL BKG (Nome) na sincronização Eliane:', elianeResult.reason?.message || elianeResult.reason);
+            }
+
+        } catch (syncError) {
+            console.error('[ProductSyncByName] Erro inesperado durante Promise.allSettled (background):', syncError);
+        } finally {
+            // 3. Garante que a trava seja liberada
+            await releaseProductSyncLock(username);
+            console.log('[ProductSyncByName] Trava liberada (job em background finalizado).');
+        }
+    };
+
+    // Dispara a função em background e NÃO espera (await)
+    runSyncInBackground();
+
+    // 4. Retorna uma resposta VAZIA (204 No Content) IMEDIATAMENTE.
+    return res.status(204).end();
+};

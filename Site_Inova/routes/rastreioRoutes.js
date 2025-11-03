@@ -18,6 +18,8 @@ router.get('/api', rastreioController.getPedidosRastreioApi);
 // GET /rastreio/detalhe/:id
 router.get('/detalhe/:id', rastreioController.renderDetalheRastreioPage);
 
+router.post('/api/mass-search', rastreioController.massSearchByNFe);
+
 router.post('/api/upload-dominalog-report', upload.single('relatorioDominalog'), rastreioController.processarBoletimDominalog);
 
 // (NOVA ROTA)

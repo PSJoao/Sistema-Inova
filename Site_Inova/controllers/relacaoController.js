@@ -4,6 +4,8 @@ const path = require('path');
 const fs = require('fs').promises;
 const fsSync = require('fs'); // Para existsSync e mkdirSync
 const axios = require('axios'); // Necessário para blingApiGet
+const { poolInova, poolMonitora } = require('../config/db');
+const { ConsoleLogEntry } = require('selenium-webdriver/bidi/logEntries');
 
 const pool = new Pool({
     user: process.env.DB_MON_USER,
@@ -732,19 +734,30 @@ exports.downloadRelacaoExcel = async (req, res) => {
         const worksheet = workbook.addWorksheet(sheetName);
 
         worksheet.columns = [
-            { header: 'Transportadora', key: 'transportadora', width: 40 },
             { header: 'Nº Nota Fiscal', key: 'nfe_numero', width: 20 },
-            { header: 'Data', key: 'data', width: 15 }
+            { header: 'Nº Pedido', key: 'pedido_venda', width: 25},
+            { header: 'Data', key: 'data', width: 15 },
+            { header: 'Transportadora', key: 'transportadora', width: 40 }
         ];
         worksheet.getRow(1).font = { bold: true };
 
-        itemsResult.rows.forEach(item => {
+        for (const item of itemsResult.rows) {
+            const pedidosResult = await poolInova.query(
+                `SELECT numero_pedido 
+                FROM pedidos_em_rastreamento
+                WHERE numero_nfe = $1`,
+                [item.nfe_numero]
+            );
+
+            const numeroPedido = pedidosResult.rows[0]?.numero_pedido || "N/A";
+
             worksheet.addRow({
-                transportadora: nomeCompleto,
                 nfe_numero: parseInt(item.nfe_numero, 10),
-                data: dataFormatada
+                pedido_venda: numeroPedido,
+                data: dataFormatada,
+                transportadora: nomeCompleto
             });
-        });
+        }
 
         // 4. Envia o arquivo para o navegador
         const fileName = `Relacao-${transportadora_apelido}-${dataFormatada}.xlsx`;

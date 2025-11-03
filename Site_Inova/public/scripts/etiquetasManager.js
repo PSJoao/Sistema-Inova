@@ -204,4 +204,106 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    const nfBatchForm = document.getElementById('nfBatchUploadForm');
+    const nfExcelInput = document.getElementById('nfExcelFile');
+    const nfExcelFileName = document.getElementById('nfExcelFileName');
+
+    if (nfExcelInput) {
+        nfExcelInput.addEventListener('change', function() {
+            if (this.files.length > 0) {
+                nfExcelFileName.textContent = `Arquivo selecionado: ${this.files[0].name}`;
+            } else {
+                nfExcelFileName.textContent = '';
+            }
+        });
+    }
+
+    if (nfBatchForm) {
+        nfBatchForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            if (!nfExcelInput.files || nfExcelInput.files.length === 0) {
+                ModalSystem.alert('Por favor, selecione um arquivo Excel para enviar.', 'Erro');
+                return;
+            }
+
+            const file = nfExcelInput.files[0];
+            const formData = new FormData();
+            formData.append('nfExcelFile', file, file.name); // O name 'nfExcelFile' bate com o controller
+
+            ModalSystem.showLoading('Processando lote de NFs... Isso pode demorar alguns instantes.', 'Aguarde');
+
+            try {
+                const response = await fetch('/etiquetas/buscar-nf-lote', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok && response.headers.get('Content-Type') === 'application/pdf') {
+                    // SUCESSO - Download do PDF
+                    ModalSystem.hideLoading();
+                    const blob = await response.blob();
+                    
+                    const contentDisposition = response.headers.get('Content-Disposition');
+                    let filename = 'Etiquetas_Lote.pdf';
+                    if (contentDisposition) {
+                        const filenameMatch = contentDisposition.match(/filename="?(.+?)"?$/);
+                        if (filenameMatch && filenameMatch[1]) {
+                            filename = filenameMatch[1];
+                        }
+                    }
+                    
+                    // Lógica de download (similar ao seu upload principal)
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    a.remove();
+
+                    // **IMPORTANTE**: Verifica o header customizado por NFs não encontradas
+                    const notFoundHeader = response.headers.get('X-Not-Found-NFs');
+                    if (notFoundHeader) {
+                        const notFoundList = notFoundHeader.split(',');
+                        let errorListHtml = '<ul>';
+                        notFoundList.forEach(nf => { errorListHtml += `<li>NF: ${nf}</li>`; });
+                        errorListHtml += '</ul>';
+                        
+                        ModalSystem.alert(
+                            `PDF gerado com sucesso. As seguintes NFs não foram encontradas:<br>${errorListHtml}`, 
+                            'Processo Concluído com Avisos',
+                            null, // Sem callback
+                            { isHtml: true } // Permite o HTML no modal
+                        );
+                    } else {
+                        ModalSystem.alert('Processamento concluído. O download do PDF foi iniciado.', 'Sucesso');
+                    }
+
+                    // Limpa o formulário
+                    nfBatchForm.reset();
+                    nfExcelFileName.textContent = '';
+
+                } else {
+                    // ERRO - Resposta não foi OK (provavelmente um JSON de erro)
+                    ModalSystem.hideLoading();
+                    let errorMsg = 'Erro desconhecido no servidor.';
+                    try {
+                        const errData = await response.json();
+                        errorMsg = errData.message;
+                    } catch (jsonError) { /* Não era JSON */ }
+                    
+                    ModalSystem.alert(errorMsg, `Erro ${response.status}`);
+                }
+
+            } catch (error) {
+                ModalSystem.hideLoading();
+                ModalSystem.alert(`Ocorreu um erro de comunicação: ${error.message}`, 'Erro de Rede');
+            }
+        });
+    }
+    
 });

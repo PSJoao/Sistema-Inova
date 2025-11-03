@@ -1,6 +1,6 @@
 // controllers/etiquetasController.js
 const multer = require('multer');
-const { processarEtiquetas, buscarEtiquetaPorNF, validarProdutoPorEstruturas, finalizarBipagem } = require('../services/etiquetasService');
+const { processarEtiquetas, buscarEtiquetaPorNF, validarProdutoPorEstruturas, finalizarBipagem, processarLoteNf } = require('../services/etiquetasService');
 const archiver = require('archiver');
 const fs = require('fs').promises;
 const path = require('path');
@@ -40,6 +40,25 @@ const upload = multer({
         }
     }
 }).array('etiquetasPdfs', 50); // Permite até 50 arquivos com o name 'etiquetasPdfs'
+
+
+const excelStorage = multer.memoryStorage();
+const uploadExcel = multer({
+    storage: excelStorage,
+    limits: { fileSize: 10 * 1024 * 1024 }, // Limite de 10MB para Excel
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = [
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+            'application/vnd.ms-excel' // .xls
+        ];
+        if (allowedTypes.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new Error('Formato de arquivo inválido. Apenas Excel (.xlsx, .xls) é permitido.'), false);
+        }
+    }
+}).single('nfExcelFile')
+
 
 /**
  * Renderiza a página principal para upload das etiquetas e ativa a trava de sincronização.
@@ -514,6 +533,41 @@ exports.exportMlEtiquetasExcel = async (req, res) => {
         console.error("[API Etiquetas ML] Erro ao gerar relatório Excel:", error);
         res.status(500).send("Erro ao gerar o relatório Excel.");
     }
+};
+
+exports.buscarNfLote = (req, res) => {
+    uploadExcel(req, res, async (err) => {
+        if (err) {
+            // Erros do Multer (tipo/tamanho)
+            console.error('Erro no upload do Excel (Multer):', err.message);
+            // Retorna JSON para o fetch() do frontend
+            return res.status(400).json({ success: false, message: `Erro no upload: ${err.message}` });
+        }
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: 'Nenhum arquivo Excel foi enviado.' });
+        }
+
+        try {
+            // Chama o novo serviço
+            const { pdfBuffer, notFoundNfs } = await processarLoteNf(req.file.buffer);
+
+            // Se o serviço rodou, envia o PDF
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename="Etiquetas_Lote_NF_${Date.now()}.pdf"`);
+            
+            // **IMPORTANTE**: Passa as NFs não encontradas para o frontend através de um header customizado
+            if (notFoundNfs.length > 0) {
+                res.setHeader('X-Not-Found-NFs', notFoundNfs.join(','));
+            }
+            
+            res.send(pdfBuffer);
+
+        } catch (error) {
+            // Erros do Service (Nenhuma NF encontrada, etc)
+            console.error('Erro ao processar lote de NFs:', error);
+            res.status(500).json({ success: false, message: `Erro ao processar o lote: ${error.message}` });
+        }
+    });
 };
 
 exports.exportMlSkuQuantityReport = async (req, res) => {

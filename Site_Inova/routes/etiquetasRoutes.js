@@ -23,6 +23,8 @@ router.post('/etiquetas/bipagem/save-state', etiquetasController.saveMlBipagemSt
 
 router.get('/etiquetas/bipagem/load-state', etiquetasController.loadMlBipagemState);
 
+router.post('/etiquetas/buscar-nf-lote', etiquetasController.buscarNfLote);
+
 // Rota para processar os arquivos PDF enviados
 // POST /etiquetas/processar
 router.post('/etiquetas/processar', etiquetasController.processAndOrganizeEtiquetas);

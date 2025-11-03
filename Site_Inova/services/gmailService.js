@@ -27,7 +27,7 @@ const TRANSPORTADORA_APELIDOS_MAP = {
 };
 
 // --- MAPA DE E-MAILS DAS TRANSPORTADORAS ---
-/*const CARRIER_EMAILS = {
+const CARRIER_EMAILS = {
     'ATUAL CARGAS': ['ocorrencias@atualcargas.com.br', 'tracking@atualcargas.com.br', 'faltas@atualcargas.com.br', 'adicionais@atualcargas.com.br', 'reversa@atualcargas.com.br'],
     'DOMINALOG': ['barrar.entrega@dominalog.com.br', 'atendimento@dominalog.com.br', 'recebe.reversa@dominalog.com.br', 'atendimento_reversa@dominalog.com.br'],
     'LOG+': ['devolucao@logmaistransportes.com.br', 'filialsjrp@logmaistransportes.com.br', 'sac2@logmaistransportes.com.br'],
@@ -37,9 +37,9 @@ const TRANSPORTADORA_APELIDOS_MAP = {
         'NORDESTE': ['suporte.sjp@lmslog.com.br', 'atendimento.sjp@lmslog.com.br', 'operacional.sjp@lmslog.com.br'],    // MA, PI, CE, RN, PB, PE, AL, SE, BA
         'CENTRO_NORTE': ['atendimento.go@lmslog.com.br', 'suporte.go@lmslog.com.br', 'atendimento.sjp@lmslog.com.br', 'operacional.sjp@lmslog.com.br'] // MT, MS, GO, DF, AC, TO, PA, RO, AM, RR, AP
     }
-};*/
+};
 
-const CARRIER_EMAILS = {
+/*const CARRIER_EMAILS = {
     'ATUAL CARGAS': ['joaoopedrosantos003@gmail.com'],
     'DOMINALOG': ['joaoopedrosantos003@gmail.com'],
     'LOG+': ['joaoopedrosantos003@gmail.com'],
@@ -49,7 +49,7 @@ const CARRIER_EMAILS = {
         'NORDESTE': ['joaoopedrosantos003@gmail.com'],    // MA, PI, CE, RN, PB, PE, AL, SE, BA
         'CENTRO_NORTE': ['joaoopedrosantos003@gmail.com'] // MT, MS, GO, DF, AC, TO, PA, RO, AM, RR, AP
     }
-};
+};*/
 
 function getApelidoFromNomeCompleto(nomeCompleto) {
     if (!nomeCompleto) return null;
@@ -173,15 +173,16 @@ function getCarrierEmail(transportadora, uf) {
 
     if (upperTransp.includes('RISSO ENCOMENDAS CENTRO OESTE LTDA')) {
         return [
-            'joaoopedrosantos003@gmail.com'
+            'administrativo.fernandopolis@risso.com.br', 'pendencia.fernandopolis@risso.com.br', 'gerencia.fernandopolis@risso.com.br', 'comercial.fernandopolis@risso.com.br'
         ];
     }
 
     if (upperTransp.includes('JEW TRANSPORTES LTDA')) {
         return [
-            'joaoopedrosantos003@gmail.com'
+            'Sac2.jewtransportes@outlook.com.br', 'sac@jewtransportes.com.br', 'jew.campinas@gmail.com', 'jewcampinas3@gmail.com', 'coletas@jewtransportes.com.br'
         ];
     }
+
 
     
     return emails;
@@ -343,7 +344,7 @@ async function enviarEmailCobrancaManual(pedido) {
 
     // Atualiza o banco de dados com o status e o ID da thread
     await poolInova.query(
-        `UPDATE pedidos_em_rastreamento SET email_status = 'Email - Em Andamento', email_thread_id = $1 WHERE id = $2`,
+        `UPDATE pedidos_em_rastreamento SET email_status = 'Email - Em Andamento', observacao = 'Posição de entrega solicitada', email_thread_id = $1 WHERE id = $2`,
         [sentMessage.threadId, pedido.id]
     );
 

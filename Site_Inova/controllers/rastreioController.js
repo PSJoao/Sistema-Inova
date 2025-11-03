@@ -621,6 +621,66 @@ const rastreioController = {
             console.error(`[Rastreio Controller] Erro ao marcar e-mail como notificado para o pedido ${id}:`, error);
             res.status(500).json({ message: "Erro ao marcar notificação." });
         }
+    },
+
+    massSearchByNFe: async (req, res) => {
+        const { nfeList } = req.body; // Espera um array de strings
+
+        if (!nfeList || !Array.isArray(nfeList) || nfeList.length === 0) {
+            return res.status(400).json({ message: "A lista de NFEs é inválida." });
+        }
+        
+        // Limpa e normaliza a lista (remove espaços e linhas vazias)
+        const normalizedNfeList = nfeList
+            .map(nfe => String(nfe).trim())
+            .filter(nfe => nfe.length > 0);
+        
+        if (normalizedNfeList.length === 0) {
+                return res.status(400).json({ message: "A lista de NFEs está vazia." });
+        }
+
+        try {
+            const queryParams = [normalizedNfeList]; // $1 = array de NFEs
+            
+            const dataQuery = `
+                SELECT 
+                    id, numero_pedido, numero_nfe, situacao_atual, data_envio, 
+                    data_previsao_entrega, data_entrega, atualizado_em, transportadora, plataforma, 
+                    conferencia_necessaria, observacao, status_manual, email_status, notificado_por_email, previsao_atu,
+                    CASE
+                        WHEN transportadora ILIKE '%RISSO%' THEN
+                            (dados_rastreio_raw -> 'Ocorrencias' -> -1 ->> 'ds_Ocorrencia')
+                        WHEN transportadora ILIKE '%JEW%' THEN
+                            (dados_rastreio_raw -> 'listaResultados' -> -1 ->> 'descricaoOcorrencia')
+                        ELSE
+                            (dados_rastreio_raw -> 'documento' -> 'tracking' -> -1 ->> 'ocorrencia') || ' - ' || (dados_rastreio_raw -> 'documento' -> 'tracking' -> -1 ->> 'descricao')
+                    END as ultima_ocorrencia
+                FROM pedidos_em_rastreamento 
+                WHERE numero_nfe = ANY($1::text[]) -- [IMPORTANTE] Busca por NFEs no array
+                ORDER BY atualizado_em DESC;
+            `;
+            
+            const { rows } = await poolInova.query(dataQuery, queryParams);
+
+            // --- Lógica para encontrar NFEs faltantes ---
+            const foundNfeSet = new Set(rows.map(row => row.numero_nfe));
+            const missingNfes = normalizedNfeList.filter(nfe => !foundNfeSet.has(nfe));
+            // --- Fim da Lógica ---
+
+            res.status(200).json({
+                pedidosData: rows,
+                missingNfes: missingNfes, // Envia as NFEs não encontradas
+                pagination: { // Envia uma paginação "falsa" para não quebrar o manager
+                    currentPage: 1,
+                    totalPages: 1,
+                    totalItems: rows.length
+                }
+            });
+
+        } catch (error) {
+            console.error("[Rastreio Controller API] Erro ao buscar em massa por NFe:", error);
+            res.status(500).json({ message: "Erro ao buscar dados dos pedidos." });
+        }
     }
 }; 
 

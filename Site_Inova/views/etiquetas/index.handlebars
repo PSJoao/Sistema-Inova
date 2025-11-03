@@ -55,6 +55,28 @@
                      </div>
                  </div>
                  <div id="searchResult" class="mt-2"></div>
+
+                 <hr class="mt-4 mb-4">
+                 <br>
+                <div class="batch-search-container">
+                    <h5 class="mb-3">Buscar Etiquetas por Lote (Excel)</h5>
+                    <p class="search-description">
+                        Faça o upload de um arquivo Excel (.xlsx, .xls) com os números das Notas Fiscais na <b>Coluna A</b> (a partir da linha 2) para gerar um PDF único com todas as etiquetas encontradas.
+                    </p>
+                    {{! Nota: Não é 'action' ou 'method' pois o JS vai cuidar disso }}
+                    <form id="nfBatchUploadForm"> 
+                        <div class="form-group">
+                            <label for="nfExcelFile" class="form-label">Selecionar Arquivo Excel:</label>
+                            <div class="custom-file-upload">
+                            {{! O name 'nfExcelFile' deve bater com o multer no controller }}
+                            <input type="file" id="nfExcelFile" name="nfExcelFile" accept="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel">
+                                <label for="nfExcelFile" class="btn btn-secondary"><i class="fas fa-file-excel"></i> Escolher Arquivo</label>
+                            </div>
+                            <small id="nfExcelFileName" class="form-text text-muted"></small>
+                        </div>
+                        <button type="submit" class="btn btn-success btn-block mt-3"><i class="fas fa-file-pdf"></i> Gerar PDF por Lote</button>
+                    </form>
+                </div>
             </div>
 
         </div>

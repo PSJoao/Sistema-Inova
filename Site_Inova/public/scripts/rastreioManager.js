@@ -13,7 +13,12 @@ document.addEventListener('DOMContentLoaded', () => {
         dataInicioFilter: document.getElementById('data-inicio-filter'),
         dataFimFilter: document.getElementById('data-fim-filter'),
         paginationControls: document.getElementById('pagination-controls'),
-        btnGerarRelatorio: document.getElementById('btn-gerar-relatorio')
+        btnGerarRelatorio: document.getElementById('btn-gerar-relatorio'),
+        massSearchToggle: document.getElementById('mass-search-toggle'),
+        normalFiltersContainer: document.querySelector('.normal-filters-container'),
+        massSearchContainer: document.querySelector('.mass-search-container'),
+        nfeListTextarea: document.getElementById('nfe-list-textarea'),
+        btnMassSearch: document.getElementById('btn-mass-search')
     };
 
     if (!elements.listContainer) {
@@ -188,6 +193,48 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    async function fetchDataMassSearch(nfeList) {
+        if (!nfeList || nfeList.length === 0) {
+            ModalSystem.alert('A lista de NFEs está vazia. Cole as NFEs, uma por linha.', 'Atenção');
+            return;
+        }
+
+        document.body.classList.add('loading');
+        // Limpa o localStorage e o state da busca normal
+        localStorage.removeItem(RASTREIO_STATE_KEY);
+        state.currentPage = 1; 
+        
+        try {
+            const response = await fetch('/rastreio/api/mass-search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nfeList })
+            });
+            
+            if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'Falha ao buscar dados em massa');
+            }
+            
+            const data = await response.json();
+            
+            renderRows(data.pedidosData);
+            updatePagination(data.pagination); // Atualiza para mostrar 1 de 1 ou limpar
+
+            // [IMPORTANTE] Feedback de NFEs não encontradas
+            if (data.missingNfes && data.missingNfes.length > 0) {
+                const missingList = data.missingNfes.join(', ');
+                ModalSystem.alert(`<strong>Busca concluída.</strong><br>As seguintes NFEs não foram encontradas no sistema de rastreio:<br><br><strong>${missingList}</strong>`, 'Aviso de Busca');
+            }
+
+        } catch (error) {
+            console.error("Erro ao buscar dados em massa:", error);
+            elements.listContainer.innerHTML = `${headerHTML}<p class="no-results-message" style="color: var(--color-danger);">Ocorreu um erro ao carregar os dados.</p>`;
+        } finally {
+            document.body.classList.remove('loading');
+        }
+    }
+
     function handleFilterChange(resetPage = true) {
         if (resetPage) {
             state.currentPage = 1;
@@ -220,15 +267,52 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target.id === 'page-select') { state.currentPage = parseInt(e.target.value, 10); handleFilterChange(false); }
     });
 
+    if (elements.massSearchToggle) {
+        elements.massSearchToggle.addEventListener('change', () => {
+            if (elements.massSearchToggle.checked) {
+                // Ativou pesquisa em massa
+                elements.normalFiltersContainer.style.display = 'none';
+                elements.massSearchContainer.style.display = 'block';
+                elements.listContainer.innerHTML = headerHTML; // Limpa a lista
+                elements.paginationControls.innerHTML = ''; // Limpa a paginação
+            } else {
+                // Desativou pesquisa em massa
+                elements.normalFiltersContainer.style.display = 'flex';
+                elements.massSearchContainer.style.display = 'none';
+                elements.nfeListTextarea.value = ''; // Limpa o textarea
+                
+                // Recarrega os dados com os filtros normais
+                initialize();
+            }
+        });
+    }
+
+    if (elements.btnMassSearch) {
+        elements.btnMassSearch.addEventListener('click', () => {
+            const text = elements.nfeListTextarea.value;
+            // Cria a lista:
+            // 1. Divide por linha
+            // 2. Remove espaços em branco (trim)
+            // 3. Filtra linhas vazias
+            const nfeList = text.split('\n')
+                                .map(nfe => nfe.trim())
+                                .filter(nfe => nfe.length > 0);
+            
+            fetchDataMassSearch(nfeList);
+        });
+    }
+
+    // [SUBSTITUA O BLOCO DA LINHA 224]
     if (elements.listContainer) {
-        elements.listContainer.addEventListener('click', (event) => {
-            // Pega o elemento exato que foi clicado (ex: o texto, o div, etc.)
+        elements.listContainer.addEventListener('click', async (event) => { // 1. TORNAMOS ASYNC
+            // Pega o elemento exato que foi clicado
             const target = event.target;
 
             // 1. VERIFICAÇÃO IMPORTANTE:
             // Se o que o usuário clicou foi o <select> ou algo dentro dele,
             // não faça nada (permita que o dropdown abra).
-            if (target.closest('.status-select') || target.closest('.obs-value')) {
+            if (target.closest('.status-select-wrapper') || target.closest('.obs-value')) {
+                // Usando '.status-select-wrapper' para consistência
                 return; 
             }
 
@@ -236,9 +320,27 @@ document.addEventListener('DOMContentLoaded', () => {
             // A partir do que foi clicado, "sobe" até encontrar a linha principal
             const listRow = target.closest('.list-row');
 
-            // 3. ABRIR A NOVA ABA:
+            // 3. ABRIR A NOVA ABA E MARCAR COMO LIDO:
             // Se encontrou a linha E ela tem o atributo 'data-href'
             if (listRow && listRow.dataset.href) {
+                
+                // --- INÍCIO DA LÓGICA MOVIDA (DO SEGUNDO LISTENER) ---
+                // Lógica para marcar notificação como lida
+                if (listRow.dataset.notified === 'false') {
+                    const pedidoId = listRow.dataset.pedidoId;
+                    try {
+                        // Agora o 'await' aqui é válido
+                        await fetch(`/rastreio/api/mark-email-notified/${pedidoId}`, { method: 'POST' });
+                        // Remove a classe visualmente
+                        listRow.classList.remove('email-notified');
+                        listRow.dataset.notified = 'true';
+                    } catch (error) {
+                        console.error('Falha ao marcar e-mail como notificado:', error);
+                        // Não impede a abertura da aba
+                    }
+                }
+                // --- FIM DA LÓGICA MOVIDA ---
+
                 const url = listRow.dataset.href;
                 
                 // Abre a URL em uma nova aba
@@ -248,31 +350,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
-
-    elements.listContainer.addEventListener('click', async (e) => {
-        // Se o clique foi DENTRO do select, não faz nada.
-        if (e.target.closest('.status-select-wrapper')) {
-            return;
-        }
-        const row = e.target.closest('.list-row');
-        if (row && row.dataset.href) {
-            // Lógica para marcar notificação como lida
-            if (row.dataset.notified === 'false') {
-                const pedidoId = row.dataset.pedidoId;
-                try {
-                    // Agora o 'await' aqui é válido
-                    await fetch(`/rastreio/api/mark-email-notified/${pedidoId}`, { method: 'POST' });
-                    // Remove a classe visualmente antes de navegar para a página
-                    row.classList.remove('email-notified');
-                    row.dataset.notified = 'true';
-                } catch (error) {
-                    console.error('Falha ao marcar e-mail como notificado:', error);
-                }
-            }
-            // Navega para a página de detalhes
-            window.location.href = row.dataset.href;
-        }
-    });
 
     elements.listContainer.addEventListener('change', async (e) => {
         const select = e.target;
@@ -340,6 +417,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 5. Lógica de Inicialização ---
     function initialize() {
+        if (elements.massSearchToggle && elements.massSearchToggle.checked) {
+                elements.massSearchToggle.checked = false;
+                elements.normalFiltersContainer.style.display = 'flex';
+                elements.massSearchContainer.style.display = 'none';
+        }
+        
         elements.searchInput.value = state.search || '';
         elements.transportadoraFilter.value = state.transportadora || '';
         elements.plataformaFilter.value = state.plataforma || '';

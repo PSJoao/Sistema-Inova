@@ -48,6 +48,36 @@ function mapearStatusSsw(codigoSsw) {
     return 'Em Trânsito';
 }
 
+async function marcarPedidosComoAtrasados() {
+    console.log('[Rastreio Service] Verificando e marcando pedidos como "Fora do Prazo"...');
+    try {
+        const query = `
+            UPDATE pedidos_em_rastreamento
+            SET 
+                situacao_atual = 'Fora do Prazo - Conferir',
+                status_manual = TRUE,
+                conferencia_necessaria = TRUE,
+                atualizado_em = NOW()
+            WHERE 
+                data_previsao_entrega < CURRENT_DATE
+                AND data_entrega IS NULL
+                AND status_manual = FALSE
+                AND situacao_atual NOT IN (
+                    'Entregue - Conferir', 
+                    'Entregue - Confirmado', 
+                    'Fora do Prazo - Conferir', 
+                    'Fora do Prazo - Conferido'
+                )
+        `;
+        const result = await poolInova.query(query);
+        if (result.rowCount > 0) {
+            console.log(`[Rastreio Service] ${result.rowCount} pedido(s) foram marcados como "Fora do Prazo - Conferir".`);
+        }
+    } catch (error) {
+        console.error('[Rastreio Service] Erro ao marcar pedidos como atrasados:', error);
+    }
+}
+
 async function atualizarStatusPedidosSsw(pedidosSsw) {
     if (pedidosSsw.length === 0) return;
     console.log(`[SSW Service] Iniciando atualização para ${pedidosSsw.length} pedido(s) da SSW.`);
@@ -120,7 +150,7 @@ async function verificarEmailsParaPedidosAtrasados() {
     const pedidosQuery = `
         SELECT * FROM pedidos_em_rastreamento
         WHERE 
-            data_previsao_entrega = CURRENT_DATE - INTERVAL '3 days' 
+            data_previsao_entrega <= CURRENT_DATE - INTERVAL '2 days' 
             AND data_entrega IS NULL
             AND situacao_atual <> 'Entregue - Confirmado'
             AND (email_status IS NULL OR email_status = 'Nenhum')
@@ -128,6 +158,7 @@ async function verificarEmailsParaPedidosAtrasados() {
     const { rows: pedidosAtrasados } = await poolInova.query(pedidosQuery);
 
     if (pedidosAtrasados.length === 0) {
+        console.log("NENHUM PEDIDO EM ATRASO!!!!!!!!!!!!!!!")
         return;
     }
 
@@ -154,6 +185,8 @@ async function verificarEmailsParaPedidosAtrasados() {
                 ...pedido, // Dados do rastreamento (id, transportadora, etc)
                 ...nfeDetailsResult.rows[0] // Adiciona etiqueta_nome, etiqueta_municipio, etiqueta_uf
             };
+
+            console.log(dadosCompletosPedido.pedido);
             
             // Passo 4: Chama a função de envio com o objeto de dados completo
             await gmailService.sendPositionRequestEmail(dadosCompletosPedido);
@@ -183,6 +216,7 @@ async function verificarRespostasDeEmails() {
 
 async function atualizarStatusPedidosEmRastreio() {
     console.log('[Rastreio Service] Orquestrador iniciando ciclo de atualização...');
+    await marcarPedidosComoAtrasados();
     const pedidosAtivosQuery = `SELECT id, chave_nfe, transportadora, situacao_atual, status_manual, previsao_atu, numero_nfe, bling_account FROM pedidos_em_rastreamento WHERE situacao_atual <> 'Entregue - Confirmado'`;
     const { rows: pedidosAtivos } = await poolInova.query(pedidosAtivosQuery);
     if (pedidosAtivos.length === 0) { console.log('[Rastreio Service] Nenhum pedido ativo para atualizar.'); return; }
@@ -211,7 +245,7 @@ async function atualizarStatusPedidosEmRastreio() {
         atualizarStatusPedidosJew(pedidosPorTransportadora.jew)
     ]);
     
-    await verificarEmailsParaPedidosAtrasados();
+    //await verificarEmailsParaPedidosAtrasados();
     await verificarRespostasDeEmails();
 
     console.log('[Rastreio Service] Orquestrador finalizou o ciclo de atualização.');

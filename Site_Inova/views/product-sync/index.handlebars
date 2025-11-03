@@ -1,30 +1,56 @@
 {{!-- views/product-sync/index.handlebars --}}
 <div class="content-card">
-    <h2>Sincronizar Produtos do Bling por Planilha</h2>
-    <p>Faça o upload dos relatório de produtos atualizados</p>
+    <h2>Sincronizar Produtos do Bling</h2>
 
-    {{> messages}} {{!-- Inclui o partial para exibir mensagens flash --}}
+    {{> messages}}
 
-    <form action="/product-sync/upload" method="POST" enctype="multipart/form-data" class="mt-3">
+    <h4 class="mt-4">Por Planilha (SKU)</h4>
+    <p>Faça o upload dos relatório de produtos (coluna A deve conter os SKUs).</p>
+
+    {{!-- (MODIFICADO) Adicionado id="uploadForm" --}}
+    <form action="/product-sync/upload" method="POST" enctype="multipart/form-data" class="mt-3" id="uploadForm">
         <div class="row">
             <div class="col-md-6 mb-3">
                 <label for="planilhaLucas" class="form-label">Planilha Conta Lucas:</label>
-                <input class="form-control" type="file" id="planilhaLucas" name="planilhaLucas" accept=".xlsx, .xls">
+        <input class="form-control" type="file" id="planilhaLucas" name="planilhaLucas" accept=".xlsx, .xls">
             </div>
-            <br>
             <div class="col-md-6 mb-3">
                 <label for="planilhaEliane" class="form-label">Planilha Conta Eliane:</label>
                 <input class="form-control" type="file" id="planilhaEliane" name="planilhaEliane" accept=".xlsx, .xls">
-            </div>
+    </div>
         </div>
         <br>
         <button type="submit" class="btn btn-success-alt">
-            <i class="fas fa-sync-alt"></i> Sincronizar Produtos
+            <i class="fas fa-file-upload"></i> Sincronizar por Planilha
         </button>
-         <div class="form-text mt-2">Toda sincronização ocorrerá em segundo plano. Você pode continuar usando o sistema à vontade.</div>
+         <div class="form-text mt-2">Toda sincronização ocorrerá em segundo plano.
+            Você pode continuar usando o sistema à vontade.</div>
+    </form>
+
+    <hr class="my-4">
+
+    <br>
+
+    {{!-- (NOVO) Formulário de sincronização por Nome --}}
+    <h4>Por Nome do Produto</h4>
+    <p>Busca e sincroniza todos os produtos (ambas as contas) que contenham o termo digitado.</p>
+
+    <form action="/product-sync/by-name" method="POST" class="mt-3" id="nameSyncForm">
+        <div class="row">
+            <div class="col-md-8 mb-3">
+                <label for="productName" class="form-label">Nome ou parte do nome do produto:</label>
+                <input class="form-control" type="text" id="productName" name="productName" placeholder="Ex: Kit Parafuso" required>
+            </div>
+        </div>
+        <br>
+        <button type="submit" class="btn btn-primary-alt">
+            <i class="fas fa-search"></i> Sincronizar por Nome
+        </button>
+         <div class="form-text mt-2">Também ocorrerá em segundo plano.</div>
     </form>
 </div>
 
 {{#section 'scripts'}}
+    {{!-- (MODIFICADO) O script JS agora gerencia ambos os formulários --}}
     <script src="/public/scripts/productSyncManager.js"></script>
 {{/section}}

@@ -50,6 +50,33 @@ async function processAndCacheStructuresForSku(productData, accountType, client)
     }
 }
 
+async function syncSingleProductById(productId, accountType, client) {
+    // 1. Busca detalhes
+    await new Promise(resolve => setTimeout(resolve, 500)); // Pausa
+    const produtoDetalhesResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${productId}`, accountType);
+    const produtoDetalhes = produtoDetalhesResponse.data;
+
+    // 2. Salva/Atualiza produto no DB
+    await client.query(
+        `INSERT INTO cached_products (
+            bling_id, bling_account, sku, nome, preco_custo, peso_bruto, volumes, last_updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        ON CONFLICT (bling_id, bling_account)
+        DO UPDATE SET sku = EXCLUDED.sku, nome = EXCLUDED.nome, preco_custo = EXCLUDED.preco_custo,
+                        peso_bruto = EXCLUDED.peso_bruto, volumes = EXCLUDED.volumes, last_updated_at = NOW()`,
+        [
+            produtoDetalhes.id, accountType, produtoDetalhes.codigo, produtoDetalhes.nome,
+            produtoDetalhes.fornecedor?.precoCusto ?? null, produtoDetalhes.pesoBruto,
+            produtoDetalhes.volumes
+        ]
+    );
+
+    // 3. Processa estruturas
+    await processAndCacheStructuresForSku(produtoDetalhes, accountType, client);
+
+    return produtoDetalhes.codigo; // Retorna o SKU para fins de log
+}
+
 
 /**
  * Sincroniza uma lista de produtos (e suas estruturas) a partir dos SKUs fornecidos.
@@ -191,6 +218,94 @@ async function syncProductsBySku(skus, accountType) {
     return { successCount, errorCount, errors };
 }
 
+async function syncProductsByName(name, accountType) {
+    if (!name || name.trim().length === 0) {
+        return { successCount: 0, errorCount: 0, errors: [] };
+    }
+
+    const nameTrimmed = name.trim();
+    console.log(`[ProductSyncByName-${accountType}] Iniciando sincronização por NOME: "${nameTrimmed}"`);
+    const client = await pool.connect();
+    let successCount = 0;
+    let errorCount = 0;
+    const errors = [];
+    let productsToSync = []; // (MODIFICADO) Esta será a lista JÁ FILTRADA
+
+    try {
+        // 1. Busca inicial (contém) para encontrar IDs usando o NOME
+        const productSearchResponse = await apiRequestWithRetry(
+            `${BLING_API_BASE_URL}/produtos?nome=${encodeURIComponent(nameTrimmed)}&tipo=P&ativos=true&limite=100`,
+            accountType
+        );
+
+        // (MODIFICADO) Guarda todos os resultados da API
+        const allProductsFound = productSearchResponse.data;
+
+        if (!allProductsFound || allProductsFound.length === 0) {
+            console.log(`[ProductSyncByName-${accountType}] Nenhum produto encontrado (filtro "contém") com o nome: "${nameTrimmed}"`);
+            client.release();
+            return { successCount: 0, errorCount: 0, errors: [] };
+        }
+
+        // 2. (NOVA ETAPA) Filtra os resultados para o NOME EXATO
+        // Compara "VIDRO MESA..." (digitado) com "VIDRO MESA..." (API) -> OK
+        // Compara "VIDRO MESA..." (digitado) com "MESA BRIGATTO..." (API) -> Falha
+        const nameLower = nameTrimmed.toLowerCase();
+        productsToSync = allProductsFound.filter(product => {
+            return product.nome.trim().toLowerCase() === nameLower;
+        });
+
+        console.log(`[ProductSyncByName-${accountType}] API retornou ${allProductsFound.length} produtos. Filtrado para ${productsToSync.length} com nome exato.`);
+
+        // (MODIFICADO) Verifica se a lista *filtrada* está vazia
+        if (productsToSync.length === 0) {
+            console.log(`[ProductSyncByName-${accountType}] Nenhum produto com o nome exato "${nameTrimmed}" foi encontrado (após filtro).`);
+            client.release();
+            return { successCount: 0, errorCount: 0, errors: [] };
+        }
+
+        console.log(`[ProductSyncByName-${accountType}] ${productsToSync.length} produtos exatos encontrados. Iniciando sincronização individual...`);
+
+        // 3. Loop pelos produtos encontrados (agora apenas os exatos)
+        for (const productStub of productsToSync) {
+            const productId = productStub.id;
+            const productSku = productStub.codigo; // Para log de erro
+
+            try {
+                await client.query('BEGIN');
+
+                // 4. Chama o helper centralizado
+                await syncSingleProductById(productId, accountType, client);
+
+                await client.query('COMMIT');
+                successCount++;
+
+            } catch (error) {
+                await client.query('ROLLBACK');
+                console.error(`[ProductSyncByName-${accountType}] Erro ao processar ID ${productId} (SKU: ${productSku}) encontrado por nome: ${error.message}`);
+                errorCount++;
+                errors.push({ sku: productSku || `ID ${productId}`, message: error.message });
+            }
+
+            // Pausa entre produtos
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+        } // Fim do loop for
+
+    } catch (generalError) {
+        // ... (Tratamento de erro geral inalterado) ...
+        console.error(`[ProductSyncByName-${accountType}] Erro geral durante sincronização por nome "${nameTrimmed}": ${generalError.message}`);
+        errors.push({ sku: `GERAL (Nome: ${nameTrimmed})`, message: generalError.message });
+        errorCount = (productsToSync.length || 1) - successCount;
+    } finally {
+        client.release();
+        console.log(`[ProductSyncByName-${accountType}] Sincronização por NOME finalizada. Sucesso: ${successCount}, Erros: ${errorCount}`);
+    }
+
+    return { successCount, errorCount, errors };
+}
+
 module.exports = {
-    syncProductsBySku
+    syncProductsBySku,
+    syncProductsByName
 };

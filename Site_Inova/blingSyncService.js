@@ -22,6 +22,10 @@ let shouldStopNFeEliane = false;
 const onDemandNfeQueue = [];
 let isOnDemandNfeRunning = false;
 
+let isPedidoFullSyncRunning = false; 
+// ID da situação "Mercado Livre Full"
+const ID_SITUACAO_FULL = '451726';
+
 // --- Wrapper Inteligente para Requisições com Retentativa (CORRIGIDO) ---
 /**
  * Realiza uma chamada à API do Bling com uma lógica de retentativa para erros de limite de requisição (429).
@@ -144,6 +148,7 @@ async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve })
                     throw new Error(`NF ${nfeNumber} não encontrada no Bling (${accountTypeEncontrada}).`);
                 }
                 nfeDetalhes = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe/${nfeSearchResponse.data[0].id}`, accountTypeEncontrada)).data;
+                console.log(JSON.stringify(nfeDetalhes, null, 2));
             }
         }
         
@@ -152,7 +157,7 @@ async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve })
             throw new Error('Não foi possível obter os detalhes da NFe.');
         }
 
-        // --- LÓGICA DE PROCESSAMENTO UNIFICADA E CORRIGIDA (BASEADA NO SEU CÓDIGO) ---
+        // --- LÓGICA DE PROCESSAMENTO UNIFICADA E CORRIGIDA ---
         
         // 1. Processar e Salvar o Pedido de Venda associado (se houver)
         if (nfeDetalhes.numeroPedidoLoja) {
@@ -326,8 +331,190 @@ function getSyncStatus() {
     return {
         isEmissaoPageActive,
         isNFeRunning: isNFeLucasRunning || isNFeElianeRunning,
-        isProductSyncRunning
+        isProductSyncRunning,
+        isPedidoFullSyncRunning // Adiciona o novo status
     };
+}
+
+async function syncPedidosVendaFull() {
+    // Bloco de verificação de trava
+    if (isPedidoFullSyncRunning || isNFeLucasRunning || isNFeElianeRunning || isProductSyncRunning || isEmissaoPageActive) {
+        const reason = isPedidoFullSyncRunning ? 'sinc. de pedidos full já em execução' :
+                       isNFeLucasRunning ? 'sinc. de NFe Lucas em andamento' :
+                       isNFeElianeRunning ? 'sinc. de NFe Eliane em andamento' :
+                       isProductSyncRunning ? 'sinc. de produtos em andamento' :
+                       isEmissaoPageActive ? 'página de emissão em uso' : 'outra operação';
+        console.log(`[PedidoFullSync] Sincronização de Pedidos Full pulada: ${reason}.`);
+        return { success: false, message: `Sincronização pulada: ${reason}.`, processed: 0, skipped: 0, failed: 0 };
+    }
+
+    isPedidoFullSyncRunning = true;
+    console.log(`[PedidoFullSync] Iniciando sincronização de Pedidos de Venda FULL (Situação ${ID_SITUACAO_FULL})...`);
+    
+    let totalProcessados = 0;
+    let totalIgnorados = 0;
+    let totalFalhas = 0;
+    const client = await pool.connect();
+
+    try {
+        for (const account of ['lucas', 'eliane']) {
+            if (isEmissaoPageActive) break; // Para a sincronização se a emissão for ativada
+            console.log(`[PedidoFullSync] Processando conta: ${account.toUpperCase()}`);
+            
+            // Loop para 5 páginas, conforme solicitado
+            for (let pagina = 1; pagina <= 5; pagina++) {
+                if (isEmissaoPageActive) {
+                     console.log(`[PedidoFullSync] Página de emissão ativa. Interrompendo sync da conta ${account}.`);
+                     break;
+                }
+
+                console.log(`[PedidoFullSync] [${account}] Buscando página ${pagina} de 5...`);
+                let pedidosResponse;
+                try {
+                    // Filtra pela situação DIRETAMENTE na API para otimizar
+                    const url = `${BLING_API_BASE_URL}/pedidos/vendas?pagina=${pagina}&limite=100&idsSituacoes[]=${ID_SITUACAO_FULL}`;
+                    pedidosResponse = await apiRequestWithRetry(url, account);
+
+                    if (!pedidosResponse.data || pedidosResponse.data.length === 0) {
+                        console.log(`[PedidoFullSync] [${account}] Nenhuma pedido encontrado na página ${pagina}. Finalizando conta.`);
+                        break; // Sai do loop de páginas
+                    }
+
+                } catch (listError) {
+                    console.error(`[PedidoFullSync] [${account}] Erro ao buscar lista de pedidos (Página ${pagina}): ${listError.message}. Pulando para próxima página.`);
+                    totalFalhas += 1; // Conta como 1 falha de busca de página
+                    continue; // Pula para a próxima página
+                }
+
+                // Processa cada pedido retornado
+                for (const pedidoResumo of pedidosResponse.data) {
+                    // Verificação dupla (API já deve ter filtrado, mas garante)
+                    if (String(pedidoResumo.situacao?.id) !== ID_SITUACAO_FULL) {
+                        totalIgnorados++;
+                        continue;
+                    }
+
+                    try {
+                        // Busca o detalhe completo do pedido para pegar os ITENS
+                        const p = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas/${pedidoResumo.id}`, account)).data;
+
+                        // Inicia transação por pedido
+                        await client.query('BEGIN');
+
+                        // 1. Insere/Atualiza o pedido na tabela principal FULL
+                        await client.query(`
+                            INSERT INTO cached_pedido_venda_full (
+                                bling_id, bling_account, numero, numero_loja, data_pedido, data_saida, data_prevista,
+                                total_produtos, total_pedido, contato_id, contato_nome, contato_tipo_pessoa, contato_documento,
+                                situacao_id, situacao_valor, loja_id, desconto_valor, 
+                                transporte_frete, intermediador_cnpj, taxa_comissao, custo_frete, valor_base,
+                                obs_internas, obs_cliente,
+                                etiqueta_nome, etiqueta_endereco, etiqueta_numero, etiqueta_complemento, 
+                                etiqueta_municipio, etiqueta_uf, etiqueta_cep, etiqueta_bairro
+                            ) VALUES (
+                                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
+                                $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32
+                            )
+                            ON CONFLICT (bling_id, bling_account) DO UPDATE SET
+                                numero = EXCLUDED.numero, numero_loja = EXCLUDED.numero_loja, data_pedido = EXCLUDED.data_pedido,
+                                data_saida = EXCLUDED.data_saida, data_prevista = EXCLUDED.data_prevista, total_produtos = EXCLUDED.total_produtos,
+                                total_pedido = EXCLUDED.total_pedido, contato_id = EXCLUDED.contato_id, contato_nome = EXCLUDED.contato_nome,
+                                contato_tipo_pessoa = EXCLUDED.contato_tipo_pessoa, contato_documento = EXCLUDED.contato_documento,
+                                situacao_id = EXCLUDED.situacao_id, situacao_valor = EXCLUDED.situacao_valor, loja_id = EXCLUDED.loja_id,
+                                desconto_valor = EXCLUDED.desconto_valor, transporte_frete = EXCLUDED.transporte_frete,
+                                intermediador_cnpj = EXCLUDED.intermediador_cnpj, taxa_comissao = EXCLUDED.taxa_comissao,
+                                custo_frete = EXCLUDED.custo_frete, valor_base = EXCLUDED.valor_base,
+                                obs_internas = EXCLUDED.obs_internas, obs_cliente = EXCLUDED.obs_cliente,
+                                etiqueta_nome = EXCLUDED.etiqueta_nome, etiqueta_endereco = EXCLUDED.etiqueta_endereco,
+                                etiqueta_numero = EXCLUDED.etiqueta_numero, etiqueta_complemento = EXCLUDED.etiqueta_complemento,
+                                etiqueta_municipio = EXCLUDED.etiqueta_municipio, etiqueta_uf = EXCLUDED.etiqueta_uf,
+                                etiqueta_cep = EXCLUDED.etiqueta_cep, etiqueta_bairro = EXCLUDED.etiqueta_bairro,
+                                last_updated_at = CURRENT_TIMESTAMP;
+                        `, [
+                            p.id, account, p.numero, p.numeroLoja, p.data, p.dataSaida, p.dataPrevista,
+                            p.totalProdutos, p.total, p.contato?.id, p.contato?.nome, p.contato?.tipoPessoa, p.contato?.numeroDocumento,
+                            p.situacao?.id, p.situacao?.valor, p.loja?.id, p.desconto?.valor,
+                            p.transporte?.frete, p.intermediador?.cnpj, p.taxas?.taxaComissao, p.taxas?.custoFrete, p.taxas?.valorBase,
+                            p.observacoesInternas, p.observacoes,
+                            p.transporte?.etiqueta?.nome, p.transporte?.etiqueta?.endereco, p.transporte?.etiqueta?.numero, p.transporte?.etiqueta?.complemento,
+                            p.transporte?.etiqueta?.municipio, p.transporte?.etiqueta?.uf, p.transporte?.etiqueta?.cep, p.transporte?.etiqueta?.bairro
+                        ]);
+
+                        // 2. Limpa itens antigos deste pedido
+                        await client.query(`
+                            DELETE FROM pedido_venda_full_itens 
+                            WHERE pedido_bling_id = $1 AND bling_account = $2
+                        `, [p.id, account]);
+
+                        // 3. Insere os itens do pedido
+                        if (p.itens && p.itens.length > 0) {
+                            for (const item of p.itens) {
+                                if (!item.codigo) continue; // Pula itens sem SKU
+
+                                await client.query(`
+                                    INSERT INTO pedido_venda_full_itens (
+                                        pedido_bling_id, bling_account, produto_codigo, quantidade, valor_unitario, descricao_item
+                                    ) VALUES ($1, $2, $3, $4, $5, $6)
+                                `, [
+                                    p.id,
+                                    account,
+                                    item.codigo,
+                                    item.quantidade,
+                                    item.valor,
+                                    item.descricao
+                                ]);
+                                
+                                // 4. Verifica se o produto (SKU) existe no cache principal `cached_products`
+                                // Se não existir, busca e salva lá
+                                const checkProd = await client.query(
+                                    'SELECT 1 FROM cached_products WHERE sku = $1 AND bling_account = $2',
+                                    [item.codigo, account]
+                                );
+                                
+                                if (checkProd.rows.length === 0) {
+                                    console.log(`[PedidoFullSync] [${account}] Produto ${item.codigo} não encontrado no cache. Buscando no Bling...`);
+                                    try {
+                                        // Reutiliza a lógica de cache de produto do `processSingleNfe`
+                                        const prodSearchResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos?codigos[]=${item.codigo}`, account);
+                                        if (prodSearchResp.data?.[0]?.id) {
+                                            const prodDetails = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${prodSearchResp.data[0].id}`, account)).data;
+                                            
+                                            await client.query(`
+                                                INSERT INTO cached_products (bling_id, bling_account, sku, nome, preco_custo, volumes, last_updated_at) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+                                                ON CONFLICT (bling_id, bling_account) DO UPDATE SET sku = EXCLUDED.sku, nome = EXCLUDED.nome, preco_custo = EXCLUDED.preco_custo, volumes = EXCLUDED.volumes, last_updated_at = CURRENT_TIMESTAMP;
+                                            `, [prodDetails.id, account, prodDetails.codigo, prodDetails.nome, prodDetails.precoCusto, prodDetails.volumes || 1]);
+                                        }
+                                    } catch (prodError) {
+                                         console.error(`[PedidoFullSync] [${account}] Falha ao buscar/cachear produto ${item.codigo}. Erro: ${prodError.message}`);
+                                         // Não falha o pedido inteiro por causa de um produto
+                                    }
+                                }
+                            }
+                        }
+
+                        await client.query('COMMIT');
+                        totalProcessados++;
+
+                    } catch (itemError) {
+                        await client.query('ROLLBACK');
+                        console.error(`[PedidoFullSync] [${account}] Erro ao processar pedido ID ${pedidoResumo.id}: ${itemError.message}. Pedido revertido.`);
+                        totalFalhas++;
+                    }
+                } // Fim do loop de pedidos
+            } // Fim do loop de páginas
+        } // Fim do loop de contas
+
+        console.log(`[PedidoFullSync] Sincronização concluída. Total processados: ${totalProcessados}, Ignorados (Filtro API falhou): ${totalIgnorados}, Falhas: ${totalFalhas}.`);
+        return { success: true, message: `Sincronização concluída. Processados: ${totalProcessados}, Falhas: ${totalFalhas}.`, processed: totalProcessados, skipped: totalIgnorados, failed: totalFalhas };
+
+    } catch (error) {
+        console.error('[PedidoFullSync] Erro GERAL durante a sincronização:', error.message);
+        return { success: false, message: `Erro geral: ${error.message}`, processed: totalProcessados, skipped: totalIgnorados, failed: totalFalhas };
+    } finally {
+        isPedidoFullSyncRunning = false;
+        client.release();
+        console.log('[PedidoFullSync] Trava de sincronização liberada.');
+    }
 }
 
 async function syncNFeLucasOnDemand(nfeNumbers) {
@@ -943,7 +1130,6 @@ async function syncNFeEliane() {
                         // Lógica original para buscar detalhes da NF-e e do Pedido
                         await new Promise(resolve => setTimeout(resolve, 500));
                         const nfeDetalhes = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe/${nfeResumo.id}`, 'eliane')).data;
-
                         if (nfeDetalhes.numeroPedidoLoja) {
                             try {
                                 const pedidoSearchResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas?numerosLojas[]=${nfeDetalhes.numeroPedidoLoja}`, 'eliane');
@@ -1168,5 +1354,6 @@ module.exports = {
     setEmissaoPageStatus,
     apiRequestWithRetry,
     findAndCacheNfeByNumber: exports.findAndCacheNfeByNumber,
-    findAndCachePedidoByLojaNumber: exports.findAndCachePedidoByLojaNumber
+    findAndCachePedidoByLojaNumber: exports.findAndCachePedidoByLojaNumber,
+    syncPedidosVendaFull
 };

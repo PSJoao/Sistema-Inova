@@ -304,6 +304,8 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
             const data = await response.json();
             ModalSystem.hideLoading();
 
+            console.log("Data:", JSON.stringify(data, null, 2)); // Indenta com 2 espaços
+
             if (!data.success) {
                 // errorSound.play();
                 // No modo NÃO-Kit, se a validação falhar, limpamos a bipagem atual
@@ -441,6 +443,9 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
     async function commitScannedGroupToState(productData) {
         const parentSku = productData.parentProduct.sku;
 
+        console.log(parentSku);
+        console.log("Data:", JSON.stringify(productData, null, 2)); // Indenta com 2 espaços
+
         // 1. Inicializa o agregado se for a primeira vez
         if (!productAggregates[parentSku]) {
             productAggregates[parentSku] = {
@@ -449,13 +454,16 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
                 timesCompleted: 0
             };
         }
-        
+        console.log("Data:", JSON.stringify(productAggregates, null, 2));
         const agg = productAggregates[parentSku];
 
-        // 2. Verifica se a quantidade total já foi atingida
-        if (agg.timesCompleted >= agg.totalPendente) {
+        console.log(agg.timesCompleted);
+        console.log(agg.totalPendente);
+
+        if (agg.timesCompleted >= productData.totalPendente) {
             ModalSystem.alert(
-                `Quantidade máxima (${agg.totalPendente}) para o produto ${parentSku} já foi atingida.`,
+                // Mostra o totalPendente ATUALIZADO (vindo do productData)
+                `Quantidade máxima (${productData.totalPendente}) para o produto ${parentSku} já foi atingida.`,
                 'Limite Excedido',
                 function() { handleClearCurrent(); } // Limpa no OK
             );
@@ -465,20 +473,24 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
         // 3. Adiciona o produto ao estado
         agg.timesCompleted++;
         
-        // 4. Adiciona o *produto fechado* ao scanList
+        // 4. ATUALIZA o totalPendente no agregado local com o valor mais recente
+        //    Isso garante que, mesmo que o usuário remova, o valor 'pendente' está correto.
+        agg.totalPendente = productData.totalPendente;
+        
+        // 5. Adiciona o *produto fechado* ao scanList
         scanList.push({
             type: 'product',
             parentProduct: productData.parentProduct,
             scannedComponents: [...productData.requiredSkus] // Usa os SKUs validados que vieram do backend
         });
 
-        // 5. Limpa o grupo atual
+        // 6. Limpa o grupo atual
         currentBips = [];
         
         successSound.play();
         /*ModalSystem.alert(`Produto ${parentSku} (${agg.productName}) adicionado! (${agg.timesCompleted}/${agg.totalPendente})`, 'Produto Fechado');*/
         
-        // 6. Atualiza UI e salva o estado
+        // 7. Atualiza UI e salva o estado
         renderUI();
         await saveStateToBackend();
     }
@@ -591,8 +603,19 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
                     window.URL.revokeObjectURL(url);
                     a.remove();
 
-                    await saveStateToBackend();
-                    ModalSystem.alert('Bipagem finalizada com sucesso! O PDF foi baixado. A página será reiniciada.', 'Sucesso', function() {
+                    ModalSystem.alert('Bipagem finalizada com sucesso! O PDF foi baixado. A página será reiniciada.', 'Sucesso', async function() { // <-- 1. Torne a função "async"
+                        
+                        // 2. Limpe o estado local primeiro
+                        scanList = [];
+                        productAggregates = {};
+                        palletCount = 1;
+                        currentBips = [];
+                        isKitMode = false;
+                        
+                        // 3. AGORA salve o estado LIMPO no backend
+                        await saveStateToBackend(); 
+                        
+                        // 4. Recarregue a página
                         location.reload();
                     });
 

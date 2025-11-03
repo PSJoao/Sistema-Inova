@@ -14,6 +14,8 @@ document.addEventListener('DOMContentLoaded', async function() {
     const btnBackToList = document.getElementById('btnBackToList');
     const mainContainer = document.querySelector('.emissao-page-container');
     const bipadosCounter = document.getElementById('bipadosCounter');
+    const masterFrenetCheckbox = document.getElementById('masterFrenetCheckbox');
+    const masterFrenetContainer = document.querySelector('.frenet-master-control');
 
     // Verificações de Elementos Essenciais (para ajudar na depuração)
     if (!emissaoListView) console.error('ERRO: Elemento emissaoListView não encontrado!');
@@ -143,12 +145,54 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     }
 
+    function updateMasterFrenetState() {
+        if (!masterFrenetCheckbox || !barcodeListContainer) return;
+
+        const allIndividualCheckboxes = barcodeListContainer.querySelectorAll('.frenet-checkbox-new');
+        if (allIndividualCheckboxes.length === 0) {
+            masterFrenetCheckbox.checked = false;
+            masterFrenetCheckbox.indeterminate = false;
+            return;
+        }
+
+        const checkedCount = Array.from(allIndividualCheckboxes).filter(cb => cb.checked).length;
+
+        if (checkedCount === 0) {
+            // Nenhum marcado
+            masterFrenetCheckbox.checked = false;
+            masterFrenetCheckbox.indeterminate = false;
+        } else if (checkedCount === allIndividualCheckboxes.length) {
+            // Todos marcados
+            masterFrenetCheckbox.checked = true;
+            masterFrenetCheckbox.indeterminate = false;
+        } else {
+            // Alguns, mas não todos, estão marcados
+            masterFrenetCheckbox.checked = false;
+            masterFrenetCheckbox.indeterminate = true;
+        }
+    }
+
     // Listener para avisar o backend quando o usuário tenta fechar a aba
     window.addEventListener('beforeunload', function() {
         if (isNewEmissionMode) {
             notifyServerActivity(false);
         }
     });
+
+    if (masterFrenetCheckbox) {
+        masterFrenetCheckbox.addEventListener('change', function() {
+            const isChecked = this.checked;
+            // Limpa o estado indeterminado ao clicar manualmente
+            this.indeterminate = false; 
+
+            // Encontra TODOS os checkboxes de frenet individuais
+            const individualCheckboxes = barcodeListContainer.querySelectorAll('.frenet-checkbox-new');
+            
+            individualCheckboxes.forEach(checkbox => {
+                checkbox.checked = isChecked;
+            });
+        });
+    }
     
     if (btnAddEmissaoTop) {
         btnAddEmissaoTop.addEventListener('click', async function() {
@@ -181,6 +225,9 @@ document.addEventListener('DOMContentLoaded', async function() {
                 if(emissaoListView) emissaoListView.style.display = 'none';
                 if(carrierAssignmentView) carrierAssignmentView.style.display = 'none';
                 if(emissaoDetailView) emissaoDetailView.style.display = 'block';
+
+                if(masterFrenetContainer) masterFrenetContainer.style.display = 'flex';
+                updateMasterFrenetState();
                 
                 notifyServerActivity(true); // Avisa que a página está ativa
 
@@ -273,6 +320,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 if(btnFinishEmissao) btnFinishEmissao.style.display = 'none'; 
                 if(emissaoListView) emissaoListView.style.display = 'none'; 
                 if(emissaoDetailView) emissaoDetailView.style.display = 'block';
+                if(masterFrenetContainer) masterFrenetContainer.style.display = 'none';
             } catch (err) {
                 ModalSystem.alert(`Erro ao carregar detalhes: ${err.message}`, 'Erro');
             }
@@ -323,7 +371,10 @@ document.addEventListener('DOMContentLoaded', async function() {
         frenetContainer.style.display = 'none'; // Começa escondido
         // Usar Math.random para garantir ID único
         const randomId = Math.random().toString(36).substring(2);
-        frenetContainer.innerHTML = `<input type="checkbox" id="frenet_check_new_${randomId}" class="frenet-checkbox-new"><label for="frenet_check_new_${randomId}">É Frenet?</label>`;
+        const masterFrenetIsChecked = masterFrenetCheckbox ? masterFrenetCheckbox.checked : false;
+        
+        frenetContainer.innerHTML = `<input type="checkbox" id="frenet_check_new_${randomId}" class="frenet-checkbox-new" ${masterFrenetIsChecked ? 'checked' : ''}>
+                                     <label for="frenet_check_new_${randomId}">É Frenet?</label>`;
         
         const deleteButton = document.createElement('button');
         deleteButton.type = 'button'; deleteButton.className = 'delete-barcode-btn';
@@ -333,6 +384,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             if (valueToRemove) currentBipadosNestaEmissaoSet.delete(valueToRemove);
             wrapper.remove();
             updateBipadosCount();
+            updateMasterFrenetState();
         });
 
         const processInput = () => {
@@ -364,6 +416,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             frenetContainer.style.display = 'flex';
             input.dataset.lastValidatedValue = barcodeValue;
             updateBipadosCount();
+            updateMasterFrenetState();
             return true;
         };
 
@@ -390,6 +443,11 @@ document.addEventListener('DOMContentLoaded', async function() {
         
         wrapper.appendChild(input); wrapper.appendChild(frenetContainer); //wrapper.appendChild(deleteButton);
         barcodeListContainer.appendChild(wrapper);
+        const frenetCheckbox = frenetContainer.querySelector('.frenet-checkbox-new');
+        if (frenetCheckbox) {
+            // Quando um item individual muda, atualizamos o estado do mestre
+            frenetCheckbox.addEventListener('change', updateMasterFrenetState);
+        }
         if (focusNewField) input.focus();
     }
 
@@ -477,6 +535,12 @@ document.addEventListener('DOMContentLoaded', async function() {
                 emissaoDetailView.style.display = 'none';
                 emissaoListView.style.display = 'block';
                 currentBipadosNestaEmissaoSet.clear();
+
+                if(masterFrenetContainer) masterFrenetContainer.style.display = 'none';
+                if(masterFrenetCheckbox) {
+                    masterFrenetCheckbox.checked = false;
+                    masterFrenetCheckbox.indeterminate = false;
+                }
             };
 
             // Se não há nada bipado, simplesmente sai e libera a trava.
