@@ -269,7 +269,7 @@ async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve })
         
         // 3. Salvar a Nota Fiscal com os dados compilados
         const { id, numero, chaveAcesso, dataEmissao, situacao, transporte } = nfeDetalhes;
-        const productIdsList = `${idsBlingProduto.join('};{')}`; // IDs dos produtos
+        const productIdsList = `${idsBlingProduto.join('; ')}`; // IDs dos produtos
         const productDescriptions = Array.from(descricoesProdutos).join('; '); // Nomes dos produtos
         
         await client.query(`
@@ -949,7 +949,7 @@ async function syncNFeLucas() {
 
                             if (skusDaNota.length > 0) {
                                 const cachedProductsResult = await pool.query(
-                                    'SELECT sku, volumes FROM cached_products WHERE sku = ANY($1::text[]) AND bling_account = $2',
+                                    'SELECT sku, volumes, bling_id FROM cached_products WHERE sku = ANY($1::text[]) AND bling_account = $2',
                                     [skusDaNota, 'lucas']
                                 );
                                 cachedProductsResult.rows.forEach(p => cachedProductsMap.set(p.sku, p));
@@ -964,31 +964,38 @@ async function syncNFeLucas() {
                                 `, [nfeDetalhes.numero, produtoCodigo, quantidadeTotal]);
                                 
                                 let volumesUnit = 0;
+                                let prodId = null;
+
                                 if (cachedProductsMap.has(produtoCodigo)) {
-                                    volumesUnit = parseFloat(cachedProductsMap.get(produtoCodigo).volumes || 0);
+                                    // 1. PRODUTO ESTÁ NO CACHE
+                                    const cachedProduct = cachedProductsMap.get(produtoCodigo);
+                                    volumesUnit = parseFloat(cachedProduct.volumes || 0);
+                                    prodId = cachedProduct.bling_id; // Pega o ID direto do cache.
+                                    
                                 } else {
+                                    // 2. PRODUTO NÃO ESTÁ NO CACHE
                                     try {
                                         await new Promise(resolve => setTimeout(resolve, 500));
                                         const prodSearchResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos?codigos[]=${produtoCodigo}`, 'lucas');
-                                        if (prodSearchResp.data?.[0]?.id) {
+                                        
+                                        prodId = prodSearchResp.data?.[0]?.id; // Armazena o ID
+
+                                        if (prodId) { 
                                             await new Promise(resolve => setTimeout(resolve, 500));
-                                            const prodDetailsResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${prodSearchResp.data[0].id}`, 'lucas');
+                                            const prodDetailsResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${prodId}`, 'lucas');
                                             volumesUnit = parseFloat(prodDetailsResp.data.volumes || 0);
                                         }
+                                        
                                     } catch (productError) {
-                                        console.error(`[LucasSync] Erro persistente ao buscar volumes do produto ${produtoCodigo}. Detalhe: ${productError.message}`);
+                                        console.error(`[LucasSync] Erro...: ${productError.message}`);
                                     }
                                 }
+
                                 totalVolumesCalculado += volumesUnit * quantidadeTotal;
-                                
-                                try {
-                                    await new Promise(resolve => setTimeout(resolve, 500));
-                                    const prodSearchResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos?codigos[]=${produtoCodigo}`, 'lucas');
-                                    if (prodSearchResp.data?.[0]?.id) {
-                                        idsBlingProduto.push(String(prodSearchResp.data[0].id).substring(0, 100));
-                                    }
-                                } catch(idError) {
-                                    console.error(`[LucasSync] Erro persistente ao buscar ID do produto ${produtoCodigo}. Detalhe: ${idError.message}`);
+
+                                // 3. ADICIONA AO ARRAY
+                                if (prodId) {
+                                    idsBlingProduto.push(String(prodId).substring(0, 100));
                                 }
                             }
                         }
@@ -1049,7 +1056,7 @@ async function syncNFeLucas() {
             }
 
             // Lógica para verificação de notas canceladas (executada a cada página)
-            await new Promise(resolve => setTimeout(resolve, 500));
+            /*await new Promise(resolve => setTimeout(resolve, 500));
             try {
                 const canceladasResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe?pagina=${pagina}&limite=100&tipo=1&situacao=2`, 'lucas');
                 for (const cancelada of canceladasResp.data || []) {
@@ -1065,7 +1072,7 @@ async function syncNFeLucas() {
                 }
             } catch (cancelErr) {
                 console.error(`[LucasSync] Falha ao verificar NFs canceladas na página ${pagina}:`, cancelErr.message);
-            }
+            }*/
         } // Fim do for (pagina)
 
         console.log(`[LucasSync] NF-e finalizadas. Total processadas nesta execução: ${totalNFsProcessadas}`);

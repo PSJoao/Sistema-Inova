@@ -34,3 +34,17 @@ exports.processLabels = async (req, res) => {
         res.redirect('/mercado-livre/organizer');
     }
 };
+
+// NOVO: Recebe notificações (Webhooks) do MELI
+exports.handleWebhook = (req, res) => {
+    console.log('[MELI Webhook] Notificação recebida:');
+    
+    // Apenas logamos o corpo da requisição para fins de debug futuro
+    // Quando formos usar, o req.body terá a informação do evento
+    console.log(JSON.stringify(req.body, null, 2));
+
+    // Responde imediatamente com 200 OK para o Mercado Livre.
+    // Isso é obrigatório para que o MELI saiba que recebemos 
+    // e pare de enviar a mesma notificação.
+    res.status(200).send('OK');
+};

@@ -33,9 +33,9 @@ exports.renderNfeHistoryPage = async (req, res) => {
             LEFT JOIN transportation_relation_items tri ON enf.id = tri.nfe_report_id
             LEFT JOIN transportation_relations tr ON tri.relation_id = tr.id
             LEFT JOIN cached_nfe cn ON enf.nfe_chave_acesso_44d = cn.chave_acesso
-            WHERE enf.status_para_relacao IN ('justificada_adiada', 'relacionada', 'pendente', 'cancelada')
+            WHERE enf.status_para_relacao IN ('justificada_adiada', 'relacionada', 'pendente', 'cancelada', 'alerta')
             AND
-            enf.transportadora_apelido NOT IN ('SHOPEE MAGAZINE', 'NOVO MERCADO LIVRE', 'MERCADO LIVRE ELIANE', 'MERCADO LIVRE MAGAZINE', 'FRENET')
+            enf.transportadora_apelido NOT IN ('SHOPEE MAGAZINE', 'NOVO MERCADO LIVRE', 'MERCADO LIVRE ELIANE', 'MERCADO LIVRE MAGAZINE', 'FRENET', 'MAGALU ENTREGAS')
             ORDER BY cn.data_emissao DESC
             LIMIT $1 OFFSET $2;
         `;
@@ -45,7 +45,7 @@ exports.renderNfeHistoryPage = async (req, res) => {
             pool.query(dataQuery, [limit, offset])
         ]);
         
-        const countResult = await pool.query(`SELECT COUNT(id) FROM emission_nfe_reports WHERE status_para_relacao IN ('justificada_adiada', 'relacionada', 'pendente', 'cancelada');`);
+        const countResult = await pool.query(`SELECT COUNT(id) FROM emission_nfe_reports WHERE status_para_relacao IN ('justificada_adiada', 'relacionada', 'pendente', 'cancelada', 'alerta');`);
         const totalItems = parseInt(countResult.rows[0].count, 10);
         const totalPages = Math.ceil(totalItems / limit);
 
@@ -76,7 +76,7 @@ exports.getNfeHistoryApi = async (req, res) => {
         const limit = 100;
         const offset = (parseInt(page, 10) - 1) * limit;
 
-        let whereClauses = [ `enf.status_para_relacao IN ('justificada_adiada', 'relacionada', 'pendente', 'cancelada')` ];
+        let whereClauses = [ `enf.status_para_relacao IN ('justificada_adiada', 'relacionada', 'pendente', 'cancelada', 'alerta')` ];
         const queryParams = [];
         let paramIndex = 1;
 
@@ -84,6 +84,7 @@ exports.getNfeHistoryApi = async (req, res) => {
             if (situacao === 'Relacionada') whereClauses.push(`enf.status_para_relacao = 'relacionada'`);
             else if (situacao === 'Pendente') whereClauses.push(`enf.status_para_relacao IN ('pendente', 'justificada_adiada')`);
             else if (situacao === 'Cancelada') whereClauses.push(`enf.status_para_relacao = 'cancelada'`);
+            else if (situacao === 'Alerta') whereClauses.push(`enf.status_para_relacao = 'alerta'`);
         }
         if (justificativa) {
             if (justificativa === 'SEM_JUSTIFICATIVA') whereClauses.push(`(enf.justificativa IS NULL OR enf.justificativa = '')`);
@@ -100,7 +101,7 @@ exports.getNfeHistoryApi = async (req, res) => {
 
         //whereClauses.push(`enf.cancelada = false`);
 
-        whereClauses.push(`enf.transportadora_apelido NOT IN ('SHOPEE MAGAZINE', 'NOVO MERCADO LIVRE', 'MERCADO LIVRE ELIANE', 'MERCADO LIVRE MAGAZINE', 'FRENET')`);
+        whereClauses.push(`enf.transportadora_apelido NOT IN ('SHOPEE MAGAZINE', 'NOVO MERCADO LIVRE', 'MERCADO LIVRE ELIANE', 'MERCADO LIVRE MAGAZINE', 'FRENET', 'MAGALU ENTREGAS')`);
         whereClauses.push(`cn.data_emissao is NOT NULL`);
         const whereCondition = `WHERE ${whereClauses.join(' AND ')}`;
         

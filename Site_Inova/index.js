@@ -14,12 +14,15 @@ const handlebarsHelpers = require('./helpers/handlebarsHelpers');
 const authRoutes = require('./routes/authRoutes');
 const authController = require('./controllers/authController');
 const rastreioService = require('./services/rastreioService');
+const mlRoutes = require('./routes/mercadoLivreRoutes');
 const nfeHistoryRoutes = require('./routes/nfeHistoryRoutes');
 const assistenciaRoutes = require('./routes/assistenciaRoutes');
 const etiquetasRoutes = require('./routes/etiquetasRoutes');
+const blingWebhookRoutes = require('./routes/blingWebhookRoutes');
 const tiposRoutes = require('./routes/tiposRoutes');
 const produtosRoutes = require('./routes/produtosRoutes');
-const prodSyncRoutes = require('./routes/productSyncRoutes')
+const prodSyncRoutes = require('./routes/productSyncRoutes');
+const mercadoLivreSyncService = require('./services/mercadoLivreSyncService');
 //const { updatePrices } = require('./updatePrices.js');
 //const { runScheduledTokenRefresh } = require('./services/blingTokenManager');
 const { syncRecentEmittedNFe, syncNFeEliane, syncNFeLucas } = require('./blingSyncService.js');
@@ -99,8 +102,12 @@ app.use('/historico-nfe', nfeHistoryRoutes); // Define o prefixo da nova página
 app.use('/assistencias', assistenciaRoutes);
 app.use('/', etiquetasRoutes);
 app.use('/', tiposRoutes);
+app.use('/', mlRoutes);
 app.use('/', produtosRoutes);
 app.use('/product-sync', prodSyncRoutes);
+app.use('/webhooks/bling', blingWebhookRoutes);
+
+mercadoLivreSyncService.startOrderSync(300000);
 
 cron.schedule('0 3 * * *', async () => {
     console.log(`[CRON Limpeza] Iniciando verificação de PDFs antigos em ${PDF_STORAGE_DIR_CLEANUP}...`);
@@ -200,13 +207,13 @@ cron.schedule('0 3 * * *', async () => {
     //}
 //});
 
-console.log('Job de atualização de custos e dados de URLs agendado para rodar semanalmente.');
-let isRastreioJobRunning = false;
-console.log('[CRON] Agendando rotina de rastreio para executar a cada hora.');
+//console.log('Job de atualização de custos e dados de URLs agendado para rodar semanalmente.');
+//let isRastreioJobRunning = false;
+//console.log('[CRON] Agendando rotina de rastreio para executar a cada hora.');
 // A expressão '0 * * * *' executa no minuto 0 de cada hora.
 //1-59/1 * * * *
-cron.schedule('*/1 * * * *', async () => {
-  const dataHora = new Date().toLocaleString('pt-BR');
+//cron.schedule('*/1 * * * *', async () => {
+  /*const dataHora = new Date().toLocaleString('pt-BR');
 
   if (isRastreioJobRunning) {
         console.log(`[CRON] A rotina de rastreio já está em execução. Pulando esta chamada. - ${dataHora}`);
@@ -238,7 +245,7 @@ cron.schedule('*/1 * * * *', async () => {
 }, {
   scheduled: true,
   timezone: "America/Sao_Paulo"
-});
+});*/
 
 // Rota para lidar com páginas não encontradas
 app.use((req, res) => {

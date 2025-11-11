@@ -1,7 +1,7 @@
 // controllers/emissaoController.js
 const { Pool } = require('pg');
 const axios = require('axios'); // Necessário para blingApiGet
-const { setEmissaoPageStatus, syncNFeLucas, syncNFeEliane, getSyncStatus } = require('../blingSyncService');
+const { setEmissaoPageStatus, getSyncStatus, findAndCacheNfeByNumber } = require('../blingSyncService');
 const { getValidBlingToken } = require('../services/blingTokenManager');
 const { generateLabelsPdf } = require('../services/pdfService');
 

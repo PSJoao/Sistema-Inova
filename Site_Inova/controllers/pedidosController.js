@@ -249,7 +249,8 @@ async function parseRelatorioViaVarejo(buffer) {
     const pedidosProcessados = [];
     for (const row of data) {
         const statusPedido = row[2] ? String(row[2]).trim() : '';
-
+        console.log(statusPedido);
+        console.log(statusPedido === 'Enviado');
         if (statusPedido === 'Pagamento aprovado' || statusPedido === 'Enviado') {
             
             const dataAprovacaoRaw = row[4]; // Coluna E
@@ -268,6 +269,8 @@ async function parseRelatorioViaVarejo(buffer) {
                 documento: row[14],
                 plataforma: 'Via Varejo'
             };
+
+            console.log(JSON.stringify(pedido, null, 2));
 
             pedido = await preencherDadosFaltantes(pedido);
             pedidosProcessados.push(pedido);
@@ -645,10 +648,14 @@ exports.processarPlanilhas = async (req, res) => {
                     for (let pedido of pedidos) {
                         // CHAMA A FUNÇÃO DE ENRIQUECIMENTO FINAL
                         pedido = await preencherDadosFaltantes(pedido);
-
+                        console.log(`Pedido enriquecido: ${JSON.stringify(pedido, null, 2)}`);
                         if (typeof pedido.comissao === 'number') {
                             pedido.comissao = Math.abs(pedido.comissao);
                         }
+
+                        console.log(pedido.numero_nfe);
+
+                        console.log(pedido.estado_uf);
 
                         const insertQuery = `
                             INSERT INTO acompanhamentos_consolidados (
@@ -657,10 +664,21 @@ exports.processarPlanilhas = async (req, res) => {
                                 estado_uf, numero_nfe, comissao, custo_produto, valor_frete_pago, plataforma
                             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
                             ON CONFLICT (numero_pedido, sku_loja) DO UPDATE SET
-                                data_aprovacao = EXCLUDED.data_aprovacao, valor_produto = EXCLUDED.valor_produto,
-                                valor_frete = EXCLUDED.valor_frete, desconto_produto = EXCLUDED.desconto_produto,
-                                comissao = EXCLUDED.comissao, custo_produto = EXCLUDED.custo_produto,
-                                valor_frete_pago = EXCLUDED.valor_frete_pago, data_upload = CURRENT_TIMESTAMP;
+                            data_aprovacao = EXCLUDED.data_aprovacao,
+                            nome_produto = EXCLUDED.nome_produto,
+                            forma_pagamento = EXCLUDED.forma_pagamento,
+                            valor_produto = EXCLUDED.valor_produto,
+                            valor_frete = EXCLUDED.valor_frete,
+                            desconto_produto = EXCLUDED.desconto_produto,
+                            nome_cliente = EXCLUDED.nome_cliente,
+                            documento = EXCLUDED.documento,
+                            estado_uf = EXCLUDED.estado_uf,
+                            numero_nfe = EXCLUDED.numero_nfe,
+                            comissao = EXCLUDED.comissao,
+                            custo_produto = EXCLUDED.custo_produto,
+                            valor_frete_pago = EXCLUDED.valor_frete_pago,
+                            plataforma = EXCLUDED.plataforma,
+                            data_upload = CURRENT_TIMESTAMP
                         `;
                         await client.query(insertQuery, [
                             pedido.numero_pedido, pedido.data_aprovacao, pedido.nome_produto, pedido.sku_loja, pedido.forma_pagamento,

@@ -29,13 +29,14 @@ const PDF_STORAGE_DIR = path.join(__dirname, '..', 'pdfEtiquetas');
 async function gerarPdfRelatorio(etiquetasCompletas, etiquetasOrdenadas) {
     console.log('[Relatório] Iniciando geração do PDF de relatório...');
     const skuQuantidades = new Map();
+    const locEtiquetas = new Map();
     let quantidadeTotalGeral = 0;
 
     // --- ETAPA 1: Agrega as quantidades totais por SKU (Lógica Original) ---
     // Usa 'etiquetasCompletas' pois a ordem não importa para a contagem total
     for (const etiqueta of etiquetasCompletas) {
         const nfeNumeroParaBusca = etiqueta.nfeNumero;
-
+        const locEtiqueta = etiqueta.locations;
         if (nfeNumeroParaBusca && etiqueta.skus && etiqueta.skus.length > 0) {
             const client = await pool.connect();
             try {
@@ -47,6 +48,7 @@ async function gerarPdfRelatorio(etiquetasCompletas, etiquetasOrdenadas) {
                     const quantidade = Number(res.rows[0]?.quantidade || 0);
                     // Usa o SKU de display como chave do Map
                     skuQuantidades.set(sku.display, (skuQuantidades.get(sku.display) || 0) + quantidade);
+                    locEtiquetas.set(sku.display, locEtiqueta);
                 }
             } catch(e) {
                 console.error(`[Relatório] Erro ao buscar quantidades para a NF ${nfeNumeroParaBusca}:`, e.message);
@@ -106,14 +108,16 @@ async function gerarPdfRelatorio(etiquetasCompletas, etiquetasOrdenadas) {
     
     // Definição das colunas
     const colSeqWidth = 40; // Era colPaginasWidth = 60
-    const colQuantidadeWidth = 80;
-    const colAnotacoesWidth = 110; // Era 90 (ganhou o espaço da Seq.)
-    const colSkuWidth = tableWidth - colAnotacoesWidth - colQuantidadeWidth - colSeqWidth;
+    const colQuantidadeWidth = 50;
+    const colAnotacoesWidth = 64; // Era 90 (ganhou o espaço da Seq.)
+    const colLocWidht = 110;
+    const colSkuWidth = tableWidth - colAnotacoesWidth - colQuantidadeWidth - colSeqWidth - colLocWidht;
 
     const colAnotacoesX = margin;
     const colSkuX = colAnotacoesX + colAnotacoesWidth;
     const colQuantidadeX = colSkuX + colSkuWidth;
     const colSeqX = colQuantidadeX + colQuantidadeWidth; // Era colPaginasX
+    const colLocX = colSeqX + colSeqWidth;
     
     let y = height - margin; // Posição Y atual
 
@@ -124,7 +128,7 @@ async function gerarPdfRelatorio(etiquetasCompletas, etiquetasOrdenadas) {
     y -= 30;
 
     // --- NOVO: Função auxiliar para desenhar uma linha da tabela ---
-    const drawRow = (text1, text2, text3, text4, isHeader = false) => {
+    const drawRow = (text1, text2, text3, text4, text5, isHeader = false) => {
         // Adiciona nova página se não houver espaço
         if (y < margin + rowHeight) {
             page = pdfDoc.addPage();
@@ -142,12 +146,15 @@ async function gerarPdfRelatorio(etiquetasCompletas, etiquetasOrdenadas) {
         page.drawRectangle({ x: colSkuX, y: currentY - rowHeight, width: colSkuWidth, height: rowHeight, borderColor: rgb(0,0,0), borderWidth: 0.5 });
         page.drawRectangle({ x: colQuantidadeX, y: currentY - rowHeight, width: colQuantidadeWidth, height: rowHeight, borderColor: rgb(0,0,0), borderWidth: 0.5 });
         page.drawRectangle({ x: colSeqX, y: currentY - rowHeight, width: colSeqWidth, height: rowHeight, borderColor: rgb(0,0,0), borderWidth: 0.5 });
+        page.drawRectangle({ x: colSeqX, y: currentY - rowHeight, width: colSeqWidth, height: rowHeight, borderColor: rgb(0,0,0), borderWidth: 0.5 });
+        page.drawRectangle({ x: colLocX, y: currentY - rowHeight, width: colLocWidht, height: rowHeight, borderColor: rgb(0,0,0), borderWidth: 0.5 });
 
         // Desenha o texto dentro das células
         page.drawText(text1, { x: colAnotacoesX + 5, y: currentY - rowHeight + textVOffset, font: currentFont, size: fontSize, color: rgb(0,0,0) });
         page.drawText(text2, { x: colSkuX + 5, y: currentY - rowHeight + textVOffset, font: currentFont, size: fontSize, color: rgb(0,0,0) });
         page.drawText(text3, { x: colQuantidadeX + 5, y: currentY - rowHeight + textVOffset, font: currentFont, size: fontSize, color: rgb(0,0,0) });
         page.drawText(text4, { x: colSeqX + 5, y: currentY - rowHeight + textVOffset, font: currentFont, size: fontSize, color: rgb(0,0,0) });
+        page.drawText(text5, { x: colLocX + 5, y: currentY - rowHeight + textVOffset, font: currentFont, size: fontSize - 2.5, color: rgb(0,0,0) });
 
         y -= rowHeight; // Move o Y para a próxima linha
     };
@@ -155,7 +162,7 @@ async function gerarPdfRelatorio(etiquetasCompletas, etiquetasOrdenadas) {
     // --- MODIFICADO: Desenhar Tabela ---
     
     // 1. Cabeçalho
-    drawRow('Anotações', 'SKU do Produto', 'Quantidade', 'Seq.', true);
+    drawRow('Anotações', 'SKU do Produto', 'QTD.', 'Seq.', 'Loc', true);
 
     // 2. Corpo
     for (const sku of skusOrdenados) {
@@ -163,22 +170,24 @@ async function gerarPdfRelatorio(etiquetasCompletas, etiquetasOrdenadas) {
             page = pdfDoc.addPage();
             y = height - margin;
             // Redesenha o cabeçalho na nova página
-            drawRow('Anotações', 'SKU do Produto', 'Quantidade', 'Seq.', true);
+            drawRow('Anotações', 'SKU do Produto', 'QTD.', 'Seq.', 'Loc', true);
         }
 
         const quantidade = skuQuantidades.get(sku);
         quantidadeTotalGeral += quantidade;
+
+        const locEtiqueta = locEtiquetas.get(sku);
 
         // Formata o texto da sequência
         const sequencia = skuSequenciaMap.get(sku);
         let seqText = sequencia ? String(sequencia) : '-';
 
         // Desenha a linha com a primeira coluna vazia
-        drawRow('', sku, String(quantidade), seqText, false);
+        drawRow('', sku, String(quantidade), seqText, String(locEtiqueta), false);
     }
     
     // 3. Rodapé
-    drawRow('', 'Quantidade Total de Itens:', String(quantidadeTotalGeral), '', true);
+    drawRow('', 'Quantidade Total de Itens:', String(quantidadeTotalGeral), '', '', true);
 
     console.log('[Relatório] PDF de relatório gerado com sucesso.');
     const pdfBytes = await pdfDoc.save();
