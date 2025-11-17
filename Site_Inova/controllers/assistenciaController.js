@@ -1079,7 +1079,7 @@ exports.updateSingleStatusAPI = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
-    if (!status || !['Pendente', 'Pronta para Embalar', 'Descarte', 'Resolvida', 'Para Vistoriar'].includes(status)) {
+    if (!status || !['Pendente', 'Pronta para Embalar', 'Descarte', 'Resolvida', 'Para Vistoriar', 'Não Encontrado'].includes(status)) {
         return res.status(400).json({ success: false, message: 'Status fornecido é inválido.' });
     }
 
@@ -1110,7 +1110,7 @@ exports.updateVolumeStatusAPI = async (req, res) => {
     const { produto_id } = req.params;
     const { status } = req.body;
 
-    const validStatuses = ['Pendente', 'Pronta para Embalar', 'Descarte', 'Resolvida', 'Para Vistoriar', 'Volume Bom', 'Volume Ruim'];
+    const validStatuses = ['Pendente', 'Pronta para Embalar', 'Descarte', 'Resolvida', 'Não Encontrado', 'Para Vistoriar', 'Volume Bom', 'Volume Ruim'];
     if (!status || !validStatuses.includes(status)) {
         return res.status(400).json({ success: false, message: 'Status fornecido é inválido.' });
     }

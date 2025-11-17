@@ -26,9 +26,9 @@
                     <div class="nf-item-main-info">
                         NF: <strong>{{this.numeroNF}}</strong> ({{this.contaBling}})
                         <span class="nf-produtos-preview">(Produtos: {{#if this.produtos}}{{truncate this.produtos 40}}{{else}}N/D{{/if}})</span>
-                    </div>
-                    <div class="volume-counter" data-total-volumes="{{this.totalVolumes}}">
+                        <div class="volume-counter" data-total-volumes="{{this.totalVolumes}}">
                       <span class="bipado-count">0</span>/<span class="total-count">{{this.totalVolumes}}</span>
+                    </div>
                     </div>
                 </li>
                 {{/each}}
@@ -71,9 +71,15 @@
     </div>
 
     <div class="bipagem-actions">
-      <button id="btnFinalizarRelacao" class="btn btn-accent"><i class="fas fa-check-circle"></i> Finalizar e Gerar Relação</button>
+        <button id="btnFinalizarRelacao" class="btn btn-accent"><i class="fas fa-check-circle"></i> Finalizar e Gerar Relação</button>
+      </div>
     </div>
-  </div>
+
+    <div class="mobile-bip-footer" id="mobileBipFooter">
+      <div class="bipagem-input-wrapper mobile-wrapper">
+        <input type="text" id="mobileBipagemInput" class="form-control" placeholder="Bipar chave de acesso..." autocomplete="off">
+      </div>
+    </div>
 
   {{!-- NOVA ESTRUTURA PARA A View de Justificativas (inicialmente oculta) --}}
   <div id="justificativasView" style="display: none;">

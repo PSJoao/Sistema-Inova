@@ -107,7 +107,7 @@ app.use('/', produtosRoutes);
 app.use('/product-sync', prodSyncRoutes);
 app.use('/webhooks/bling', blingWebhookRoutes);
 
-mercadoLivreSyncService.startOrderSync(300000);
+//mercadoLivreSyncService.startOrderSync(300000);
 
 cron.schedule('0 3 * * *', async () => {
     console.log(`[CRON Limpeza] Iniciando verificação de PDFs antigos em ${PDF_STORAGE_DIR_CLEANUP}...`);

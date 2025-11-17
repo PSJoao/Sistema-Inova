@@ -43,7 +43,8 @@
   background-color: var(--bg-primary);
   border-color: var(--accent-orange);
   outline: 0;
-  box-shadow: 0 0 0 0.2rem rgba(255, 140, 32, 0.25); /* Usando o valor de --accent-orange diretamente */
+  /* MODIFICADO: Atualizado para o novo RGBA da cor --accent-orange */
+  box-shadow: 0 0 0 0.2rem rgba(240, 124, 0, 0.25);
 }
 
 /* Para input[type="file"] - estilização básica, pode ser mais complexa */
@@ -207,7 +208,7 @@ textarea.form-control {
     background-color: var(--bg-secondary);
     border-radius: var(--border-radius-md);
     margin-bottom: 0.8rem;
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--bg-tertiary); /* MODIFICADO: Era var(--border-color) */
 }
 
 .filter-bar {
@@ -266,7 +267,7 @@ textarea.form-control {
     flex-wrap: wrap;
     gap: 1.5rem; /* Aumenta o espaço entre os grupos */
     margin-top: 1rem; /* Adiciona espaço acima */
-    border-top: 1px solid var(--border-color);
+    border-top: 1px solid var(--bg-tertiary); /* MODIFICADO: Era var(--border-color) */
     padding-top: 1rem;
 }
 
@@ -288,4 +289,40 @@ textarea.form-control {
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
     white-space: nowrap; /* Evita que o texto do botão quebre */
+}
+
+/* ADICIONADO: Media query para responsividade dos filtros */
+@media (max-width: 768px) {
+    .filter-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.8rem;
+    }
+
+    .filter-group {
+        width: 100%;
+    }
+
+    .filter-group .form-control {
+        max-width: none; /* Remove a largura máxima em telas pequenas */
+    }
+
+    .search-and-actions-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .search-filter-group {
+        width: 100%;
+    }
+
+    .bulk-actions-group {
+        width: 100%;
+    }
+    .bulk-actions-group .input-group {
+        width: 100%;
+    }
+    .bulk-actions-group .input-group input {
+        flex-grow: 1; /* Faz o input crescer */
+    }
 }

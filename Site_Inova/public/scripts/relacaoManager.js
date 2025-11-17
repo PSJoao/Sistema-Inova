@@ -71,6 +71,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const btnVoltarEl = document.getElementById('btnVoltar');
         const totalVolumesBipadosCountEl = document.getElementById('totalVolumesBipadosCount');
         const totalPesoBipadoCountEl = document.getElementById('totalPesoBipadoCount');
+        const mobileBipagemInput = document.getElementById('mobileBipagemInput');
+        const clearMobileBipagemInput = document.getElementById('clearMobileBipagemInput');
+        const mobileBipFooter = document.getElementById('mobileBipFooter');
 
         //const mapChaveAcessoToLiData = new Map();
         let transportadoraApelido = "";
@@ -102,6 +105,74 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         document.getElementById('justificativaTransportadoraNome').textContent = transportadoraApelido;
         const nfsState = new Map();
+
+        if (mobileBipagemInput) {
+            mobileBipagemInput.addEventListener('keypress', handleMobileBipagemKeyPress);
+        }
+        if (clearMobileBipagemInput) {
+            clearMobileBipagemInput.addEventListener('click', () => {
+                if(mobileBipagemInput) {
+                    mobileBipagemInput.value = '';
+                    mobileBipagemInput.focus();
+                }
+            });
+        }
+
+        function handleMobileBipagemKeyPress(e) {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+
+            const bipadoValue = mobileBipagemInput.value.trim();
+            if (bipadoValue === '') return;
+
+            // 1. Validações (copiadas de processBipadoInput)
+            const chaveBipada = getChaveFromBipado(bipadoValue);
+            if (!chaveBipada) {
+                playAlarmSound();
+                ModalSystem.alert(`Chave inválida.`, "Formato Inválido", () => {
+                    mobileBipagemInput.value = '';
+                    mobileBipagemInput.focus();
+                });
+                return;
+            }
+            
+            const notaState = nfsState.get(chaveBipada);
+            if (!notaState) {
+                playAlarmSound();
+                ModalSystem.alert(`NF não encontrada nas pendentes.`, "NF Não Encontrada", () => {
+                    mobileBipagemInput.value = '';
+                    mobileBipagemInput.focus();
+                });
+                return;
+            }
+            
+            if (notaState.bipado >= notaState.total) {
+                playAlarmSound();
+                ModalSystem.alert(`Todos os volumes para a NF ...${chaveBipada.slice(-9)} já foram bipados.`, "Volumes Completos");
+                mobileBipagemInput.value = ''; // Limpa o input móvel
+                mobileBipagemInput.focus();
+                return;
+            }
+
+            // 2. Encontra o próximo input VAZIO na lista de bipagem
+            const allInputs = Array.from(bipadosListContainerEl.querySelectorAll('.bipado-barcode-input'));
+            const emptyInput = allInputs.find(inp => !inp.value.trim());
+
+            if (emptyInput) {
+                // 3. Preenche o input vazio e o processa
+                emptyInput.value = bipadoValue;
+                processBipadoInput(emptyInput); // Chama a lógica original
+            } else {
+                // (Isso não deve acontecer se ensureSingleEmptyField funcionar, mas é uma segurança)
+                // Adiciona um novo campo e o processa
+                const newEmptyInput = addBipadoField(false, bipadoValue); // Adiciona sem focar
+                if(newEmptyInput) processBipadoInput(newEmptyInput);
+            }
+
+            // 4. Limpa e foca o input móvel
+            mobileBipagemInput.value = '';
+            mobileBipagemInput.focus();
+        }
 
         function processBipadoInput(inputElement) {
             const bipadoValue = inputElement.value.trim();
@@ -350,6 +421,8 @@ document.addEventListener('DOMContentLoaded', function() {
             wrapper.appendChild(input);
             bipadosListContainerEl.appendChild(wrapper);
             if (focusNewField) input.focus();
+
+            return input;
         }
 
         const preRenderedInputs = bipadosListContainerEl.querySelectorAll('.bipado-barcode-input');
@@ -939,6 +1012,7 @@ document.addEventListener('DOMContentLoaded', function() {
             btnCancelJustificativas.addEventListener('click', () => {
                 if(justificativasViewEl) justificativasViewEl.style.display = 'none';
                 if(bipagemViewEl) bipagemViewEl.style.display = 'block';
+                if(mobileBipFooter && window.innerWidth <= 768) mobileBipFooter.style.display = 'block'; // ADICIONADO
             });
         }
 
@@ -1041,6 +1115,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     renderJustificativasPage(1); 
                     if(justificativasViewEl) justificativasViewEl.style.display = 'block';
                     if(bipagemViewEl) bipagemViewEl.style.display = 'none';
+                    if(mobileBipFooter) mobileBipFooter.style.display = 'none'; // ADICIONADO
                     if(selectAllJustificationItemsCheckbox) { selectAllJustificationItemsCheckbox.checked = false; selectAllJustificationItemsCheckbox.indeterminate = false; }
                 } else if (bipadoItemsParaEnvio.length === 0) {
                     playAlarmSound();

@@ -77,7 +77,8 @@ body.login-page { /* Adicionaremos esta classe ao body no login.handlebars */
 .login-container input[type="text"]:focus,
 .login-container input[type="password"]:focus {
   border-color: var(--accent-orange);
-  box-shadow: 0 0 0 0.2rem rgba(255, 140, 32, 0.25); /* Laranja com alpha */
+  /* MODIFICADO: Atualizado o RGBA do foco para a nova cor */
+  box-shadow: 0 0 0 0.2rem rgba(240, 124, 0, 0.25);
   outline: none;
 }
 
@@ -90,13 +91,12 @@ body.login-page { /* Adicionaremos esta classe ao body no login.handlebars */
 }
 
 .login-container .error-message {
-  color: var(--color-danger); /* Usando variável de cor de perigo */
-  background-color: rgba(var(--color-danger), 0.1); /* Fundo sutil para o erro */
-  border: 1px solid rgba(var(--color-danger), 0.3);
-  padding: 10px;
+  /* MODIFICADO: Estilo de alerta atualizado para o tema escuro */
+  color: #f5b7bd; /* Texto vermelho claro */
+  padding: 5px;
   border-radius: var(--border-radius-sm);
   font-weight: 500;
-  margin-bottom: 20px;
+  margin-bottom: 10px;
   font-size: 0.9rem;
 }
 .login-container .error-message:empty { /* Esconde se não houver mensagem */

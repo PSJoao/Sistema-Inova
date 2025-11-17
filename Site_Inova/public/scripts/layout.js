@@ -4,18 +4,23 @@ document.addEventListener('DOMContentLoaded', function () {
     const pageWrapper = document.getElementById('pageWrapper'); // Usaremos para ajustar margens
     const moduleToggles = document.querySelectorAll('.sidebar-nav .module-toggle');
 
-    // 1. Funcionalidade de Toggle da Sidebar Principal
+    // 1. Funcionalidade de Toggle da Sidebar Principal (CORRIGIDO)
     if (sidebarToggleBtn && sidebar && pageWrapper) {
         sidebarToggleBtn.addEventListener('click', function () {
-            sidebar.classList.toggle('collapsed'); // Para o estado colapsado (desktop/ícones)
-            pageWrapper.classList.toggle('sidebar-collapsed'); // Para ajustar a margem do conteúdo
-
-            // Para o comportamento mobile de abrir/fechar (overlay)
-            // A classe 'open' é mais relevante para o CSS mobile que faz a sidebar deslizar
-            if (window.innerWidth <= 768) { // Mesmo breakpoint do CSS
+            
+            // Verifica o tamanho da tela ANTES de decidir o que fazer
+            if (window.innerWidth <= 768) { 
+                // --- LÓGICA MOBILE (Gaveta) ---
+                // A classe 'open' é mais relevante para o CSS mobile que faz a sidebar deslizar
                 sidebar.classList.toggle('open'); 
                 // Adicionar/remover um overlay para fechar ao clicar fora
                 toggleOverlay(sidebar.classList.contains('open'));
+            } else {
+                // --- LÓGICA DESKTOP (Mini-menu) ---
+                // 'collapsed' é para o estado colapsado (desktop/ícones)
+                sidebar.classList.toggle('collapsed'); 
+                // 'sidebar-collapsed' ajusta a margem do conteúdo
+                pageWrapper.classList.toggle('sidebar-collapsed'); 
             }
         });
     }
@@ -42,7 +47,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
 
-    // 2. Funcionalidade de Acordeão para Submenus
+    // 2. Funcionalidade de Acordeão para Submenus (Sem alterações)
     moduleToggles.forEach(toggle => {
         toggle.addEventListener('click', function (event) {
             event.preventDefault(); // Previne o comportamento padrão do link '#'
@@ -64,8 +69,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // 3. (Opcional) Marcar link ativo na sidebar baseado na URL atual
-    // Esta é uma implementação simples. Pode precisar de ajustes dependendo da estrutura das suas URLs.
+    // 3. (Opcional) Marcar link ativo na sidebar baseado na URL atual (Sem alterações)
     function setActiveLink() {
         const currentPath = window.location.pathname;
         const sidebarLinks = document.querySelectorAll('.sidebar-nav a');
@@ -85,11 +89,6 @@ document.addEventListener('DOMContentLoaded', function () {
                         parentModule.classList.add('open');
                         subMenu.style.maxHeight = subMenu.scrollHeight + "px";
                     }
-                    // Adiciona 'active' também ao link principal do módulo
-                    const moduleToggleLink = parentModule.querySelector('.module-toggle');
-                    if (moduleToggleLink) {
-                       // moduleToggleLink.classList.add('active'); // Opcional: destacar o módulo pai também
-                    }
                 }
             }
         });
@@ -104,7 +103,7 @@ document.addEventListener('DOMContentLoaded', function () {
     
     setActiveLink(); // Chama ao carregar a página
 
-    // Adiciona um pouco de CSS para o overlay (você pode mover para um arquivo CSS)
+    // Adiciona um pouco de CSS para o overlay (Sem alterações)
     const style = document.createElement('style');
     style.textContent = `
         .sidebar-overlay {
@@ -115,7 +114,7 @@ document.addEventListener('DOMContentLoaded', function () {
             width: 100%;
             height: 100%;
             background-color: rgba(0,0,0,0.5);
-            z-index: 1008; /* Abaixo da sidebar, acima do conteúdo */
+            z-index: 1004;
         }
     `;
     document.head.appendChild(style);
@@ -123,14 +122,9 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 function playAlarmSound() {
-    // Cria um novo objeto de áudio, apontando para o seu ficheiro de som.
-    // O caminho é relativo à raiz do seu site.
+    // (Sem alterações)
     const alarmAudio = new Audio('/public/sounds/notification.mp3');
-
-    // O método play() retorna uma Promise. Usamos .catch() para lidar com
-    // possíveis erros, como restrições de autoplay do navegador.
     alarmAudio.play().catch(error => {
-        // O erro é normalmente ignorado se o utilizador ainda não interagiu com a página.
         console.error("Erro ao tentar tocar o som do alarme:", error);
     });
 }

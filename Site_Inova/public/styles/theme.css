@@ -1,40 +1,40 @@
 /* public/styles/theme.css */
 
-/* Variáveis de Cores e Fontes (Root) */
+/* Variáveis de Cores e Fontes (Root) 
+ * (Valores do novo tema "True Black" que definimos anteriormente)
+ */
 :root {
-  /* Cores do Tema Dark */
-  --bg-primary: #1e1e2f;        /* Fundo principal bem escuro (azul/roxo profundo) */
-  --bg-secondary: #27293d;     /* Fundo para containers/cards (um pouco mais claro) */
-  --bg-tertiary: #3b3d56;      /* Superfícies um pouco mais claras, bordas */
+  /* Cores do Tema Dark (Novos valores) */
+  --bg-primary: #121212;
+  --bg-secondary: #1e1e1e;
+  --bg-tertiary: #333333;
   
-  --text-primary: #e0e0e0;     /* Texto principal (cinza claro/quase branco) */
-  --text-secondary: #a0a0b0;   /* Texto secundário/legendas (cinza médio) */
-  --text-muted: #707080;       /* Texto bem sutil */
+  --text-primary: #e0e0e0;
+  --text-secondary: #c7c7c7;
+  --text-muted: #aaa;
 
-  /* Cor de Destaque Laranja (Baseada na sua logo) */
-  --accent-orange: #ff8c20;       /* Laranja principal (o que você usava) */
-  --accent-orange-hover: #ff7b00;  /* Laranja para hover (um pouco mais escuro/vibrante) */
-  --accent-orange-text: #ffffff;   /* Texto para usar sobre o fundo laranja */
+  /* Cor de Destaque Laranja (Novos valores) */
+  --accent-orange: #f07c00;
+  --accent-orange-hover: #ff8c20;
+  --accent-orange-text: #ffffff;
 
-  /* Outras Cores de Ação (se necessário) */
+  /* Outras Cores de Ação (Mantidas) */
   --color-success: #28a745;
   --color-warning: #ffc107;
   --color-danger: #dc3545;
   --color-info: #17a2b8;
 
-  /* Fontes */
-  --font-primary: 'Arial', 'Helvetica', sans-serif; /* Sua fonte atual como fallback */
-  /* Você pode adicionar uma fonte mais moderna aqui, ex: 'Poppins', 'Roboto', 'Open Sans' */
-  /* Se adicionar, lembre-se de importá-la no main.handlebars ou no CSS */
+  /* Fontes (Mantidas) */
+  --font-primary: 'Arial', 'Helvetica', sans-serif; 
 
-  /* Outras Variáveis */
+  /* Outras Variáveis (Mantidas) */
   --border-radius-sm: 4px;
   --border-radius-md: 6px;
   --border-radius-lg: 8px;
   --box-shadow-soft: 0 4px 12px rgba(0, 0, 0, 0.2);
   --box-shadow-medium: 0 6px 18px rgba(0, 0, 0, 0.25);
 
-  /* Transições */
+  /* Transições (Mantidas) */
   --transition-fast: 0.2s ease-in-out;
   --transition-normal: 0.3s ease-in-out;
 }
@@ -46,7 +46,7 @@ body {
   font-family: var(--font-primary);
   font-size: 16px;
   line-height: 1.6;
-  display: flex; /* Para o layout com sidebar */
+  /* MODIFICADO: 'display: flex;' removido daqui para corrigir o bug do 'gap' vertical */
 }
 
 /* Tipografia Básica */

@@ -78,28 +78,20 @@
 
 /* Quando a sidebar estiver colapsada (classe adicionada via JS) */
 .sidebar.collapsed {
-  width: 0;
-  /* Ou uma largura mínima para mostrar apenas ícones, ex: 80px */
-  /* Se for largura mínima:
-    width: 80px; 
-    padding: 0; 
-  */
+  width: 70px; /* MODIFICADO: Alinhado com nav.css (era 0) */
 }
 .sidebar.collapsed .sidebar-header h2.logo-text,
 .sidebar.collapsed .sidebar-nav span,
 .sidebar.collapsed .sidebar-nav .arrow {
   /* Esconde o texto quando colapsada, se for o design de ícones apenas */
-  /* display: none; */ 
+  /* (Este estilo está em nav.css, o que é correto) */
 }
 .sidebar.collapsed .sidebar-nav .sub-menu {
-  /* Ajustes para submenus em modo colapsado, se necessário */
+  /* (Este estilo está em nav.css, o que é correto) */
 }
 
 .page-wrapper.sidebar-collapsed {
-  margin-left: 0; 
-  /* Se a sidebar colapsada tiver largura mínima:
-    margin-left: 80px; 
-  */
+  margin-left: 0px; /* MODIFICADO: Alinhado com nav.css (era 0) */
 }
 
 

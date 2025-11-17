@@ -142,7 +142,9 @@ table.dataTable tbody td a:hover {
 table.dataTable td.selected, 
 table.dataTable th.selected {
   background-color: inherit !important; /* Mantém o fundo original da célula */
-  color: inherit !important;            /* Mantém a cor do texto original da célula */
+  color: inherit !impor
+
+tant;            /* Mantém a cor do texto original da célula */
   box-shadow: inset 0 0 0 2px var(--accent-orange-hover) !important; 
   outline: none !important; 
   position: relative; /* Ajuda com o z-index se necessário */
@@ -197,7 +199,8 @@ table.dataTable th.selected {
 
 .dataTables_length select {
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23a0a0b0'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E"); /* Seta SVG mais bonita e com cor do tema */
+  /* MODIFICADO: Atualizada a cor do 'fill' do SVG para o novo --text-muted */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23aaaaaa'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.7em center;
   background-size: 1em auto;
@@ -216,7 +219,8 @@ table.dataTable th.selected {
 .dataTables_length select:focus,
 .dataTables_filter input[type="search"]:focus {
   border-color: var(--accent-orange);
-  box-shadow: 0 0 0 0.2rem rgba(255, 140, 32, 0.3); /* Adapte RGB se sua var(--accent-orange) for diferente */
+  /* MODIFICADO: Atualizado o RGBA do foco para a nova cor */
+  box-shadow: 0 0 0 0.2rem rgba(240, 124, 0, 0.25);
   outline: none;
 }
 
@@ -275,7 +279,8 @@ table.dataTable th.selected {
   border-color: var(--accent-orange);
   font-weight: 600;
   transform: none; /* Sem elevação para o botão atual */
-  box-shadow: 0 1px 4px rgba(var(--accent-orange-rgb, 255, 140, 32), 0.4); /* Sombra com cor laranja, requer --accent-orange-rgb */
+  /* MODIFICADO: Atualizado o RGBA do box-shadow para a nova cor */
+  box-shadow: 0 1px 4px rgba(240, 124, 0, 0.4);
 }
 
 .dataTables_paginate .paginate_button.disabled,
@@ -345,28 +350,40 @@ table.dataTable th.selected {
     font-size: 0.85rem; /* Texto um pouco menor em mobile */
   }
 
+  /* MODIFICADO: Melhorado o layout dos controles para mobile */
   .dataTables_length,
   .dataTables_filter {
     float: none !important; 
     text-align: left;
     width: 100%;
-    margin-left: 0 !important; /* Resetando floats/margins do seu JS */
+    margin-left: 0 !important;
     margin-right: 0 !important;
     padding-left: 0 !important;
     padding-right: 0 !important;
   }
+  
+  .dataTables_length label,
+  .dataTables_filter label {
+      flex-direction: column; /* Empilha o label e o input */
+      align-items: flex-start; /* Alinha à esquerda */
+      gap: 0.4rem;
+  }
+  
   .dataTables_filter {
     margin-top: 15px; /* Mais espaço entre length e filter */
   }
+  
   .dataTables_filter input[type="search"] {
-    width: 100%; /* Input de busca ocupa toda a largura menos o label */
+    width: 100%; /* Input de busca ocupa toda a largura */
     margin-left: 0; /* Reset */
     box-sizing: border-box; /* Para o width 100% funcionar bem com padding */
   }
+  
   .dataTables_length select {
     margin-left: 0; /* Reset */
-    width: auto; /* Ou um valor fixo menor se necessário */
+    width: 100px; /* Largura fixa para o seletor de "mostrar X" */
   }
+  
   .dataTables_paginate {
     display: flex;
     justify-content: center;
@@ -416,7 +433,7 @@ table.dataTable th.selected {
   border-color: var(--accent-orange);
 }
 .table-actions .btn-icon.btn-outline-warning:hover {
-  background-color: rgba(255, 140, 32, 0.1); /* Laranja bem sutil no hover */
+  background-color: rgba(240, 124, 0, 0.1); /* MODIFICADO: RGBA da nova cor */
   color: var(--accent-orange-hover);
 }
 

@@ -131,6 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <option value="Para Vistoriar" ${isSelected('Para Vistoriar')}>Para Vistoriar</option>
                     <option value="Pronta para Embalar" ${isSelected('Pronta para Embalar')}>Pronta para Embalar</option>
                     <option value="Descarte" ${isSelected('Descarte')}>Descarte</option>
+                    <option value="Não Encontrado" ${isSelected('Não Encontrado')}>Não Encontrado</option>
                     <option value="Resolvida" ${isSelected('Resolvida')}>Resolvida</option>
                 </select>
             `;

@@ -42,7 +42,8 @@
   border-color: var(--accent-orange-hover);
 }
 .btn-accent:focus {
-  box-shadow: 0 0 0 0.2rem rgba(255, 140, 32, 0.35); /* Laranja do --accent-orange com alpha */
+  /* MODIFICADO: Ajustado para a nova cor de acento */
+  box-shadow: 0 0 0 0.2rem rgba(240, 124, 0, 0.35); 
 }
 
 /* Botão Secundário (Contorno Laranja) */
@@ -122,6 +123,7 @@
 
 
 /* === Alertas === */
+/* MODIFICADO: Estilos de alerta atualizados para o tema escuro */
 .alert {
   padding: 0.9rem 1.25rem;
   margin-bottom: 1.5rem;
@@ -137,32 +139,32 @@
 }
 
 .alert-warning {
-  color: #664d03; /* Texto mais escuro para contraste */
-  background-color: #fff3cd;
-  border-color: #ffeeba;
+  color: #ffe69c; /* Texto amarelo claro */
+  background-color: rgba(255, 193, 7, 0.15); /* Fundo amarelo translúcido */
+  border-color: var(--color-warning);
 }
-.alert-warning i { color: #856404; }
+.alert-warning i { color: var(--color-warning); }
 
 .alert-danger {
-  color: #58151c;
-  background-color: #f8d7da;
-  border-color: #f5c2c7;
+  color: #f5b7bd; /* Texto vermelho claro */
+  background-color: rgba(220, 53, 69, 0.15); /* Fundo vermelho translúcido */
+  border-color: var(--color-danger);
 }
-.alert-danger i { color: #721c24; }
+.alert-danger i { color: var(--color-danger); }
 
 .alert-success {
-  color: #0f5132;
-  background-color: #d1e7dd;
-  border-color: #badbcc;
+  color: #a3d9b1; /* Texto verde claro */
+  background-color: rgba(40, 167, 69, 0.15); /* Fundo verde translúcido */
+  border-color: var(--color-success);
 }
-.alert-success i { color: #155724; }
+.alert-success i { color: var(--color-success); }
 
 .alert-info {
-  color: #055160;
-  background-color: #cff4fc;
-  border-color: #b6effb;
+  color: #9eeaf9; /* Texto azul claro */
+  background-color: rgba(23, 162, 184, 0.15); /* Fundo azul translúcido */
+  border-color: var(--color-info);
 }
-.alert-info i { color: #0c5460; }
+.alert-info i { color: var(--color-info); }
 
 
 /* === Cards (Estilo base para .content-card já está em theme.css) === */
