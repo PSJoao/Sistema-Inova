@@ -167,7 +167,6 @@ async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve })
                 if (pedidoSearchResponse.data && pedidoSearchResponse.data.length > 0) {
                     const pedidoId = pedidoSearchResponse.data[0].id;
                     const p = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas/${pedidoId}`, accountTypeEncontrada)).data;
-                    console.log(p.id);
                     await client.query(`
                         INSERT INTO cached_pedido_venda (bling_id, numero, numero_loja, data_pedido, data_saida, total_produtos, total_pedido, contato_id, contato_nome, contato_tipo_pessoa, contato_documento, situacao_id, situacao_valor, loja_id, desconto_valor, notafiscal_id, nfe_parent_numero, bling_account)
                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) ON CONFLICT (bling_id, bling_account) DO UPDATE SET
@@ -886,7 +885,7 @@ async function syncNFeLucas() {
                         // Lógica original para buscar detalhes da NF-e e do Pedido
                         await new Promise(resolve => setTimeout(resolve, 500));
                         const nfeDetalhes = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe/${nfeResumo.id}`, 'lucas')).data;
-
+                        console.log(JSON.stringify(nfeDetalhes, null, 2));
                         if (nfeDetalhes.numeroPedidoLoja) {
                             try {
                                 const pedidoSearchResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas?numerosLojas[]=${nfeDetalhes.numeroPedidoLoja}`, 'lucas');
@@ -1352,6 +1351,14 @@ async function upsertNfeQuantidade(client, data) {
     await client.query(query, [data.nfe_numero, data.produto_codigo, data.quantidade]);
 }
 
+function getLucasStatus() {
+    return isNFeLucasRunning;
+}
+
+function getElianeStatus() {
+    return isNFeElianeRunning;
+}
+
 module.exports = {
     syncNFeLucas,
     syncNFeEliane,
@@ -1363,5 +1370,7 @@ module.exports = {
     apiRequestWithRetry,
     findAndCacheNfeByNumber: exports.findAndCacheNfeByNumber,
     findAndCachePedidoByLojaNumber: exports.findAndCachePedidoByLojaNumber,
-    syncPedidosVendaFull
+    syncPedidosVendaFull,
+    getLucasStatus, 
+    getElianeStatus
 };

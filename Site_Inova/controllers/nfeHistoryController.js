@@ -35,7 +35,7 @@ exports.renderNfeHistoryPage = async (req, res) => {
             LEFT JOIN cached_nfe cn ON enf.nfe_chave_acesso_44d = cn.chave_acesso
             WHERE enf.status_para_relacao IN ('justificada_adiada', 'relacionada', 'pendente', 'cancelada', 'alerta')
             AND
-            enf.transportadora_apelido NOT IN ('SHOPEE MAGAZINE', 'NOVO MERCADO LIVRE', 'MERCADO LIVRE ELIANE', 'MERCADO LIVRE MAGAZINE', 'FRENET', 'MAGALU ENTREGAS')
+            enf.transportadora_apelido NOT IN ('SHOPEE MAGAZINE', 'NOVO MERCADO LIVRE', 'MERCADO LIVRE ELIANE', 'MERCADO LIVRE MAGAZINE', 'MAGALU ENTREGAS')
             ORDER BY cn.data_emissao DESC
             LIMIT $1 OFFSET $2;
         `;
@@ -101,7 +101,7 @@ exports.getNfeHistoryApi = async (req, res) => {
 
         //whereClauses.push(`enf.cancelada = false`);
 
-        whereClauses.push(`enf.transportadora_apelido NOT IN ('SHOPEE MAGAZINE', 'NOVO MERCADO LIVRE', 'MERCADO LIVRE ELIANE', 'MERCADO LIVRE MAGAZINE', 'FRENET', 'MAGALU ENTREGAS')`);
+        whereClauses.push(`enf.transportadora_apelido NOT IN ('SHOPEE MAGAZINE', 'NOVO MERCADO LIVRE', 'MERCADO LIVRE ELIANE', 'MERCADO LIVRE MAGAZINE', 'MAGALU ENTREGAS')`);
         whereClauses.push(`cn.data_emissao is NOT NULL`);
         const whereCondition = `WHERE ${whereClauses.join(' AND ')}`;
         
