@@ -20,6 +20,10 @@
             <input type="checkbox" id="mass-search-toggle" class="form-check-input" style="margin-top: 5px;">
             <label for="mass-search-toggle">Pesquisa em Massa por NFe</label>
         </div>
+        <div class="acmp-filter-group mass-confirm-toggle-group" style="margin-left: 15px;">
+            <input type="checkbox" id="mass-confirm-toggle" class="form-check-input" style="margin-top: 5px;">
+            <label for="mass-confirm-toggle">Confirmar Entrega em Massa</label>
+        </div>
         <div class="normal-filters-container" style="display: flex; flex-wrap: wrap; width: 100%; gap: 5px;">
             <div class="acmp-filter-group">
                 <label for="search-input">Busca Rápida:</label>
@@ -100,6 +104,17 @@
                 <textarea id="nfe-list-textarea" class="form-control" rows="8" placeholder="233098&#10;233099&#10;233100..."></textarea>
             </div>
             <button id="btn-mass-search" class="btn btn-primary" style="margin-top: 0.5rem;"><i class="fas fa-search"></i> Pesquisar em Massa</button>
+        </div>
+
+        <div class="mass-confirm-container" style="display: none; width: 100%; margin-top: 1rem;">
+            <div class="form-group">
+                <label for="nfe-confirm-list-textarea">Cole a lista de NFEs para CONFIRMAR ENTREGA (uma por linha):</label>
+                <textarea id="nfe-confirm-list-textarea" class="form-control" rows="8" placeholder="233098&#10;233099..."></textarea>
+                <small class="form-text text-muted">Apenas pedidos com status "Entregue - Conferir" serão alterados para "Entregue - Confirmado".</small>
+            </div>
+            <button id="btn-mass-confirm" class="btn btn-success" style="margin-top: 0.5rem;">
+                <i class="fas fa-check-double"></i> Confirmar Entregas
+            </button>
         </div>
         
     </div>

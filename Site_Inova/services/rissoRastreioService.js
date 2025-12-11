@@ -7,6 +7,8 @@ const RISSO_API_URL = 'http://200.206.77.27:9000/v1/nfe/';
 const RISSO_API_USER = process.env.RISSO_API_USER;
 const RISSO_API_PASS = process.env.RISSO_API_PASS;
 
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 function mapearStatusRisso(codigoOcorrencia) {
     const codigo = String(codigoOcorrencia);
     const mapaStatus = {
@@ -39,6 +41,8 @@ async function atualizarStatusPedidosRisso(pedidosRisso) {
     console.log(`[Risso Service] Iniciando atualização para ${pedidosRisso.length} pedido(s) da Risso.`);
 
     for (const pedido of pedidosRisso) {
+        await delay(400);
+
         try {
             const response = await axios.get(`${RISSO_API_URL}${pedido.chave_nfe}`, { headers });
             const dadosRastreioRaw = response.data;

@@ -7,22 +7,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // 1. Monta o HTML para seleção de conta (estilo simples para caber no modal)
             const contentHtml = `
-                <div style="text-align: left; padding: 10px;">
-                    <p style="margin-bottom: 15px;">Selecione a conta para processar as notas fiscais pendentes do Mercado Livre:</p>
-                    <div style="margin-bottom: 10px;">
-                        <label style="cursor: pointer; display: flex; align-items: center;">
-                            <input type="radio" name="contaFaturamento" value="lucas" style="margin-right: 10px; transform: scale(1.2);">
-                            <span style="font-weight: bold;">Conta Lucas</span>
+                <div class="modal-form-content">
+                    <p class="modal-description">Selecione a conta para processar as notas fiscais pendentes do Mercado Livre:</p>
+                    
+                    <div class="modal-radio-group">
+                        <label class="radio-option">
+                            <input type="radio" name="contaFaturamento" value="lucas">
+                            <span class="radio-label">Conta Lucas</span>
                         </label>
                     </div>
-                    <div>
-                        <label style="cursor: pointer; display: flex; align-items: center;">
-                            <input type="radio" name="contaFaturamento" value="eliane" style="margin-right: 10px; transform: scale(1.2);">
-                            <span style="font-weight: bold;">Conta Eliane</span>
-                        </label>
-                    </div>
-                    <p style="margin-top: 15px; font-size: 0.9em; color: #666;">
-                        <i class="fas fa-info-circle"></i> Notas com mais de 1 item serão puladas.
+                    <br>
+                    <p class="modal-helper-text">
+                        <i class="fas fa-info-circle"></i> O processo será executado em segundo plano e pode levar alguns minutos.
                     </p>
                 </div>
             `;
@@ -59,7 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function iniciarFaturamento(accountName) {
         try {
             // Usa o Loading do próprio sistema
-            ModalSystem.showLoading('Enviando comando ao servidor...', 'Iniciando');
+            ModalSystem.showLoading('Iniciando o faturamento...', 'Iniciando');
 
             const response = await fetch('/faturamento-automatico/iniciar', {
                 method: 'POST',
@@ -78,9 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Passamos null no onConfirm e onCancel para fechar apenas.
             if (result.success) {
                 ModalSystem.confirm(
-                    `<div style="text-align: center; color: green; font-size: 1.2em;">
-                        <i class="fas fa-check-circle"></i> ${result.message}
-                     </div>`,
+                    `${result.message}`,
                     'Sucesso!',
                     null,
                     null,
@@ -88,9 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 );
             } else {
                 ModalSystem.confirm(
-                    `<div style="text-align: center; color: red;">
-                        <i class="fas fa-exclamation-triangle"></i> ${result.message}
-                     </div>`,
+                    `${result.message}`,
                     'Erro',
                     null,
                     null,

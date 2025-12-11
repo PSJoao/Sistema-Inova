@@ -160,14 +160,20 @@ async function generateLabelsPdf(labelsData) {
             font: helveticaBoldFont,
             size: 10
         });
-        page.drawText(`Quantidade: ${sanitizeText(label.quantidade_produto, '1')}`, {
-            x: margin + 150,
+        page.drawText(`EAN: ${sanitizeText(label.gtin, 'N/A')}`, {
+            x: margin + 115,
+            y: margin + 58,
+            font: helveticaBoldFont,
+            size: 8.5
+        });
+        page.drawText(`QTD: ${sanitizeText(label.quantidade_produto, '1')}`, {
+            x: margin + 215,
             y: margin + 58,
             font: helveticaBoldFont,
             size: 10
         });
-        page.drawText(`Localização: ${sanitizeText(label.component_location, 'N/A')}`, {
-            x: margin + 250,
+        page.drawText(`LOC: ${sanitizeText(label.component_location, 'N/A')}`, {
+            x: margin + 265,
             y: margin + 58,
             font: helveticaBoldFont,
             size: 10

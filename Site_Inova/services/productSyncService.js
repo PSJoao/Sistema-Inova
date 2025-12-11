@@ -164,6 +164,7 @@ async function syncProductsBySku(skus, accountType) {
                 await new Promise(resolve => setTimeout(resolve, 500)); // Pausa
                 const produtoDetalhesResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${productId}`, accountType);
                 const produtoDetalhes = produtoDetalhesResponse.data;
+                console.log(JSON.stringify(produtoDetalhes, null, 2));
 
                 // 3. Salva/Atualiza produto no DB
                 await client.query(

@@ -623,6 +623,24 @@ const rastreioController = {
         }
     },
 
+    confirmarEntregaEmMassa: async (req, res) => {
+        try {
+            const { nfeList } = req.body;
+
+            if (!nfeList || !Array.isArray(nfeList) || nfeList.length === 0) {
+                return res.status(400).json({ message: 'Lista de NFEs inválida ou vazia.' });
+            }
+
+            const result = await rastreioService.bulkConfirmDelivery(nfeList);
+
+            res.status(200).json(result);
+
+        } catch (error) {
+            console.error("[Rastreio Controller] Erro na confirmação em massa:", error);
+            res.status(500).json({ message: 'Erro interno ao processar confirmações.' });
+        }
+    },
+
     massSearchByNFe: async (req, res) => {
         const { nfeList } = req.body; // Espera um array de strings
 

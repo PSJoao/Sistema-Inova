@@ -18,7 +18,11 @@ document.addEventListener('DOMContentLoaded', () => {
         normalFiltersContainer: document.querySelector('.normal-filters-container'),
         massSearchContainer: document.querySelector('.mass-search-container'),
         nfeListTextarea: document.getElementById('nfe-list-textarea'),
-        btnMassSearch: document.getElementById('btn-mass-search')
+        btnMassSearch: document.getElementById('btn-mass-search'),
+        massConfirmToggle: document.getElementById('mass-confirm-toggle'),
+        massConfirmContainer: document.querySelector('.mass-confirm-container'),
+        nfeConfirmListTextarea: document.getElementById('nfe-confirm-list-textarea'),
+        btnMassConfirm: document.getElementById('btn-mass-confirm')
     };
 
     if (!elements.listContainer) {
@@ -268,7 +272,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     if (elements.massSearchToggle) {
-        elements.massSearchToggle.addEventListener('change', () => {
+        elements.massSearchToggle.addEventListener('change', (e) => {
+            if (e.target.checked && elements.massConfirmToggle) {
+                elements.massConfirmToggle.checked = false;
+                elements.massConfirmContainer.style.display = 'none';
+            }
+
             if (elements.massSearchToggle.checked) {
                 // Ativou pesquisa em massa
                 elements.normalFiltersContainer.style.display = 'none';
@@ -283,6 +292,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Recarrega os dados com os filtros normais
                 initialize();
+            }
+        });
+    }
+
+    if (elements.massConfirmToggle) {
+        elements.massConfirmToggle.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                // Mostra o container de confirmação
+                elements.massConfirmContainer.style.display = 'block';
+                
+                // Esconde os outros para não poluir
+                elements.normalFiltersContainer.style.display = 'none';
+                if(elements.massSearchContainer) elements.massSearchContainer.style.display = 'none';
+                if(elements.massSearchToggle) elements.massSearchToggle.checked = false;
+            } else {
+                elements.massConfirmContainer.style.display = 'none';
+                elements.normalFiltersContainer.style.display = 'flex';
             }
         });
     }
@@ -302,7 +328,66 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // [SUBSTITUA O BLOCO DA LINHA 224]
+    if (elements.btnMassConfirm) {
+        elements.btnMassConfirm.addEventListener('click', async () => {
+            const rawText = elements.nfeConfirmListTextarea.value;
+            if (!rawText.trim()) {
+                ModalSystem.alert('Por favor, insira pelo menos uma NFe.', 'Atenção');
+                return;
+            }
+
+            const nfeList = rawText.split(/\r?\n/)
+                                   .map(line => line.trim())
+                                   .filter(line => line !== '');
+
+            if (nfeList.length === 0) return;
+
+            ModalSystem.confirm(
+                `Deseja tentar confirmar a entrega de ${nfeList.length} notas fiscais?`,
+                'Confirmação em Massa',
+                async () => {
+                    ModalSystem.showLoading('Processando confirmações...');
+                    
+                    try {
+                        const response = await fetch('/rastreio/api/mass-confirm-delivery', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ nfeList })
+                        });
+
+                        const result = await response.json();
+                        ModalSystem.hideLoading();
+
+                        if (!response.ok) throw new Error(result.message || 'Erro ao processar.');
+
+                        // Montar mensagem de resultado
+                        let msg = `Total Processado: <b>${result.summary.totalProcessed}</b><br>`;
+                        msg += `Atualizados com Sucesso: <b style="color:green">${result.summary.updatedCount}</b><br>`;
+                        msg += `Falhas/Ignorados: <b style="color:red">${result.summary.errorCount}</b><br><br>`;
+
+                        if (result.errors && result.errors.length > 0) {
+                            msg += '<strong>Detalhes das Falhas:</strong><br><div style="max-height: 200px; overflow-y: auto; text-align: left; background: #f8f9fa; padding: 10px; border: 1px solid #dee2e6;">';
+                            result.errors.forEach(err => {
+                                msg += `NFE <b>${err.nfe}</b>: ${err.reason}<br>`;
+                            });
+                            msg += '</div>';
+                        }
+
+                        ModalSystem.alert(msg, 'Relatório de Processamento', () => {
+                            // Recarrega a página para atualizar os status na tela
+                            window.location.reload();
+                        });
+
+                    } catch (error) {
+                        ModalSystem.hideLoading();
+                        console.error(error);
+                        ModalSystem.alert(`Erro: ${error.message}`, 'Falha');
+                    }
+                }
+            );
+        });
+    }
+
     if (elements.listContainer) {
         elements.listContainer.addEventListener('click', async (event) => { // 1. TORNAMOS ASYNC
             // Pega o elemento exato que foi clicado

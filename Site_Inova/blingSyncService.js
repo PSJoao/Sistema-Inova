@@ -129,6 +129,7 @@ async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve })
                         const nfeSearchResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe?numero=${nfeNumber}`, conta, 3); // 3 retentativas
                         if (nfeSearchResponse.data && nfeSearchResponse.data.length > 0) {
                             nfeDetalhes = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe/${nfeSearchResponse.data[0].id}`, conta)).data;
+                            console.log(JSON.stringify(nfeDetalhes, null, 2));
                             accountTypeEncontrada = conta; // Define a conta correta
                             console.log(`[OnDemandQueue] NF ${nfeNumber} encontrada na conta ${conta}.`);
                             nfeEncontrada = true;
@@ -874,10 +875,13 @@ async function syncNFeLucas() {
                         const chaveDeAcesso = nfeResumo.chaveAcesso;
                         if (!chaveDeAcesso) continue;
 
+                        console.log(`NUMERO NFEEEE: ${nfeResumo.numero}`);
+
                         const checkCacheResult = await pool.query(
-                            'SELECT 1 FROM cached_nfe WHERE chave_acesso = $1',
-                            [chaveDeAcesso]
+                            'SELECT 1 FROM cached_nfe WHERE nfe_numero = $1 AND situacao != 1',
+                            [nfeResumo.numero]
                         );
+
                         if (checkCacheResult.rows.length > 0) {
                             continue; // Pula para a próxima NFe do loop
                         }
@@ -885,7 +889,6 @@ async function syncNFeLucas() {
                         // Lógica original para buscar detalhes da NF-e e do Pedido
                         await new Promise(resolve => setTimeout(resolve, 500));
                         const nfeDetalhes = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe/${nfeResumo.id}`, 'lucas')).data;
-                        console.log(JSON.stringify(nfeDetalhes, null, 2));
                         if (nfeDetalhes.numeroPedidoLoja) {
                             try {
                                 const pedidoSearchResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas?numerosLojas[]=${nfeDetalhes.numeroPedidoLoja}`, 'lucas');
@@ -1015,8 +1018,9 @@ async function syncNFeLucas() {
                                 last_updated_at
                             )
                             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,NOW())
-                            ON CONFLICT (chave_acesso)
+                            ON CONFLICT (bling_id, bling_account)
                             DO UPDATE SET
+                                chave_acesso = EXCLUDED.chave_acesso, 
                                 transportador_nome = EXCLUDED.transportador_nome,
                                 total_volumes = EXCLUDED.total_volumes,
                                 product_descriptions_list = EXCLUDED.product_descriptions_list,
@@ -1262,8 +1266,9 @@ async function syncNFeEliane() {
                                 last_updated_at
                             )
                             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,NOW())
-                            ON CONFLICT (chave_acesso)
+                            ON CONFLICT (bling_id, bling_account)
                             DO UPDATE SET
+                                chave_acesso = EXCLUDED.chave_acesso,
                                 transportador_nome = EXCLUDED.transportador_nome,
                                 total_volumes = EXCLUDED.total_volumes,
                                 product_descriptions_list = EXCLUDED.product_descriptions_list,

@@ -11,25 +11,75 @@ const { atualizarStatusPedidosJew } = require('./jewRastreioService');
 // SEÇÃO DE INSERÇÃO DE NOVOS PEDIDOS (CÓDIGO ORIGINAL MANTIDO)
 // =============================================================================
 async function inserirNovosPedidosParaRastreio() {
-    console.log('[Rastreio Service] Buscando novos pedidos para inserir...');
-    const nfeQuery = `SELECT enr.nfe_numero, bling_account_type AS bling_account, enr.transportador_nome AS transportadora, enr.nfe_chave_acesso_44d AS chave_nfe, enr.data_processamento AS data_envio, ac.plataforma AS plataforma FROM emission_nfe_reports enr INNER JOIN acompanhamentos_consolidados ac ON enr.nfe_numero = ac.numero_nfe WHERE status_para_relacao = 'relacionada'`;
-    const resNfes = await poolMonitora.query(nfeQuery);
-    const nfesElegiveis = resNfes.rows || [];
-    if (nfesElegiveis.length === 0) { console.log('[Rastreio Service] Nenhum novo pedido elegível encontrado.'); return; }
-    const chavesExistentesQuery = `SELECT chave_nfe FROM pedidos_em_rastreamento`;
-    const resChaves = await poolInova.query(chavesExistentesQuery);
-    const chavesSet = new Set((resChaves.rows || []).map(r => r.chave_nfe.trim()));
-    const nfesParaInserir = nfesElegiveis.filter(nfe => nfe.chave_nfe && !chavesSet.has(nfe.chave_nfe.trim()));
-    if (nfesParaInserir.length === 0) { console.log('[Rastreio Service] Todos os pedidos elegíveis já estão na tabela de rastreio.'); return; }
-    for (const nfe of nfesParaInserir) {
-        const pedidoQuery = `SELECT documento AS documento_cliente, numero_pedido FROM acompanhamentos_consolidados WHERE numero_nfe = $1 LIMIT 1`;
-        const resPedido = await poolInova.query(pedidoQuery, [nfe.nfe_numero]);
-        const pedidoInfo = (resPedido.rows || [{}])[0];
-        if (pedidoInfo) {
-            const insertQuery = `INSERT INTO pedidos_em_rastreamento (numero_pedido, documento_cliente, transportadora, numero_nfe, chave_nfe, data_envio, plataforma, situacao_atual, bling_account) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (chave_nfe) DO NOTHING`;
-            const values = [pedidoInfo.numero_pedido, pedidoInfo.documento_cliente, nfe.transportadora, nfe.nfe_numero, nfe.chave_nfe.trim(), nfe.data_envio, nfe.plataforma, 'Aguardando Sincronização', nfe.bling_account];
-            await poolInova.query(insertQuery, values);
+    console.log('[Rastreio Service] Buscando novos pedidos para inserir (Via cached_pedido_venda)...');
+
+    // 1. Busca otimizada: Já trazemos todos os dados necessários no JOIN,
+    // eliminando a necessidade de fazer consultas extras dentro do loop.
+    const nfeQuery = `
+        SELECT 
+            enr.nfe_numero, 
+            enr.bling_account_type AS bling_account, 
+            enr.transportador_nome AS transportadora, 
+            enr.nfe_chave_acesso_44d AS chave_nfe, 
+            enr.data_processamento AS data_envio, 
+            cpv.numero_loja AS numero_pedido,          -- Trazido direto da query
+            cpv.contato_documento AS documento_cliente, -- Trazido direto da query
+            CASE 
+                WHEN cpv.intermediador_cnpj = '03.007.331/0001-41' THEN 'Mercado Livre'
+                WHEN cpv.intermediador_cnpj = '35.635.824/0001-12' THEN 'Shopee'
+                WHEN cpv.intermediador_cnpj = '10.490.181/0001-35' THEN 'Madeira Madeira'
+                WHEN cpv.intermediador_cnpj = '47.960.950/0001-21' THEN 'Magalu'
+                WHEN cpv.intermediador_cnpj = '15.436.940/0001-03' THEN 'Amazon'
+                WHEN cpv.intermediador_cnpj = '33.041.260/0652-90' THEN 'Via Varejo'
+                WHEN cpv.intermediador_cnpj = '00.776.574/0006-60' THEN 'Americanas'
+                ELSE 'Outra'
+            END AS plataforma
+        FROM emission_nfe_reports enr 
+        INNER JOIN cached_pedido_venda cpv ON enr.nfe_numero = cpv.nfe_parent_numero 
+        WHERE enr.status_para_relacao = 'relacionada'
+    `;
+
+    try {
+        const resNfes = await poolMonitora.query(nfeQuery);
+        const nfesElegiveis = resNfes.rows || [];
+
+        if (nfesElegiveis.length === 0) { 
+            console.log('[Rastreio Service] Nenhum novo pedido elegível encontrado.'); 
+            return; 
         }
+
+        console.log(`[Rastreio Service] Encontrados ${nfesElegiveis.length} pedidos elegíveis. Tentando inserir...`);
+
+        for (const nfe of nfesElegiveis) {
+            // Garante fallback caso o numero venha nulo do cache
+            const numeroPedidoFinal = nfe.numero_pedido || 'N/A';
+            const chaveTrimmed = nfe.chave_nfe ? nfe.chave_nfe.trim() : null;
+
+            if (chaveTrimmed) {
+                // 2. Inserção com ON CONFLICT:
+                // Mantém a segurança do seu código original. Se a chave já existir, 
+                // o banco ignora (DO NOTHING), evitando duplicidade sem precisar carregar tudo na memória antes.
+                const insertQuery = `
+                    INSERT INTO pedidos_em_rastreamento 
+                    (numero_pedido, documento_cliente, transportadora, numero_nfe, chave_nfe, data_envio, plataforma, situacao_atual, bling_account, criado_em, atualizado_em)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, 'Aguardando Sincronização', $8, NOW(), NOW())
+                    ON CONFLICT (chave_nfe) DO NOTHING
+                `;
+                
+                await poolInova.query(insertQuery, [
+                    numeroPedidoFinal,
+                    nfe.documento_cliente,
+                    nfe.transportadora,
+                    nfe.nfe_numero,
+                    chaveTrimmed,
+                    nfe.data_envio,
+                    nfe.plataforma,
+                    nfe.bling_account
+                ]);
+            }
+        }
+    } catch (error) {
+        console.error('[Rastreio Service] Erro ao inserir novos pedidos:', error);
     }
 }
 
@@ -351,6 +401,74 @@ async function getDistinctPlataformas() {
     return result.rows.map(row => row.plataforma);
 }
 
+async function bulkConfirmDelivery(nfeList) {
+    // Normaliza a lista removendo duplicatas e espaços
+    const uniqueNfes = [...new Set(nfeList.map(n => String(n).trim()))];
+    
+    const errors = [];
+    const successNfes = [];
+
+    // 1. Buscar todos os pedidos correspondentes a essas NFEs no banco
+    const query = `
+        SELECT id, numero_nfe, situacao_atual 
+        FROM pedidos_em_rastreamento 
+        WHERE numero_nfe = ANY($1::text[])
+    `;
+    
+    const { rows } = await poolInova.query(query, [uniqueNfes]);
+    
+    // Mapa para acesso rápido: nfe -> dados do pedido
+    // Nota: Pode haver NFs duplicadas no banco? Assumindo que numero_nfe identifica unicamente para este fluxo.
+    const pedidosMap = new Map();
+    rows.forEach(row => {
+        pedidosMap.set(row.numero_nfe, row);
+    });
+
+    // 2. Verificar cada NFe da lista de entrada
+    const idsToUpdate = [];
+
+    for (const nfe of uniqueNfes) {
+        const pedido = pedidosMap.get(nfe);
+
+        if (!pedido) {
+            errors.push({ nfe, reason: 'Pedido não encontrado no sistema.' });
+            continue;
+        }
+
+        if (pedido.situacao_atual === 'Entregue - Conferir') {
+            idsToUpdate.push(pedido.id);
+            successNfes.push(nfe);
+        } else if (pedido.situacao_atual === 'Entregue - Confirmado') {
+            errors.push({ nfe, reason: 'Já está confirmado.' });
+        } else {
+            errors.push({ nfe, reason: `Status inválido para confirmação: "${pedido.situacao_atual}".` });
+        }
+    }
+
+    // 3. Executar o Update em Massa apenas para os válidos
+    if (idsToUpdate.length > 0) {
+        const updateQuery = `
+            UPDATE pedidos_em_rastreamento 
+            SET 
+                situacao_atual = 'Entregue - Confirmado',
+                conferencia_necessaria = false,
+                atualizado_em = NOW()
+            WHERE id = ANY($1::int[])
+        `;
+        await poolInova.query(updateQuery, [idsToUpdate]);
+    }
+
+    return {
+        success: true,
+        summary: {
+            totalProcessed: uniqueNfes.length,
+            updatedCount: idsToUpdate.length,
+            errorCount: errors.length
+        },
+        errors: errors
+    };
+}
+
 // =============================================================================
 // EXPORTAÇÕES
 // =============================================================================
@@ -363,5 +481,6 @@ module.exports = {
     getDistinctTransportadoras,
     getDistinctObservacoes,
     getDistinctPlataformas,
-    atualizarPrevisaoComBoletimDominalog
+    atualizarPrevisaoComBoletimDominalog,
+    bulkConfirmDelivery
 };

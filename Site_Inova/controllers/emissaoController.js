@@ -1,7 +1,7 @@
 // controllers/emissaoController.js
 const { Pool } = require('pg');
 const axios = require('axios'); // Necessário para blingApiGet
-const { setEmissaoPageStatus, getSyncStatus, findAndCacheNfeByNumber } = require('../blingSyncService');
+const { setEmissaoPageStatus, getSyncStatus, findAndCacheNfeByNumber, syncNFeLucas, syncNFeEliane } = require('../blingSyncService');
 const { getValidBlingToken } = require('../services/blingTokenManager');
 const { generateLabelsPdf } = require('../services/pdfService');
 
@@ -20,6 +20,7 @@ const TRANSPORTADORA_APELIDOS_MAP = {
   'DOMINALOG': 'DOMINALOG',
   'I. AMORIN TRANSPORTES EIRELI': 'LOG+',
   'I AMORIN TRANSPORTES EIRELLI': 'LOG+',
+  'LOG MAIS TRANSPORTES LTDA': 'LOG+',
   'RISSO ENCOMENDAS CENTRO OESTE LTDA': 'RISSO',
   'MFA TRANSPORTES E LOGISTICA': 'MFA',
   'M F A TRANSPORTES E LOGISTICA LTDA': 'MFA',
@@ -889,7 +890,7 @@ exports.getPrintLabelsPage = async (req, res) => {
 
         // Consulta estruturas
         const estruturasQuery = `
-            SELECT parent_product_bling_id, component_sku, component_location, structure_name
+            SELECT parent_product_bling_id, component_sku, component_location, structure_name, gtin, gtin_embalagem
             FROM cached_structures
             WHERE parent_product_bling_id = ANY($1::bigint[])
         `;
@@ -955,7 +956,8 @@ exports.getPrintLabelsPage = async (req, res) => {
                         quantidade_produto: quantidade,
                         structure_name: estrutura.structure_name || 'N/D',
                         empresa: nf.bling_account === 'lucas' ? empresaLucas : empresaEliane,
-                        product_name: skuInfo?.nome || 'Produto sem nome'
+                        product_name: skuInfo?.nome || 'Produto sem nome',
+                        gtin: estrutura.gtin || estrutura.gtin_embalagem || 'N/D'
                     });
                 }
             }

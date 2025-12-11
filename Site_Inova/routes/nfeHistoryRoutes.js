@@ -38,4 +38,6 @@ router.get('/api/nfe/generate-report', nfeHistoryController.generateMissingProdu
 
 router.get('/api/nfe/generate-report-justifications', nfeHistoryController.generateJustificationsReport);
 
+router.get('/api/report/pending-products-by-carrier', nfeHistoryController.generatePendingProductsByCarrierReport);
+
 module.exports = router;

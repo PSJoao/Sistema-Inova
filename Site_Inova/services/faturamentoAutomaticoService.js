@@ -1,6 +1,7 @@
 const axios = require('axios');
 const { Pool } = require('pg');
 const { getValidBlingToken } = require('./blingTokenManager');
+const crypto = require('crypto');
 // Importamos os getters e a função de requisição com retentativa
 const { getLucasStatus, getElianeStatus, apiRequestWithRetry } = require('../blingSyncService');
 
@@ -12,7 +13,7 @@ const pool = new Pool({
     host: process.env.DB_MON_HOST,
     database: process.env.DB_MON_DATABASE,
     password: process.env.DB_MON_PASSWORD,
-    port: process.env.DB_MON_PORT,
+    port: process.env.DB_MON_PORT
 });
 
 // Controle de Estado Local
@@ -23,9 +24,36 @@ let isFaturamentoElianeRunning = false;
 const productCache = new Set();
 
 // CNPJs ou Identificadores comuns do Mercado Livre
-const ML_INTERMEDIADOR_CNPJ = '10.573.521/0001-91';
+const ML_INTERMEDIADOR_CNPJ = '03.007.331/0001-41';
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+function getMonthFilterParams() {
+    const pad = (num) => String(num).padStart(2, '0');
+    const today = new Date();
+    
+    // Data Final (hoje, no final do dia: 23:59:59)
+    const finalDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
+    const finalDateStr = `${finalDate.getFullYear()}-${pad(finalDate.getMonth() + 1)}-${pad(finalDate.getDate())} ${pad(finalDate.getHours())}:${pad(finalDate.getMinutes())}:${pad(finalDate.getSeconds())}`;
+
+    // Data Inicial (30 dias atrás, no início do dia: 00:00:00)
+    const startDate = new Date(today);
+    startDate.setDate(today.getDate() - 30);
+    const initialDate = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate(), 0, 0, 0);
+    const initialDateStr = `${initialDate.getFullYear()}-${pad(initialDate.getMonth() + 1)}-${pad(initialDate.getDate())} ${pad(initialDate.getHours())}:${pad(initialDate.getMinutes())}:${pad(initialDate.getSeconds())}`;
+
+    // Monta a string de parâmetros, usando encodeURIComponent para os espaços e ':'
+    const initialParam = `dataEmissaoInicial=${encodeURIComponent(initialDateStr)}`;
+    const finalParam = `dataEmissaoFinal=${encodeURIComponent(finalDateStr)}`;
+
+    return `${initialParam}&${finalParam}`;
+}
+
+function generateTemporaryAccessKey() {
+    // Garante 4 caracteres ('TEMP') + 40 caracteres aleatórios (hex) = 44 caracteres.
+    const randomPart = crypto.randomBytes(20).toString('hex').substring(0, 40);
+    return `TEMP${randomPart}`.substring(0, 44);
+}
 
 // --- FUNÇÕES DE PERSISTÊNCIA (BASEADO NO BLING SYNCSERVICE) ---
 
@@ -41,6 +69,14 @@ async function marcarComoManual(client, nfeId, blingAccount) {
 }
 
 async function upsertNFe(client, data) {
+    let chaveAcesso = data.chave_acesso; // Chave real, se existir
+
+    // >>> LÓGICA DE CHAVE TEMPORÁRIA: Se a situação for PENDENTE (1) E a chave for inválida/ausente <<<
+    if (data.situacao === 1 && (!chaveAcesso || chaveAcesso.startsWith('TEMP'))) {
+        chaveAcesso = generateTemporaryAccessKey();
+        console.log(`[Persistência] Nota ${data.nfe_numero} pendente. Gerada chave temporária: ${chaveAcesso}`);
+    }
+
     const query = `
         INSERT INTO cached_nfe (
             bling_id, bling_account, nfe_numero, chave_acesso, transportador_nome,
@@ -73,7 +109,7 @@ async function upsertNFe(client, data) {
             last_updated_at = NOW()
     `;
     await client.query(query, [
-        data.bling_id, data.bling_account, data.nfe_numero, data.chave_acesso, data.transportador_nome,
+        data.bling_id, data.bling_account, data.nfe_numero, chaveAcesso, data.transportador_nome,
         data.total_volumes, data.product_descriptions_list, data.data_emissao,
         data.etiqueta_nome, data.etiqueta_endereco, data.etiqueta_numero, data.etiqueta_complemento,
         data.etiqueta_municipio, data.etiqueta_uf, data.etiqueta_cep, data.etiqueta_bairro, data.fone,
@@ -146,6 +182,69 @@ async function upsertCachedPedidoVenda(client, pedidoDetalhes, nfeNumero, accoun
     ]);
 }
 
+async function upsertProductStructure(client, productData, accountType) {
+    if (!productData.estrutura?.componentes?.length) return;
+
+    // 1. Limpa estruturas antigas para garantir consistência
+    await client.query(
+        'DELETE FROM cached_structures WHERE parent_product_bling_id = $1 AND parent_product_bling_account = $2',
+        [productData.id, accountType]
+    );
+
+    // 2. Insere as novas estruturas
+    for (const componente of productData.estrutura.componentes) {
+        const componenteId = componente.produto?.id;
+        if (!componenteId) continue;
+        
+        // Busca os detalhes do componente (replicando o blingSyncService)
+        await sleep(500); 
+        let componenteDetails;
+        try {
+            componenteDetails = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${componenteId}`, accountType)).data;
+        } catch (e) {
+            console.error(`[Faturamento Auto] Erro ao buscar detalhes do componente ${componenteId}. Pulando.`);
+            continue;
+        }
+
+        // Lucas usa gtin/gtinEmbalagem, Eliane usa apenas os campos básicos.
+        if (accountType === 'lucas') {
+             await client.query(
+                `INSERT INTO cached_structures (
+                    parent_product_bling_id, parent_product_bling_account, component_sku,
+                    component_location, structure_name, gtin, gtin_embalagem
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+                ON CONFLICT (parent_product_bling_id, parent_product_bling_account, component_sku)
+                DO NOTHING`,
+                [
+                    productData.id,
+                    accountType,
+                    componenteDetails.codigo,
+                    componenteDetails.estoque?.localizacao,
+                    componenteDetails.nome,
+                    componenteDetails.gtin,
+                    componenteDetails.gtinEmbalagem
+                ]
+            );
+        } else { // Eliane ou padrão
+             await client.query(
+                `INSERT INTO cached_structures (
+                    parent_product_bling_id, parent_product_bling_account, component_sku,
+                    component_location, structure_name
+                ) VALUES ($1, $2, $3, $4, $5)
+                ON CONFLICT (parent_product_bling_id, parent_product_bling_account, component_sku)
+                DO NOTHING`,
+                [
+                    productData.id,
+                    accountType,
+                    componenteDetails.codigo,
+                    componenteDetails.estoque?.localizacao,
+                    componenteDetails.nome
+                ]
+            );
+        }
+    }
+}
+
 // --- API HELPERS ---
 
 async function getNfeDetalhada(nfeId, accountType) {
@@ -173,7 +272,30 @@ async function atualizarNotaNoBling(nfeOriginal, novosValores, token) {
         return item;
     });
 
+    // 1. Calcular o NOVO TOTAL (que é o total dos produtos reajustados para 70%)
+    const newTotal = itensAtualizados.reduce((acc, item) => acc + (item.valor * item.quantidade), 0);
+
+    // 2. Ajustar as Parcelas para que o total coincida com o novo valor dos itens
+    let updatedParcelas = nfeOriginal.parcelas ? [...nfeOriginal.parcelas] : undefined;
+    
+    if (updatedParcelas && updatedParcelas.length > 0) {
+        // Se houver parcelas: simplificamos para apenas uma parcela com o valor total recalculado.
+        // Isso garante que o erro "Total das parcelas difere do total da nota" não ocorra.
+        updatedParcelas = [{
+            // Mantemos a data de vencimento e forma de pagamento da primeira parcela original
+            data: updatedParcelas[0].data, 
+            valor: parseFloat(newTotal.toFixed(2)),
+            formaPagamento: updatedParcelas[0].formaPagamento 
+        }];
+    }
+
     const payload = {
+        // >>> ADIÇÕES OBRIGATÓRIAS (Correção para o erro 'É necessário informar o número...')
+        numero: nfeOriginal.numero, 
+        // Correção para o erro 'Data de operação inválida' (usamos a data de emissão como fallback)
+        dataOperacao: nfeOriginal.dataEmissao, 
+        
+        // CAMPOS EXISTENTES
         tipo: nfeOriginal.tipo,
         finalidade: nfeOriginal.finalidade,
         naturezaOperacao: { id: nfeOriginal.naturezaOperacao.id },
@@ -188,10 +310,18 @@ async function atualizarNotaNoBling(nfeOriginal, novosValores, token) {
         },
         despesas: 0, 
         desconto: 0, 
-        seguro: nfeOriginal.seguro || 0, // Mantém o seguro
+        seguro: nfeOriginal.seguro || 0, 
         
         itens: itensAtualizados,
-        parcelas: nfeOriginal.parcelas
+        // >>> USO DA PARCELA AJUSTADA (Correção para o erro 'Total das parcelas difere...')
+        parcelas: updatedParcelas,
+
+        intermediador: {
+            cnpj: '03.007.331/0001-41',
+            nomeUsuario: 'INOVA_MOVEIS'
+        }
+        // Nota: Outros campos como 'documentoReferenciado', 'intermediador' etc. 
+        // serão incluídos se existirem em nfeOriginal.
     };
 
     try {
@@ -216,6 +346,48 @@ async function atualizarNotaNoBling(nfeOriginal, novosValores, token) {
     }
 }
 
+async function syncAndCacheProductDetails(client, produtoCodigo, accountName) {
+    console.log(`[Faturamento Auto] Produto ${produtoCodigo} não encontrado em cache. Buscando no Bling (Detalhes + Estrutura)...`);
+    
+    try {
+        await sleep(500);
+        // 1. Busca o produto
+        const prodSearchResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos?codigos[]=${produtoCodigo}`, accountName);
+        
+        if (prodSearchResp.data?.[0]?.id) {
+            const produtoId = prodSearchResp.data[0].id;
+            
+            await sleep(500);
+            // 2. Busca os detalhes completos, incluindo a estrutura
+            const prodDetails = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${produtoId}`, accountName)).data;
+            
+            // 3. Persiste o Produto (usando upsertProduct existente no faturamentoAutomaticoService)
+            await upsertProduct(client, {
+                bling_id: prodDetails.id,
+                bling_account: accountName,
+                sku: prodDetails.codigo,
+                nome: prodDetails.nome,
+                preco_custo: prodDetails.precoCusto || 0,
+                peso_bruto: prodDetails.pesoBruto || 0,
+                volumes: prodDetails.volumes || 1
+            });
+
+            // 4. Persiste a Estrutura (Nova Lógica)
+            await upsertProductStructure(client, prodDetails, accountName);
+
+            return {
+                volumes: parseFloat(prodDetails.volumes || 0),
+                prodId: prodDetails.id
+            };
+        }
+        return { volumes: 0, prodId: null };
+
+    } catch (idError) { 
+        console.error(`[Faturamento Auto] Erro ao buscar ID/Detalhes/Estrutura do produto ${produtoCodigo}. Detalhe: ${idError.message}`); 
+        return { volumes: 0, prodId: null };
+    }
+}
+
 /**
  * Lógica completa para buscar detalhes, sincronizar e aplicar o cálculo.
  */
@@ -225,21 +397,20 @@ async function processarLoteNotas(notas, accountName, token) {
     let notasParaIgnorar = new Set();
     
     try {
-        const notasParaProcessarIds = notas.map(n => n.numero);
+        const notasParaProcessarNumeros = notas.map(n => String(n.numero));
 
-        if (notasParaProcessarIds.length > 0) {
+        if (notasParaProcessarNumeros.length > 0) {
+            //Query simplificada buscando apenas por nfe_numero
             const cachedCheck = await client.query(
-                'SELECT bling_id FROM cached_nfe WHERE nfe_numero = $1 AND bling_account = $2',
-                [notasParaProcessarIds, accountName]
+                'SELECT nfe_numero FROM cached_nfe WHERE nfe_numero = ANY($1::text[])',
+                [notasParaProcessarNumeros]
             );
-
-            console.log(cachedCheck.rows);
             
-            // Adiciona todos os IDs que já existem no cache para o Set de ignorados
-            cachedCheck.rows.forEach(r => notasParaIgnorar.add(String(r.bling_id)));
+            // Adiciona os NÚMEROS que já existem no banco ao Set de ignorados
+            cachedCheck.rows.forEach(r => notasParaIgnorar.add(String(r.nfe_numero)));
 
             if (notasParaIgnorar.size > 0) {
-                console.log(`[Faturamento Auto] ${notasParaIgnorar.size} notas desta página já estão no cache e serão puladas (API Saved).`);
+                console.log(`[Faturamento Auto] ${notasParaIgnorar.size} notas desta página já estão no cache e serão puladas (Verificação por Número).`);
             }
         }
     } catch (error) {
@@ -256,12 +427,13 @@ async function processarLoteNotas(notas, accountName, token) {
         if (accountName === 'eliane' && getElianeStatus()) return false;
         
         // CHECK PRINCIPAL: PULA NOTA SE JÁ ESTIVER NO CACHE
-        if (notasParaIgnorar.has(String(notaResumo.id))) {
+        if (notasParaIgnorar.has(String(notaResumo.numero))) {
             continue;
         }
 
         // 1. Busca detalhes e Inicia Transação
         const nfeDetalhes = await getNfeDetalhada(notaResumo.id, accountName);
+
         if (!nfeDetalhes) continue;
         
         // Adiciona a conta para consistência
@@ -316,46 +488,26 @@ async function processarLoteNotas(notas, accountName, token) {
 
                     let volumesUnit = 0;
                     let prodId = null;
-                    let prodData = {};
 
                     if (cachedProductsMap.has(produtoCodigo)) {
                         const cachedProd = cachedProductsMap.get(produtoCodigo);
                         volumesUnit = parseFloat(cachedProd.volumes || 0);
                         prodId = cachedProd.bling_id;
-                        prodData = cachedProd;
                     } else {
-                        // Busca no Bling se não está no cache local
-                        try {
-                            await sleep(500); 
-                            const prodSearchResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos?codigos[]=${produtoCodigo}`, accountName);
-                            if (prodSearchResp.data?.[0]?.id) {
-                                prodId = prodSearchResp.data[0].id;
-                                await sleep(500); 
-                                const prodDetails = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${prodId}`, accountName)).data;
-                                
-                                volumesUnit = parseFloat(prodDetails.volumes || 0); 
-                                
-                                // Prepara dados para upsert (Incluindo campos da DDL)
-                                prodData = {
-                                    bling_id: prodDetails.id,
-                                    bling_account: accountName,
-                                    sku: prodDetails.codigo,
-                                    nome: prodDetails.nome,
-                                    preco_custo: prodDetails.precoCusto || 0,
-                                    peso_bruto: prodDetails.pesoBruto || 0,
-                                    volumes: prodDetails.volumes || 1
-                                };
-                                await upsertProduct(processingClient, prodData);
-                            }
-                        } catch (idError) { 
-                            console.error(`[Faturamento Auto] Erro ao buscar ID/Volumes do produto ${produtoCodigo}. Detalhe: ${idError.message}`); 
-                        }
+                        // >>> ALTERAÇÃO APLICADA AQUI: SINCRONIZA DETALHES E ESTRUTURA <<<
+                        // Se não estava no cache, sincroniza completamente (Produto + Estrutura)
+                        await sleep(400); // Adiciona um pequeno delay antes da sync
+                        const syncResult = await syncAndCacheProductDetails(processingClient, produtoCodigo, accountName);
+                        volumesUnit = syncResult.volumes;
+                        prodId = syncResult.prodId;
+                        // >>> FIM DA ALTERAÇÃO <<<
                     }
                     
                     if (prodId) idsBlingProduto.push(prodId);
                     totalVolumesCalculado += (volumesUnit * quantidadeTotal);
                 }
             }
+            console.log(JSON.stringify(nfeDetalhes, null, 2));
 
             // 2c. Upsert do Pedido de Venda Associado (Se houver)
             if (nfeDetalhes.numeroPedidoLoja) {
@@ -464,7 +616,7 @@ async function processarLoteNotas(notas, accountName, token) {
 
         } catch (error) {
             await processingClient.query('ROLLBACK');
-            console.error(`[Faturamento Auto] Erro CRÍTICO ao processar NF ${notaResumo.id} (Sync/Logic):`, error.message);
+            console.error(`[Faturamento Auto] Erro CRÍTICO ao processar NF ${notaResumo.chaveAcesso} (Sync/Logic):`, error.message);
             // Tenta marcar como manual para evitar repetição no próximo ciclo
             const manualMarkingClient = await pool.connect();
             try {
@@ -500,6 +652,8 @@ const startFaturamentoAutomatico = async (accountName) => {
         let page = 1;
         let temMais = true;
 
+        const dateFilterParams = getMonthFilterParams();
+        
         while (temMais) {
             if ((accountName === 'lucas' && !isFaturamentoLucasRunning) || (accountName === 'eliane' && !isFaturamentoElianeRunning)) break;
             if ((accountName === 'lucas' && getLucasStatus()) || (accountName === 'eliane' && getElianeStatus())) break;
@@ -507,7 +661,7 @@ const startFaturamentoAutomatico = async (accountName) => {
             console.log(`[Faturamento Auto] Buscando página ${page} de notas pendentes (situação 1)...`);
             
             // Busca apenas notas PENDENTES (situacao=1)
-            const url = `${BLING_API_BASE_URL}/nfe?pagina=${page}&limite=100&situacao=1`;
+            const url = `${BLING_API_BASE_URL}/nfe?pagina=${page}&limite=100&situacao=1&${dateFilterParams}`;
             
             const response = await axios.get(url, { headers: { 'Authorization': `Bearer ${token}` } });
             const notas = response.data.data;

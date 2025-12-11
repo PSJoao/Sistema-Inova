@@ -370,6 +370,9 @@ async function extrairDadosDosPdfs(pdfInputs) {
 async function buscarInformacoesCruciais(etiquetasExtraidas, nomeArquivoGerado) { // Recebe nomeArquivoGerado
     const etiquetasCompletas = [];
     const client = await pool.connect();
+    const delPendentes = "DELETE FROM cached_nfe WHERE situacao = 1";
+
+    await client.query(delPendentes);
 
     try {
         for (const etiqueta of etiquetasExtraidas) {
@@ -624,7 +627,9 @@ function ordenarEtiquetas(etiquetas) {
     console.log('\n-- Lista de SKUs antes da ordenação: --');
     etiquetas.forEach(et => console.log(`   > ID: ${et.id}, SKUs: [${et.skus.join('; ')}]`));
 
-    const etiquetasOrdenadas = etiquetas.sort((a, b) => {
+    const etiquetasUnicas = [...new Map(etiquetas.map(et => [et.nfeNumero, et])).values()];
+
+    const etiquetasOrdenadas = etiquetasUnicas.sort((a, b) => {
         const skuA = a.skus.map(s => s.display).join(';').toUpperCase();
         const skuB = b.skus.map(s => s.display).join(';').toUpperCase();
 

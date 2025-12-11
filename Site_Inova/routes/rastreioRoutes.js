@@ -22,6 +22,8 @@ router.post('/api/mass-search', rastreioController.massSearchByNFe);
 
 router.post('/api/upload-dominalog-report', upload.single('relatorioDominalog'), rastreioController.processarBoletimDominalog);
 
+router.post('/api/mass-confirm-delivery', rastreioController.confirmarEntregaEmMassa);
+
 // (NOVA ROTA)
 // Rota da API para marcar todos os pedidos como conferidos
 // POST /rastreio/api/marcar-conferidos

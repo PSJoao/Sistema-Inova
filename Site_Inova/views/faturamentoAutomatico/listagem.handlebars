@@ -1,0 +1,72 @@
+{{!< main}}
+
+{{#section "head"}}
+    {{!-- Reutiliza estilos base e importa o específico --}}
+    <link href="/public/styles/faturamentoAutomaticoList.css" rel="stylesheet">
+{{/section}}
+
+<div class="content-card">
+    <div class="page-header-actions">
+        <h1 class="page-title">{{title}}</h1>
+        <div style="display: flex; justify-content: end; gap: 10px;">
+            <button id="btnFaturarML" class="btn btn-accent" title="Faturar notas pendentes do ML automaticamente">
+                <i class="fas fa-magic"></i> Faturar Notas ML
+            </button>
+            <button id="faturamento-auto-report-btn" class="btn btn-success">
+                <i class="fas fa-file-excel"></i> Gerar Relatório
+            </button>
+        </div>
+    </div>
+
+    <div class="nfe-history-filters">
+        <div class="filter-group">
+            <label for="faturamento-auto-manual-filter">Tipo de Processamento:</label>
+            <select id="faturamento-auto-manual-filter" class="form-control form-control-sm">
+                <option value="">Todos</option>
+                <option value="false">Automático</option>
+                <option value="true">Manual</option>
+            </select>
+        </div>
+
+        <div class="filter-group search-group">
+            <label for="faturamento-auto-search-input">Pesquisar:</label>
+            <input type="text" style="min-width: 100px; max-width: 300px;" id="faturamento-auto-search-input" class="form-control form-control-sm" placeholder="Número NFe, Chave ou Produto...">
+        </div>
+    </div>
+
+    <div class="table-container">
+        <table class="nfe-history-table">
+            <thead>
+                <tr>
+                    <th>Número</th>
+                    <th>Status</th>
+                    <th>Volumes</th>
+                    <th>Produtos</th>
+                    <th>Atualizado em</th>
+                </tr>
+            </thead>
+            <tbody id="faturamento-auto-grid">
+                {{!-- Preenchido via JS --}}
+            </tbody>
+        </table>
+    </div>
+
+    <div id="faturamento-auto-pagination" class="pagination-container">
+        {{!-- Paginação via JS --}}
+    </div>
+</div>
+
+<template id="faturamento-auto-card-template">
+    <tr>
+        <td class="col-numero"></td>
+        <td class="col-status"><span></span></td>
+        <td class="col-volumes"></td>
+        <td class="col-produtos"></td>
+        <td class="col-updated"></td>
+    </tr>
+</template>
+
+{{#section "scripts"}}
+    <script src="/public/scripts/faturamentoAutomaticoListManager.js"></script>
+    <script src="/public/scripts/faturamentoAutomaticoManager.js"></script>
+{{/section}}

@@ -13,7 +13,8 @@ document.addEventListener('DOMContentLoaded', () => {
         reportJustificationsBtn: document.getElementById('nfe-history-justify-report-btn'),
         cardTemplate: document.getElementById('nfe-history-card-template'),
         missingProductsContainer: document.getElementById('nfe-history-missing-products-container'),
-        missingProductsList: document.getElementById('nfe-history-missing-products-list')
+        missingProductsList: document.getElementById('nfe-history-missing-products-list'),
+        productsByCarrierBtn: document.getElementById('nfe-history-products-carrier-btn'),
     };
 
     if (!elements.gridContainer) {
@@ -305,6 +306,47 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.reportBtn.disabled = false;
         }
     });
+
+    if (elements.productsByCarrierBtn) {
+        elements.productsByCarrierBtn.addEventListener('click', async () => {
+            const originalText = elements.productsByCarrierBtn.innerHTML;
+            elements.productsByCarrierBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Gerando...';
+            elements.productsByCarrierBtn.disabled = true;
+
+            try {
+                // Chama a rota que criamos (lembre-se de criar a rota no arquivo de rotas)
+                const response = await fetch('/historico-nfe/api/report/pending-products-by-carrier');
+
+                if (!response.ok) {
+                    const errorMsg = await response.text();
+                    throw new Error(errorMsg || "Erro ao baixar relatório");
+                }
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = 'Produtos_Pendentes_Por_Transportadora.xlsx';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+
+            } catch (error) {
+                console.error(error);
+                // Assume que você tem o ModalSystem disponível como nos outros scripts
+                if (typeof ModalSystem !== 'undefined') {
+                    ModalSystem.alert(error.message, 'Erro');
+                } else {
+                    alert(error.message);
+                }
+            } finally {
+                elements.productsByCarrierBtn.innerHTML = originalText;
+                elements.productsByCarrierBtn.disabled = false;
+            }
+        });
+    }
 
     elements.reportJustificationsBtn.addEventListener('click', async () => {
         // Mostra um feedback visual para o usuário

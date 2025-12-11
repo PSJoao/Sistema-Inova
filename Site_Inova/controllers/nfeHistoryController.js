@@ -449,6 +449,143 @@ exports.updateNfeJustification = async (req, res) => {
 };
 
 /**
+ * Gera relatório de produtos pendentes separado por transportadora (lado a lado).
+ * [ATUALIZADO] Exibe NOME do produto (cached_products) em vez do SKU.
+ */
+exports.generatePendingProductsByCarrierReport = async (req, res) => {
+    try {
+        // Lista de transportadoras para excluir
+        const transportadorasExcluidas = [
+            'SHOPEE MAGAZINE', 
+            'NOVO MERCADO LIVRE', 
+            'MERCADO LIVRE ELIANE', 
+            'MERCADO LIVRE MAGAZINE', 
+            'MAGALU ENTREGAS', 
+            'FRENET'
+        ];
+
+        const comando = `SELECT DISTINCT codigo FROM bipagem_state, jsonb_array_elements_text(barcodes_json) AS codigo`
+
+        const resultado = await pool.query(comando);
+        const formatado = "(" + resultado.rows.map(r => `'${r.codigo}'`).join(", ") + ")";
+
+        // 1. Busca os produtos das notas pendentes agrupados por transportadora
+        const query = `
+            SELECT 
+                enf.transportadora_apelido,
+                -- Se encontrar o nome, usa o nome. Se não, usa o código (SKU) como fallback
+                COALESCE(cp.nome, nqp.produto_codigo) AS produto_nome,
+                SUM(nqp.quantidade) as total_qtd
+            FROM emission_nfe_reports enf
+            JOIN nfe_quantidade_produto nqp ON enf.nfe_numero = nqp.nfe_numero
+            -- Subquery para garantir apenas 1 nome por SKU (o mais recente)
+            LEFT JOIN (
+                SELECT DISTINCT ON (sku) sku, nome 
+                FROM cached_products 
+                ORDER BY sku, last_updated_at DESC
+            ) cp ON nqp.produto_codigo = cp.sku
+            WHERE enf.status_para_relacao in ('pendente', 'justificada_adiada')
+            AND enf.cancelada = false
+            AND enf.transportadora_apelido NOT IN (${transportadorasExcluidas.map(t => `'${t}'`).join(',')})
+            
+            -- Filtra notas que já estão salvas no state de bipagem
+            -- A subquery expande o JSON de todas as linhas da tabela bipagem_state em uma lista de códigos
+            AND enf.nfe_chave_acesso_44d NOT IN ${formatado}
+            GROUP BY enf.transportadora_apelido, cp.nome, nqp.produto_codigo
+            ORDER BY enf.transportadora_apelido ASC, produto_nome ASC;
+        `;
+
+        const result = await pool.query(query);
+        const rows = result.rows;
+
+        if (rows.length === 0) {
+            return res.status(404).send("Nenhum produto pendente encontrado (verifique se todos já não estão em processo de bipagem).");
+        }
+
+        // 2. Organiza os dados em um objeto por transportadora
+        const dataByCarrier = {};
+        rows.forEach(row => {
+            const transp = row.transportadora_apelido || 'INDEFINIDA';
+            if (!dataByCarrier[transp]) {
+                dataByCarrier[transp] = [];
+            }
+            dataByCarrier[transp].push({
+                nome: row.produto_nome,
+                qtd: parseFloat(row.total_qtd)
+            });
+        });
+
+        // 3. Cria o Excel
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Produtos Pendentes por Transp');
+
+        let currentCol = 1;
+
+        // Estilo da borda separadora (grossa na direita)
+        const borderStyle = {
+            right: { style: 'medium' }
+        };
+
+        Object.keys(dataByCarrier).forEach(carrierName => {
+            const products = dataByCarrier[carrierName];
+            const qtdColIndex = currentCol + 1; // Coluna B do par
+            
+            // --- Cabeçalho da Transportadora (Linha 1) ---
+            worksheet.mergeCells(1, currentCol, 1, qtdColIndex);
+            const headerCell = worksheet.getCell(1, currentCol);
+            headerCell.value = carrierName;
+            headerCell.font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
+            headerCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } };
+            headerCell.alignment = { horizontal: 'center' };
+            
+            // Aplica borda
+            headerCell.border = borderStyle; 
+            worksheet.getCell(1, qtdColIndex).border = borderStyle;
+
+            // --- Sub-cabeçalhos (Linha 2) ---
+            const nomeHeader = worksheet.getCell(2, currentCol);
+            nomeHeader.value = 'Produto'; 
+            nomeHeader.font = { bold: true };
+            
+            const qtdHeader = worksheet.getCell(2, qtdColIndex);
+            qtdHeader.value = 'Qtd';
+            qtdHeader.font = { bold: true };
+            qtdHeader.border = borderStyle;
+
+            // --- Preenche os produtos ---
+            products.forEach((prod, index) => {
+                const rowIndex = 3 + index;
+                
+                const nomeCell = worksheet.getCell(rowIndex, currentCol);
+                nomeCell.value = prod.nome;
+
+                const qtdCell = worksheet.getCell(rowIndex, qtdColIndex);
+                qtdCell.value = prod.qtd;
+                qtdCell.border = borderStyle;
+            });
+
+            // Ajusta largura das colunas
+            worksheet.getColumn(currentCol).width = 60;   
+            worksheet.getColumn(qtdColIndex).width = 10;  
+
+            // Pula 2 colunas para a próxima transportadora
+            currentCol += 2; 
+        });
+
+        // 4. Envia para download
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename="Produtos_Pendentes_Por_Transportadora.xlsx"');
+
+        await workbook.xlsx.write(res);
+        res.end();
+
+    } catch (error) {
+        console.error("Erro ao gerar relatório de produtos por transportadora:", error);
+        res.status(500).send("Erro interno ao gerar o relatório.");
+    }
+};
+
+/**
  * [NOVO] API para cancelar (excluir) uma NF-e do sistema.
  */
 exports.cancelarNfe = async (req, res) => {

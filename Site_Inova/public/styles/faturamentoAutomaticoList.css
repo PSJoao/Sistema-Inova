@@ -1,0 +1,105 @@
+/* public/styles/faturamentoAutomaticoList.css */
+/* Estilização espelhada de nfeHistory.css para consistência visual */
+
+/* --- Controles e Filtros da Página --- */
+.nfe-history-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    padding: 1rem;
+    background-color: var(--bg-secondary);
+    border-radius: var(--border-radius-lg);
+    margin-bottom: 1.5rem;
+}
+.filter-group {
+    display: flex;
+    flex-direction: column;
+}
+.filter-group label {
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+.filter-group.search-group {
+    flex-grow: 1;
+}
+
+/* --- Estrutura com Barra de Rolagem --- */
+.table-container {
+    width: 100%;
+    overflow-x: auto;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+}
+
+.nfe-history-table {
+    display: table;
+    width: 100%;
+    min-width: 1300px;
+    border-collapse: collapse;
+}
+
+.nfe-history-table th,
+.nfe-history-table td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: middle; 
+}
+
+.nfe-history-table th {
+    background-color: var(--bg-secondary);
+    font-weight: 600;
+    color: var(--text-primary);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.nfe-history-table tbody tr:hover {
+    background-color: var(--hover-color);
+}
+
+/* --- Status Badges (Adaptado para Auto/Manual) --- */
+.nfe-status {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: capitalize;
+}
+
+.status-automatico {
+    background-color: #d1fae5; /* Verde Claro */
+    color: #065f46; /* Verde Escuro */
+}
+
+.status-manual {
+    background-color: #fee2e2; /* Vermelho Claro */
+    color: #991b1b; /* Vermelho Escuro */
+}
+
+/* --- Paginação --- */
+.pagination-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 2rem;
+    padding: 1rem;
+}
+
+.page-info {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+#page-select {
+    padding: 0.3rem;
+    border-radius: var(--border-radius-sm);
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+}
