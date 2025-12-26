@@ -6,8 +6,42 @@ const fs = require('fs').promises;
 const path = require('path');
 const { Pool } = require('pg');
 const ExcelJS = require('exceljs');
+const cron = require('node-cron');
+
+cron.schedule('0 19 * * *', async () => {
+    console.log('[CRON] Executando reset DIÁRIO do Contador de Paletes às 19h...');
+    const client = await pool.connect();
+    try {
+        // AGORA: Força "isPalletCounterActive" para TRUE e "palletCount" para 1.
+        // Garante que o dia seguinte comece com o contador ligado e zerado.
+        const query = `
+            UPDATE ml_bipagem_state 
+            SET state_json = state_json || '{"isPalletCounterActive": true, "palletCount": 1}'::jsonb
+            WHERE state_key = 'mercado_livre_bipagem';
+        `;
+        await client.query(query);
+        console.log('[CRON] Contador resetado para 1 e ATIVADO para o dia seguinte.');
+    } catch (error) {
+        console.error('[CRON] Erro ao resetar contador:', error);
+    } finally {
+        client.release();
+    }
+}, {
+    timezone: "America/Sao_Paulo"
+});
 
 const PDF_STORAGE_DIR = path.join(__dirname, '..', 'pdfEtiquetas');
+const RECENT_PDF_DIR = path.join(__dirname, '..', 'pdfBipagensFinalizadas');
+
+async function ensureRecentPdfDir() {
+    try {
+        await fs.mkdir(RECENT_PDF_DIR, { recursive: true });
+        console.log(`Diretório de PDFs recentes criado em: ${RECENT_PDF_DIR}`);
+    } catch (error) {
+        console.error('Erro ao criar diretório de PDFs recentes:', error);
+    }
+}
+ensureRecentPdfDir(); 
 
 async function ensurePdfStorageDir() {
     try {
@@ -63,11 +97,56 @@ const uploadExcel = multer({
 /**
  * Renderiza a página principal para upload das etiquetas e ativa a trava de sincronização.
  */
-exports.renderEtiquetasPage = (req, res) => {
+exports.renderEtiquetasPage = async (req, res) => {
     try {
+        // --- LÓGICA NOVA: Limpeza de arquivos com mais de 1 dia (24h) ---
+        const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+        const now = Date.now();
+        let recentFiles = [];
+
+        try {
+            const files = await fs.readdir(RECENT_PDF_DIR);
+            
+            // Processa, deleta antigos e lista os recentes
+            const fileStats = await Promise.all(files.map(async (file) => {
+                const filePath = path.join(RECENT_PDF_DIR, file);
+                const stats = await fs.stat(filePath);
+                const fileAge = now - stats.birthtime.getTime();
+
+                if (fileAge > ONE_DAY_MS) {
+                    // Se tiver mais de 1 dia, deleta
+                    await fs.unlink(filePath);
+                    console.log(`[Limpeza Automática] Arquivo removido (expirado > 24h): ${file}`);
+                    return null; // Retorna null para filtrar depois
+                }
+
+                return { 
+                    name: file, 
+                    date: stats.birthtime, 
+                    timestamp: stats.birthtime.getTime() 
+                };
+            }));
+
+            // Filtra os nulls e ordena do mais recente para o mais antigo
+            recentFiles = fileStats
+                .filter(f => f !== null)
+                .sort((a, b) => b.timestamp - a.timestamp);
+
+        } catch (err) {
+            console.error("Erro ao gerenciar arquivos recentes:", err);
+        }
+        // ---------------------------------------------
+
         res.render('etiquetas/index', {
             title: 'Organizador de Etiquetas Mercado Livre',
-            layout: 'main'
+            layout: 'main',
+            recentFiles: recentFiles,
+            helpers: {
+                formatDateShort: (date) => {
+                    if(!date) return '';
+                    return new Date(date).toLocaleString('pt-BR');
+                }
+            }
         });
     } catch (error) {
         console.error('Erro ao renderizar a página de etiquetas:', error);
@@ -119,6 +198,9 @@ exports.finalizarBipagem = async (req, res) => {
         const timestamp = Date.now();
         const pdfName = `Bipagem-Finalizada-${timestamp}.pdf`;
 
+        // Salva no servidor de forma assíncrona (não precisa esperar para responder ao user)
+        this.saveAndRotateRecentPdf(pdfBytes, pdfName);
+
         // Envia o PDF como resposta
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="${pdfName}"`);
@@ -128,6 +210,23 @@ exports.finalizarBipagem = async (req, res) => {
         console.error('[Finalizar Bipagem] Erro catastrófico:', error);
         // Retorna um JSON de erro em vez de um PDF
         return res.status(500).json({ success: false, message: `Erro ao gerar PDF: ${error.message}` });
+    }
+};
+
+exports.downloadRecentPdf = async (req, res) => {
+    const { filename } = req.params;
+    const filePath = path.join(RECENT_PDF_DIR, filename);
+
+    // Segurança básica para evitar Directory Traversal
+    if (filename.includes('..') || filename.includes('/')) {
+        return res.status(400).send('Nome de arquivo inválido.');
+    }
+
+    try {
+        await fs.access(filePath); // Verifica se existe
+        res.download(filePath);
+    } catch (error) {
+        res.status(404).send('Arquivo não encontrado ou expirado.');
     }
 };
 
@@ -569,6 +668,39 @@ exports.buscarNfLote = (req, res) => {
         }
     });
 };
+
+exports.saveAndRotateRecentPdf = async (pdfBuffer, filename) => {
+    try {
+        const filePath = path.join(RECENT_PDF_DIR, filename);
+        
+        // 1. Salva o novo arquivo
+        await fs.writeFile(filePath, pdfBuffer);
+        
+        // 2. Lê todos os arquivos da pasta
+        const files = await fs.readdir(RECENT_PDF_DIR);
+        
+        // 3. Mapeia para obter estatísticas (data de criação)
+        const fileStats = await Promise.all(files.map(async (file) => {
+            const fullPath = path.join(RECENT_PDF_DIR, file);
+            const stats = await fs.stat(fullPath);
+            return { file, time: stats.birthtime.getTime(), fullPath };
+        }));
+
+        // 4. Ordena do mais novo para o mais antigo
+        fileStats.sort((a, b) => b.time - a.time);
+
+        // 5. Se tiver mais de 5, apaga os excedentes (os mais antigos)
+        if (fileStats.length > 5) {
+            const filesToDelete = fileStats.slice(5);
+            for (const fileData of filesToDelete) {
+                await fs.unlink(fileData.fullPath);
+                console.log(`[Rotação] Arquivo antigo removido: ${fileData.file}`);
+            }
+        }
+    } catch (error) {
+        console.error('Erro na rotação de PDFs recentes:', error);
+    }
+}
 
 exports.exportMlSkuQuantityReport = async (req, res) => {
     console.log("[API Etiquetas ML] Iniciando geração de relatório SKU/Qtd Pendente...");

@@ -22,66 +22,91 @@
   </header>
 
   <div class="menu-grid-container">
-    {{#if (eq cargo "ADM")}}
-      <div class="module-card">
-        <h2>Monitoramento</h2>
-          <a href="/madeira/urls" class="btn btn-accent btn-card"><i class="fas fa-store"></i> Madeira - Lucas</a>
-          <a href="/madeiramadeira/urls" class="btn btn-accent btn-card"><i class="fas fa-store"></i> Madeira - Eliane</a>
-          <a href="/viavarejo/urls" class="btn btn-accent btn-card"><i class="fas fa-shopping-bag"></i> ViaVarejo</a>
-        {{!-- Adicione mais botões para outros módulos ou funcionalidades globais aqui --}}
+    {{!-- Monitoramento de Marketplaces (3 itens - módulo médio) --}}
+    <div class="module-card module-medium">
+      <div class="module-header">
+        <i class="fas fa-chart-line module-icon"></i>
+        <h2>Monitoramento de Marketplaces</h2>
       </div>
-      <div class="module-card">
-        <h2>Notas Fiscais</h2>
-          <a href="/emissao" class="btn btn-accent btn-card"><i class="fas fa-barcode"></i> Gerenciar Emissões</a>
-          <a href="/emissao/nfe-management" class="btn btn-accent btn-card"><i class="fas fa-sticky-note"></i> Gerar Etiquetas</a>
-          <a href="/faturamento-automatico" class="btn btn-accent btn-card"><i class="fas fa-chart-line"></i> Faturador Automático</a>
-          <a href="/acompanhamento/pedidos" class="btn btn-accent btn-card"><i class="fas fa-shopping-cart"></i> Gerenciar Pedidos</a>
-          <a href="/assistencias" class="btn btn-accent btn-card"><i class="fas fa-solid fa-file-invoice"></i> Assistências</a>
-          <a href="/produtos/listagem" class="btn btn-accent btn-card"><i class="fas fa-box"></i> Gerenciar Produtos</a>
-        {{!-- Adicione mais botões para outros módulos ou funcionalidades globais aqui --}}
+      <div class="module-buttons">
+        <a href="/madeira/urls" class="btn btn-accent btn-card"><i class="fas fa-store"></i> Madeira - Lucas</a>
+        <a href="/madeiramadeira/urls" class="btn btn-accent btn-card"><i class="fas fa-store"></i> Madeira - Eliane</a>
+        <a href="/viavarejo/urls" class="btn btn-accent btn-card"><i class="fas fa-shopping-bag"></i> ViaVarejo</a>
       </div>
-      <div class="module-card">
-        <h2>Transporte</h2>
-          <a href="/relacoes" class="btn btn-accent btn-card"><i class="fas fa-truck fa-fw"></i> Gerenciar Relações</a>
-          <a href="/rastreio" class="btn btn-accent btn-card"><i class="fas fa-paper-plane"></i> Acompanhamentos</a>
-          <a href="/historico-nfe" class="btn btn-accent btn-card"><i class="fas fa-solid fa-sim-card"></i> Histórico de Notas</a>
-          <a id="etiquetas-btn" href="/etiquetas" class="btn btn-accent btn-card"><i class="fas fa-tags"></i> Etiquetas ML</a>
-        {{!-- Adicione mais botões para outros módulos ou funcionalidades globais aqui --}}
-      </div>
-    {{/if}}
-    {{#if (eq cargo "NFE")}}
-     <div class="module-card">
-        <h2>Notas Fiscais</h2>
-          <a href="/emissao" class="btn btn-accent btn-card"><i class="fas fa-barcode"></i> Gerenciar Emissões</a>
-          <a href="/emissao/nfe-management" class="btn btn-accent btn-card"><i class="fas fa-sticky-note"></i> Gerar Etiquetas</a>
-          <a href="/faturamento-automatico" class="btn btn-accent btn-card"><i class="fas fa-chart-line"></i> Faturador Automático</a>
-          <a href="/historico-nfe" class="btn btn-accent btn-card"><i class="fas fa-solid fa-sim-card"></i> Histórico de Notas</a>
-          <a href="/assistencias" class="btn btn-accent btn-card"><i class="fas fa-solid fa-file-invoice"></i> Assistências</a>
-          <a id="etiquetas-btn" href="/etiquetas" class="btn btn-accent btn-card"><i class="fas fa-tags"></i> Etiquetas ML</a>
-          <a href="/produtos/listagem" class="btn btn-accent btn-card"><i class="fas fa-box"></i> Gerenciar Produtos</a>
-        {{!-- Adicione mais botões para outros módulos ou funcionalidades globais aqui --}}
-      </div>
-    {{/if}}
-    {{#if (eq cargo "REL")}}
-      <div class="module-card">
-        <h2>Transporte</h2>
-          <a href="/relacoes" class="btn btn-accent btn-card"><i class="fas fa-truck fa-fw"></i> Gerenciar Relações</a>
-          <a href="/historico-nfe" class="btn btn-accent btn-card"><i class="fas fa-solid fa-sim-card"></i> Histórico de Notas</a>
-          <a href="/emissao" class="btn btn-accent btn-card"><i class="fas fa-barcode"></i> Gerenciar Emissões</a>
-          <a id="etiquetas-btn" href="/etiquetas" class="btn btn-accent btn-card"><i class="fas fa-tags"></i> Etiquetas ML</a>
-        {{!-- Adicione mais botões para outros módulos ou funcionalidades globais aqui --}}
-      </div>
-    {{/if}}
-
-
-    {{!-- Adicione outros .module-card aqui se tiver mais agrupamentos --}}
-    {{!-- Exemplo:
-    <div class="module-card">
-      <h2>Configurações</h2>
-      <a href="/settings/profile" class="btn btn-outline-accent">Meu Perfil</a>
-      <a href="/logout" class="btn btn-danger">Sair</a>
     </div>
-    --}}
+
+    {{!-- Notas Fiscais e Faturamento (6 itens - módulo grande) --}}
+    <div class="module-card module-large">
+      <div class="module-header">
+        <i class="fas fa-file-invoice module-icon"></i>
+        <h2>Notas Fiscais e Faturamento</h2>
+      </div>
+      <div class="module-buttons">
+        <a href="/emissao" class="btn btn-accent btn-card"><i class="fas fa-barcode"></i> Gerenciar Emissões</a>
+        <a href="/emissao/nfe-management" class="btn btn-accent btn-card"><i class="fas fa-sticky-note"></i> Gerar Etiquetas NFe</a>
+        <a href="/faturamento-automatico" class="btn btn-accent btn-card"><i class="fas fa-chart-line"></i> Faturador Automático</a>
+        <a href="/acompanhamento/pedidos" class="btn btn-accent btn-card"><i class="fas fa-shopping-cart"></i> Gerenciar Pedidos</a>
+        <a href="/assistencias" class="btn btn-accent btn-card"><i class="fas fa-file-invoice"></i> Assistências</a>
+        <a href="/historico-nfe" class="btn btn-accent btn-card"><i class="fas fa-history"></i> Histórico de Notas</a>
+      </div>
+    </div>
+
+    {{!-- Produtos (1 item - módulo pequeno) --}}
+    <div class="module-card module-small">
+      <div class="module-header">
+        <i class="fas fa-box module-icon"></i>
+        <h2>Produtos</h2>
+      </div>
+      <div class="module-buttons">
+        <a href="/produtos/listagem" class="btn btn-accent btn-card btn-full"><i class="fas fa-box"></i> Gerenciar Produtos</a>
+        <a href="/tipos" class="btn btn-accent btn-card btn-full"><i class="fas fa-file-export"></i> Gerenciar Tipos</a>
+        <a href="/product-sync" class="btn btn-accent btn-card btn-full"><i class="fas fa-sync"></i> Sincronizar Produtos</a>
+      </div>
+    </div>
+
+    {{!-- Expedição e Etiquetas (5 itens - módulo grande) --}}
+    <div class="module-card module-large">
+      <div class="module-header">
+        <i class="fas fa-tags module-icon"></i>
+        <h2>Expedição e Etiquetas</h2>
+      </div>
+      <div class="module-buttons">
+        <a id="etiquetas-btn" href="/etiquetas" class="btn btn-accent btn-card"><i class="fas fa-tag"></i> Ordenador de Etiquetas</a>
+        <a href="/etiquetas/bipagem" class="btn btn-accent btn-card"><i class="fas fa-barcode"></i> Bipagem de Produtos</a>
+        <a href="/etiquetas/listagem" class="btn btn-accent btn-card"><i class="fas fa-list"></i> Histórico de Etiquetas</a>
+      </div>
+    </div>
+
+    {{!-- Conferência (2 itens - módulo pequeno) --}}
+    <div class="module-card module-small">
+      <div class="module-header">
+        <i class="fas fa-check-circle module-icon"></i>
+        <h2>Conferência</h2>
+      </div>
+      <div class="module-buttons">
+        <a href="/conferencia/bipagem" class="btn btn-accent btn-card"><i class="fas fa-boxes"></i> Conferência de Expedição</a>
+        <a href="/conferencia/gerenciamento-codigos" class="btn btn-accent btn-card"><i class="fas fa-cog"></i> Gerenciar Códigos</a>
+      </div>
+    </div>
+
+    {{!-- Transporte e Logística (2 itens - módulo pequeno) --}}
+    <div class="module-card module-small">
+      <div class="module-header">
+        <i class="fas fa-truck module-icon"></i>
+        <h2>Transporte e Logística</h2>
+      </div>
+      <div class="module-buttons">
+        <a href="/relacoes" class="btn btn-accent btn-card"><i class="fas fa-truck"></i> Gerenciar Relações</a>
+        <a href="/rastreio" class="btn btn-accent btn-card"><i class="fas fa-paper-plane"></i> Acompanhamentos</a>
+      </div>
+    </div>
+  </div>
+
+  {{!-- Botão de Sair --}}
+  <div class="menu-footer">
+    <a href="/logout" class="btn btn-danger btn-logout">
+      <i class="fas fa-sign-out-alt"></i> Sair
+    </a>
   </div>
 
   <script>

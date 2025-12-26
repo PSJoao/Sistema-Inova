@@ -1,8 +1,7 @@
 const { Pool } = require('pg');
 const axios = require('axios');
-const tokenManager = require('./meliTokenManager'); // Nosso gerenciador de token
+const tokenManager = require('./meliTokenManager');
 
-// Configuração do banco de dados (assumindo que está no .env)
 const pool = new Pool({
     user: process.env.DB_MON_USER,
     host: process.env.DB_MON_HOST,
@@ -22,7 +21,7 @@ let isSyncRunning = false;
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
- * Wrapper de API com retentativa.
+ * Wrapper de API com retentativa, inspirado no seu do Bling.
  */
 async function meliApiGet(resource, accessToken, retries = MAX_RETRIES) {
     const url = resource.startsWith('http') ? resource : `${MELI_API_BASE_URL}${resource}`;
@@ -38,32 +37,40 @@ async function meliApiGet(resource, accessToken, retries = MAX_RETRIES) {
             const status = error.response?.status;
             console.warn(`[MELI Sync] Erro ao buscar ${url} (Status: ${status}). Tentando novamente em ${API_DELAY_MS}ms... (${retries} tentativas restantes)`);
             
+            // Erro de Rate Limit
             if (status === 429) {
                 await delay(5000); // Espera mais longa para rate limit
                 return meliApiGet(resource, accessToken, retries - 1);
             }
+            // Outros erros de servidor ou 401 (token pode ter expirado entre a checagem e o uso)
             if (status === 401 || status >= 500) {
                 await delay(API_DELAY_MS);
                 
                 // Se for 401, força a busca por um novo token na próxima tentativa
+                // (O tokenManager já faz isso, mas garantimos)
                 const { accessToken: newAccessToken } = await tokenManager.getValidAccessToken('DEFAULT_ACCOUNT');
                 return meliApiGet(resource, newAccessToken, retries - 1);
             }
         }
+        // Se esgotar as tentativas
         console.error(`[MELI Sync] Falha ao buscar ${url} após ${MAX_RETRIES} tentativas. Erro: ${error.message}`);
         throw error;
     }
 }
 
-// --- Lógica de Banco (NOVAS FUNÇÕES) ---
+// --- Lógica de Banco ---
 
 /**
- * Verifica se o pedido MELI já existe na nova tabela.
+ * Verifica se o pedido MELI já existe no nosso cache.
+ * Usamos 'bling_id' para o ID do MELI e 'bling_account' para a origem.
  */
 async function checkOrderExists(meliOrderId) {
     const client = await pool.connect();
     try {
-        const query = 'SELECT 1 FROM cached_pedido_ml WHERE id = $1';
+        const query = `
+            SELECT 1 FROM cached_pedido_venda 
+            WHERE bling_id = $1 AND bling_account = 'MELI_DIRECT'
+        `;
         const res = await client.query(query, [meliOrderId]);
         return res.rowCount > 0;
     } finally {
@@ -72,182 +79,99 @@ async function checkOrderExists(meliOrderId) {
 }
 
 /**
- * Salva o pedido completo em uma transação de banco de dados,
- * distribuindo os dados entre as novas tabelas.
+ * Mapeia o objeto de pedido do MELI para a sua tabela 'cached_pedido_venda'.
+ * * ATENÇÃO: Sua tabela 'cached_pedido_venda' foi feita para o Bling.
+ * Estamos adaptando os campos do MELI para ela, conforme sua solicitação.
+ * Muitos campos ficarão nulos (NULL).
  */
-async function saveOrderToCache(orderData, shippingData, billingData) {
+function mapMeliToDb(order) {
+    const buyer = order.buyer || {};
+    const shipping = order.shipping || {};
+    const payments = (order.payments && order.payments.length > 0) ? order.payments[0] : {};
+    const items = order.order_items || [];
+
+    // Calcula taxas e custos
+    const totalFee = items.reduce((acc, item) => acc + (parseFloat(item.sale_fee) || 0), 0);
+    const shippingCost = parseFloat(shipping.cost) || 0;
+    
+    // MELI não informa o CNPJ do intermediador no pedido, 
+    // mas sabemos que é o MELI. Use o CNPJ principal se precisar.
+    const MELI_CNPJ = '03.361.252/0001-34'; 
+
+    const data = {
+        // Assumindo que 'bling_id' será usado para o 'meli_order_id'
+        bling_id: order.id, 
+        // Identificador para sabermos que veio direto do MELI
+        bling_account: 'MELI_DIRECT', 
+        numero: null, // MELI não tem "número" interno, só o ID
+        numero_loja: order.id.toString(), // ID do Pedido MELI
+        data_pedido: new Date(order.date_created),
+        data_saida: shipping.date_first_printed ? new Date(shipping.date_first_printed) : null,
+        total_produtos: parseFloat(order.total_amount) - shippingCost,
+        total_pedido: parseFloat(order.total_amount),
+        contato_id: buyer.id,
+        contato_nome: `${buyer.first_name || ''} ${buyer.last_name || ''}`.trim(),
+        contato_tipo_pessoa: buyer.billing_info?.doc_type === 'CNPJ' ? 'J' : 'F',
+        contato_documento: buyer.billing_info?.doc_number || null,
+        situacao_id: null, // Você teria que mapear os status do MELI (ex: 'paid') para seus IDs internos
+        situacao_valor: null, // Ver situacao_id
+        loja_id: null, // Não aplicável?
+        desconto_valor: 0, // MELI aplica descontos de outra forma
+        notafiscal_id: null, // Será preenchido por outro processo
+        parcela_data_vencimento: payments.date_created ? new Date(payments.date_created) : null, // Simplificação
+        parcela_valor: payments.transaction_amount || 0,
+        nfe_parent_numero: null,
+        transporte_frete: shippingCost,
+        intermediador_cnpj: MELI_CNPJ,
+        taxa_comissao: totalFee,
+        custo_frete: shippingCost, // Pode ser redundante
+        valor_base: (parseFloat(order.total_amount) - totalFee - shippingCost),
+    };
+
+    return data;
+}
+
+/**
+ * Salva o pedido mapeado no banco de dados.
+ */
+async function saveOrderToCache(orderData) {
     const client = await pool.connect();
     
+    // Mapeia o objeto para os campos da tabela
+    const data = mapMeliToDb(orderData);
+
+    const query = `
+        INSERT INTO cached_pedido_venda (
+            id, bling_id, bling_account, numero, numero_loja, data_pedido, data_saida,
+            total_produtos, total_pedido, contato_id, contato_nome, contato_tipo_pessoa,
+            contato_documento, situacao_id, situacao_valor, loja_id, desconto_valor,
+            notafiscal_id, parcela_data_vencimento, parcela_valor, nfe_parent_numero,
+            transporte_frete, intermediador_cnpj, taxa_comissao, custo_frete, valor_base
+            -- created_at e updated_at têm DEFAULT
+        )
+        VALUES (
+            -- 'id' é NOT NULL, mas não tem DEFAULT na sua definição. 
+            -- Se for SERIAL, remova-o daqui. Se não for, você precisa de uma sequence.
+            -- Vou assumir que você tem uma sequence ou trigger. Se não, adicione: nextval('cached_pedido_venda_id_seq'::regclass) como primeiro valor
+            DEFAULT, 
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+            $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25
+        );
+    `;
+    
     try {
-        await client.query('BEGIN'); // Inicia a transação
-
-        // 1. Salva o Pedido Principal (Cabeçalho)
-        await insertMainOrder(client, orderData, shippingData, billingData);
-
-        // 2. Salva os Itens do Pedido
-        await insertOrderItems(client, orderData.id, orderData.order_items);
-
-        // 3. Salva os Pagamentos do Pedido
-        await insertOrderPayments(client, orderData.id, orderData.payments);
-
-        await client.query('COMMIT'); // Finaliza a transação
-        console.log(`[MELI Sync] Pedido ${orderData.id} salvo com sucesso nas novas tabelas.`);
-
+        await client.query(query, [
+            data.bling_id, data.bling_account, data.numero, data.numero_loja, data.data_pedido, data.data_saida,
+            data.total_produtos, data.total_pedido, data.contato_id, data.contato_nome, data.contato_tipo_pessoa,
+            data.contato_documento, data.situacao_id, data.situacao_valor, data.loja_id, data.desconto_valor,
+            data.notafiscal_id, data.parcela_data_vencimento, data.parcela_valor, data.nfe_parent_numero,
+            data.transporte_frete, data.intermediador_cnpj, data.taxa_comissao, data.custo_frete, data.valor_base
+        ]);
+        console.log(`[MELI Sync] Pedido ${data.bling_id} salvo no cache com sucesso.`);
     } catch (error) {
-        await client.query('ROLLBACK'); // Desfaz tudo em caso de erro
-        console.error(`[MELI Sync] Erro ao salvar pedido ${orderData.id} (ROLLBACK):`, error.message);
+        console.error(`[MELI Sync] Erro ao salvar pedido ${data.bling_id} no banco:`, error.message);
     } finally {
         client.release();
-    }
-}
-
-/**
- * Helper: Insere/Atualiza os dados na tabela principal 'cached_pedido_ml'
- */
-async function insertMainOrder(client, order, shipping, billing) {
-    const buyer = order.buyer || {};
-    const ship = shipping || {};
-    const addr = ship.receiver_address || {};
-    const bill = billing?.billing_info || {};
-
-    // Usamos ON CONFLICT para idempotência (caso o pedido já exista e precise ser atualizado)
-    const query = `
-        INSERT INTO cached_pedido_ml (
-            id, seller_id, status, status_detail, date_created, date_closed, last_updated_api,
-            currency_id, total_amount, paid_amount, shipping_cost, pack_id, tags,
-            buyer_id, buyer_nickname, buyer_first_name, buyer_last_name, 
-            buyer_doc_type, buyer_doc_number, buyer_phone,
-            shipping_id, shipping_status, shipping_receiver_name, shipping_receiver_phone,
-            shipping_street_name, shipping_street_number, shipping_comment,
-            shipping_zip_code, shipping_city, shipping_state, shipping_neighborhood
-        ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
-            $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31
-        )
-        ON CONFLICT (id) DO UPDATE SET
-            status = EXCLUDED.status,
-            status_detail = EXCLUDED.status_detail,
-            date_closed = EXCLUDED.date_closed,
-            last_updated_api = EXCLUDED.last_updated_api,
-            paid_amount = EXCLUDED.paid_amount,
-            shipping_cost = EXCLUDED.shipping_cost,
-            pack_id = EXCLUDED.pack_id,
-            tags = EXCLUDED.tags,
-            buyer_doc_type = EXCLUDED.buyer_doc_type,
-            buyer_doc_number = EXCLUDED.buyer_doc_number,
-            buyer_phone = EXCLUDED.buyer_phone,
-            shipping_status = EXCLUDED.shipping_status,
-            shipping_receiver_name = EXCLUDED.shipping_receiver_name,
-            shipping_receiver_phone = EXCLUDED.shipping_receiver_phone,
-            shipping_street_name = EXCLUDED.shipping_street_name,
-            shipping_street_number = EXCLUDED.shipping_street_number,
-            shipping_comment = EXCLUDED.shipping_comment,
-            shipping_zip_code = EXCLUDED.shipping_zip_code,
-            shipping_city = EXCLUDED.shipping_city,
-            shipping_state = EXCLUDED.shipping_state,
-            shipping_neighborhood = EXCLUDED.shipping_neighborhood,
-            synced_at = CURRENT_TIMESTAMP;
-    `;
-
-    await client.query(query, [
-        order.id, // $1
-        order.seller.id, // $2
-        order.status, // $3
-        order.status_detail, // $4
-        order.date_created, // $5
-        order.date_closed, // $6
-        order.last_updated, // $7
-        order.currency_id, // $8
-        order.total_amount, // $9
-        order.paid_amount, // $10
-        order.shipping_cost || ship.cost, // $11
-        order.pack_id, // $12
-        order.tags, // $13
-        buyer.id, // $14
-        buyer.nickname, // $15
-        buyer.first_name, // $16
-        buyer.last_name, // $17
-        bill.doc_type, // $18
-        bill.doc_number, // $19
-        buyer.phone?.number, // $20
-        ship.id, // $21
-        ship.status, // $22
-        addr.receiver_name, // $23
-        addr.receiver_phone, // $24
-        addr.street_name, // $25
-        addr.street_number, // $26
-        addr.comment, // $27
-        addr.zip_code, // $28
-        addr.city?.name, // $29
-        addr.state?.name, // $30
-        addr.neighborhood?.name // $31
-    ]);
-}
-
-/**
- * Helper: Insere os itens do pedido na tabela 'cached_pedido_ml_itens'
- */
-async function insertOrderItems(client, pedidoId, items) {
-    if (!items || items.length === 0) return;
-
-    for (const item of items) {
-        const query = `
-            INSERT INTO cached_pedido_ml_itens (
-                pedido_id, item_id, variation_id, titulo, sku,
-                quantidade, unit_price, full_unit_price, sale_fee, listing_type_id
-            ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
-            )
-            ON CONFLICT (pedido_id, item_id, variation_id, sku) DO NOTHING;
-        `;
-        
-        await client.query(query, [
-            pedidoId, // $1
-            item.item.id, // $2
-            item.item.variation_id, // $3
-            item.item.title, // $4
-            item.seller_sku, // $5 (O SKU correto, não o do item.item)
-            item.quantity, // $6
-            item.unit_price, // $7
-            item.full_unit_price, // $8
-            item.sale_fee, // $9
-            item.listing_type_id // $10
-        ]);
-    }
-}
-
-/**
- * Helper: Insere os pagamentos do pedido na tabela 'cached_pedido_ml_pagamentos'
- */
-async function insertOrderPayments(client, pedidoId, payments) {
-    if (!payments || payments.length === 0) return;
-
-    for (const p of payments) {
-        const query = `
-            INSERT INTO cached_pedido_ml_pagamentos (
-                id, pedido_id, status, payment_method_id, payment_type,
-                transaction_amount, total_paid_amount, shipping_cost,
-                installments, marketplace_fee, date_approved, date_created
-            ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
-            )
-            ON CONFLICT (id) DO NOTHING;
-        `;
-        
-        await client.query(query, [
-            p.id, // $1
-            pedidoId, // $2
-            p.status, // $3
-            p.payment_method_id, // $4
-            p.payment_type, // $5
-            p.transaction_amount, // $6
-            p.total_paid_amount, // $7
-            p.shipping_cost, // $8
-            p.installments, // $9
-            p.marketplace_fee, // $10
-            p.date_approved, // $11
-            p.date_created // $12
-        ]);
     }
 }
 
@@ -298,30 +222,13 @@ async function runSync() {
                     break;
                 }
 
-                // 2. Busca os 3 RECURSOS: Pedido, Envio e Dados Fiscais
+                // 2. Busca o pedido completo (o search não traz tudo)
                 console.log(`[MELI Sync] Buscando detalhes do pedido ${meliOrderId}...`);
-                
-                try {
-                    const orderDetails = await meliApiGet(`/orders/${meliOrderId}`, accessToken);
-                    
-                    // Pega o ID do Envio
-                    const shippingId = orderDetails.shipping?.id;
-                    let shippingDetails = null;
-                    if (shippingId) {
-                        shippingDetails = await meliApiGet(`/shipments/${shippingId}`, accessToken);
-                    }
+                const orderDetails = await meliApiGet(`/orders/${meliOrderId}`, accessToken);
 
-                    // Pega os Dados Fiscais
-                    const billingInfo = await meliApiGet(`/orders/${meliOrderId}/billing_info`, accessToken);
-
-                    if (orderDetails) {
-                        // 3. Salva no banco (agora passando todos os dados)
-                        await saveOrderToCache(orderDetails, shippingDetails, billingInfo);
-                    }
-
-                } catch (e) {
-                     console.error(`[MELI Sync] Erro ao processar pedido ${meliOrderId}: `, e.message);
-                     // Continua para o próximo pedido
+                if (orderDetails) {
+                    // 3. Salva no banco
+                    await saveOrderToCache(orderDetails);
                 }
 
                 // 4. REQUISITO: DELAY (Rate Limit)

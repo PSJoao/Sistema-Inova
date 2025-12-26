@@ -31,6 +31,8 @@ router.post('/etiquetas/processar', etiquetasController.processAndOrganizeEtique
 
 router.post('/etiquetas/buscar-nf', etiquetasController.buscarNfIndividual);
 
+router.get('/etiquetas/recentes/:filename', etiquetasController.downloadRecentPdf);
+
 router.get('/etiquetas/download-individual/:nf', etiquetasController.downloadNfIndividual);
 
 router.get('/etiquetas/listagem', etiquetasController.renderMlEtiquetasListPage);

@@ -22,6 +22,20 @@
         </div>
     </div>
 
+    <div style="text-align: center;">
+        <div class="d-flex align-items-center justify-content-between mb-3 p-2 bg-light rounded border mx-3">
+            <div class="custom-control custom-switch">
+                <input type="checkbox" class="custom-control-input" id="palletCounterCheckbox" checked>
+                <label class="custom-control-label font-weight-bold text-dark" for="palletCounterCheckbox" style="cursor: pointer; user-select: none;">
+                    <i class="fas fa-history text-primary"></i> Contador de Paletes Diário
+                </label>
+            </div>
+            <small class="text-muted d-none d-sm-block">
+                <i class="fas fa-info-circle"></i> Inicia do 1 e reseta às 19h.
+            </small>
+        </div>
+    </div>
+
     {{! Botões de Ação Principais (inalterado) }}
     <div class="bipagem-actions">
         <button type="button" class="btn btn-accent" id="bipagemAddPalletBtn">

@@ -62,16 +62,15 @@ const blingApiGet = async (url, accountType) => {
                 'Authorization': `Bearer ${accessToken}`
             }
         };
+
         console.log(`[Bling API GET] -> ${accountType.toUpperCase()}: ${url}`);
         const response = await axios.get(url, config);
         return response.data;
     } catch (error) {
         let errorMessage = `Erro na chamada API Bling para a conta '${accountType}'.`;
-        let status = null; // << CORREÇÃO 1: Declarar a variável status
 
         if (error.response) {
-            status = error.response.status; // << CORREÇÃO 2: Capturar o status do erro real
-            console.error(`[Bling API Error] Status: ${status}, Data:`, error.response.data);
+            console.error(`[Bling API Error] Status: ${error.response.status}, Data:`, error.response.data);
             const blingError = error.response.data?.error?.description || JSON.stringify(error.response.data);
             errorMessage += ` Detalhe do Bling: ${blingError}`;
         } else if (error.request) {
@@ -82,9 +81,7 @@ const blingApiGet = async (url, accountType) => {
             errorMessage += ` Detalhe: ${error.message}`;
         }
 
-        const customError = new Error(errorMessage);
-        customError.status = status; // Agora 'status' tem o valor correto (ex: 429)
-        throw customError; // << CORREÇÃO 3: Lançar apenas o erro customizado e completo
+        throw new Error(errorMessage);
     }
 };
 

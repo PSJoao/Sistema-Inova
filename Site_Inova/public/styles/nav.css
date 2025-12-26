@@ -151,6 +151,26 @@
     font-size: 1em;
 }
 
+/* Headers de seção dentro do submenu */
+.sub-menu li.sub-menu-header {
+    padding: 8px 20px 6px 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--accent-orange);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 8px;
+    border-top: 1px solid var(--bg-tertiary);
+    background-color: rgba(255, 107, 0, 0.05);
+    list-style: none;
+    cursor: default;
+}
+
+.sub-menu li.sub-menu-header:first-child {
+    margin-top: 0;
+    border-top: none;
+}
+
 
 /* Divisor na Sidebar (opcional) */
 .sidebar-divider {

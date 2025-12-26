@@ -116,12 +116,7 @@ const ModalSystem = (function() {
             // modalCloseBtnEl não existe mais, então não precisa controlar seu display
         },
         confirm: function(message, title = 'Confirmação', onConfirmCallback, onCancelCallback) {
-            console.log("ABRIU O MODAL");
-            console.log(message);
-            console.log(onConfirmCallback);
-            console.log(onCancelCallback);
             if (!btnOkEl || !btnConfirmEl || !btnCancelEl) {
-                console.log('ENTROU AQUI!!!!!');
                 if (window.confirm((title !== 'Confirmação' ? title + ":\n" : "") + message)) {
                     if(typeof onConfirmCallback === 'function') onConfirmCallback();
                 } else {

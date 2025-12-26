@@ -1,0 +1,344 @@
+/* Site_Inova/public/styles/conferencia.css */
+
+/* --- Container Principal --- */
+.conferencia-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    padding: 10px;
+    height: calc(100vh - 160px);
+    box-sizing: border-box;
+    font-family: 'Roboto', sans-serif;
+}
+
+/* --- Cards Gerais (Dark Mode) --- */
+.conferencia-card {
+    background: #1e1e1e; /* Cinza escuro */
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    border: 1px solid #333;
+    display: flex;
+    flex-direction: column;
+    color: #e0e0e0;
+}
+
+/* --- Painel da Nota Ativa (Destaque Laranja) --- */
+.nota-ativa-card {
+    border: 2px solid #ff6b00; /* Laranja Inova */
+    background-color: #252525;
+    flex-shrink: 0;
+    position: relative;
+    transition: all 0.3s ease;
+    padding: 15px;
+}
+
+.nota-ativa-card.active {
+    box-shadow: 0 0 15px rgba(255, 107, 0, 0.3);
+    border-color: #ff6b00;
+}
+
+.nota-ativa-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    border-bottom: 1px solid rgba(255, 107, 0, 0.3);
+    padding-bottom: 10px;
+}
+
+.nota-ativa-titulo {
+    font-weight: 700;
+    font-size: 1.4rem;
+    color: #ff6b00;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* --- Barra de Progresso --- */
+.progress-container {
+    background-color: #333;
+    border-radius: 6px;
+    height: 28px;
+    width: 100%;
+    margin-top: 10px;
+    overflow: hidden;
+    position: relative;
+    border: 1px solid #444;
+}
+
+.progress-bar {
+    background: linear-gradient(90deg, #ff6b00, #ff8c00);
+    height: 100%;
+    width: 0%;
+    text-align: center;
+    color: #fff;
+    font-weight: bold;
+    line-height: 28px;
+    font-size: 0.9rem;
+    transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    white-space: nowrap;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+/* --- Listas Gerais (Scrollbar e Layout) --- */
+.active-volumes-list, 
+.pendentes-container,
+.conferidas-container {
+    overflow-y: auto;
+    flex-grow: 1;
+    padding-right: 5px;
+}
+
+/* Estilização da Scrollbar */
+.active-volumes-list::-webkit-scrollbar, 
+.pendentes-container::-webkit-scrollbar,
+.conferidas-container::-webkit-scrollbar {
+    width: 8px;
+}
+.active-volumes-list::-webkit-scrollbar-track, 
+.pendentes-container::-webkit-scrollbar-track,
+.conferidas-container::-webkit-scrollbar-track {
+    background: #1e1e1e; 
+}
+.active-volumes-list::-webkit-scrollbar-thumb, 
+.pendentes-container::-webkit-scrollbar-thumb,
+.conferidas-container::-webkit-scrollbar-thumb {
+    background: #555; 
+    border-radius: 4px;
+}
+
+/* --- Itens da Nota Ativa --- */
+.active-volumes-list { margin-top: 15px; }
+
+.volume-item {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    border: 1px solid #444;
+    margin-bottom: 8px;
+    border-radius: 6px;
+    background: #2d2d2d;
+    transition: background-color 0.2s;
+    color: #e0e0e0;
+}
+
+.volume-item.conferido {
+    background-color: rgba(40, 167, 69, 0.2);
+    border-color: #28a745;
+}
+
+.volume-item i.status-icon {
+    font-size: 1.2rem;
+    margin-right: 12px;
+    width: 24px;
+    text-align: center;
+}
+
+.volume-item.conferido i.status-icon { color: #28a745; }
+.volume-item:not(.conferido) i.status-icon { color: #666; }
+
+.volume-details strong { color: #fff; font-size: 1rem; }
+.volume-details span { color: #aaa; font-size: 0.85rem; }
+
+/* --- Painel de Pendentes --- */
+.pendentes-container {
+    background-color: #1a1a1a;
+    padding: 12px;
+}
+
+.pendentes-titulo {
+    font-size: 1rem;
+    color: #aaa;
+    margin-bottom: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid #333;
+    padding-bottom: 8px;
+}
+
+.nota-pendente-item {
+    background: #252525;
+    border: 1px solid #333;
+    padding: 15px;
+    margin-bottom: 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.2s;
+}
+
+.nota-pendente-item:hover {
+    transform: translateY(-2px);
+    border-color: #ff6b00;
+    background-color: #2d2d2d;
+}
+
+.nota-pendente-info strong {
+    display: block;
+    font-size: 1.1rem;
+    color: #ff6b00;
+    margin-bottom: 4px;
+}
+
+.nota-pendente-info span { font-size: 0.9rem; color: #bbb; }
+
+.badge-progresso {
+    background-color: #444;
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: 12px;
+    font-size: 0.9rem;
+    font-weight: bold;
+    min-width: 50px;
+    text-align: center;
+    border: 1px solid #555;
+}
+
+/* --- [NOVO] Painel de Conferidas (Histórico) --- */
+.conferidas-container {
+    background-color: #1a1a1a;
+    padding: 12px;
+    /* Ajuste para não ficar muito grande se tiver muitas notas */
+    max-height: 40%; 
+}
+
+.nota-conferida-item {
+    background: #252525;
+    border: 1px solid #333;
+    border-left: 4px solid #28a745; /* Verde Sucesso */
+    padding: 12px 15px;
+    margin-bottom: 8px;
+    border-radius: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    opacity: 0.85;
+    transition: all 0.2s;
+}
+
+.nota-conferida-item:hover {
+    opacity: 1;
+    background-color: #2d2d2d;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.nota-conferida-info strong {
+    display: block;
+    font-size: 1rem;
+    color: #28a745; /* Verde no título */
+    margin-bottom: 2px;
+}
+
+.nota-conferida-info span {
+    font-size: 0.8rem;
+    color: #888;
+}
+
+/* --- Estado Vazio --- */
+.empty-state-panel {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    border: 2px dashed #444;
+    background-color: #1a1a1a;
+    color: #666;
+    height: 100%;
+    min-height: 200px;
+}
+
+/* --- Input Fixo no Rodapé --- */
+.input-area-fixed {
+    background: #1e1e1e;
+    padding: 15px 20px;
+    width: 88rem;
+    border-top: 1px solid #333;
+    position: fixed;
+    bottom: 0;
+    z-index: 100;
+    box-shadow: 0 -4px 10px rgba(0,0,0,0.2);
+}
+
+.input-icon-wrapper { position: relative; }
+
+.input-icon-wrapper i {
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #ff6b00;
+    font-size: 1.2rem;
+}
+
+.input-bipagem {
+    padding-left: 45px;
+    height: 55px;
+    font-size: 1.2rem;
+    border-radius: 8px;
+    border: 2px solid #444;
+    background-color: #2d2d2d;
+    color: #fff;
+    width: 100%;
+    transition: border-color 0.2s;
+}
+
+.input-bipagem:focus {
+    border-color: #ff6b00;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 107, 0, 0.2);
+    background-color: #333;
+}
+
+/* --- Responsividade --- */
+@media (min-width: 768px) {
+    .conferencia-container {
+        flex-direction: row;
+        align-items: flex-start;
+    }
+    
+    .nota-ativa-card {
+        width: 60%;
+        height: 100%;
+        overflow: hidden; 
+        display: flex;
+        flex-direction: column;
+    }
+
+    .nota-ativa-card {
+        max-height: 850px;
+    }
+    
+    /* Container da Direita (Pendentes + Conferidas) */
+    /* Assumindo que você vai agrupar os dois em uma div lateral no futuro, 
+       mas por enquanto, com o layout atual, eles são irmãos da .nota-ativa-card */
+    
+    .pendentes-container, 
+    .conferidas-container {
+        width: 40%;
+        /* Altura dividida entre os dois se estiverem empilhados na direita, 
+           ou deixe flexível se usar flex-direction column na direita */
+    }
+}
+
+@media (max-width: 768px) {
+    .input-area-fixed {
+        width: 20rem;
+    }
+
+    .conferidas-container {
+        min-height: 120px; 
+    }
+
+    .pendentes-container {
+        min-height: 120px; 
+    }
+
+    .nota-ativa-card {
+        max-height: 300px;
+    }
+
+}

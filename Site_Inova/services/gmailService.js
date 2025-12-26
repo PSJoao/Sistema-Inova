@@ -31,7 +31,7 @@ const CARRIER_EMAILS = {
     'ATUAL CARGAS': ['ocorrencias@atualcargas.com.br', 'tracking@atualcargas.com.br', 'faltas@atualcargas.com.br', 'adicionais@atualcargas.com.br', 'reversa@atualcargas.com.br'],
     'DOMINALOG': ['barrar.entrega@dominalog.com.br', 'atendimento@dominalog.com.br', 'recebe.reversa@dominalog.com.br', 'atendimento_reversa@dominalog.com.br'],
     'LOG+': ['devolucao@logmaistransportes.com.br', 'filialsjrp@logmaistransportes.com.br', 'sac2@logmaistransportes.com.br'],
-    'GAOLOG': ['fabiogao.log@gmail.com', 'sac1amm@gaolog.com.br', 'operacionalvg@gaolog.com.br'],
+    'GAOLOG': ['fabiogao.log@gmail.com', 'sac1amm@gaolog.com.br', 'operacionalvg@gaolog.com.br', 'sac1@gaolog.com.br'],
     'MFA': {
         'SUL_SUDESTE': ['suporte.sjp02@lmslog.com.br', 'atendimento.sjp@lmslog.com.br', 'operacional.sjp@lmslog.com.br'], // PR, SC, RS, SP, RJ, MG, ES
         'NORDESTE': ['suporte.sjp@lmslog.com.br', 'atendimento.sjp@lmslog.com.br', 'operacional.sjp@lmslog.com.br'],    // MA, PI, CE, RN, PB, PE, AL, SE, BA

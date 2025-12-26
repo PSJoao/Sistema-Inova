@@ -484,13 +484,14 @@ exports.generatePendingProductsByCarrierReport = async (req, res) => {
                 FROM cached_products 
                 ORDER BY sku, last_updated_at DESC
             ) cp ON nqp.produto_codigo = cp.sku
-            WHERE enf.status_para_relacao in ('pendente', 'justificada_adiada')
+            WHERE enf.status_para_relacao IN ('pendente', 'justificada_adiada')
             AND enf.cancelada = false
-            AND enf.transportadora_apelido NOT IN (${transportadorasExcluidas.map(t => `'${t}'`).join(',')})
-            
-            -- Filtra notas que já estão salvas no state de bipagem
-            -- A subquery expande o JSON de todas as linhas da tabela bipagem_state em uma lista de códigos
-            AND enf.nfe_chave_acesso_44d NOT IN ${formatado}
+            ${transportadorasExcluidas.length > 0 
+                ? `AND enf.transportadora_apelido NOT IN (${transportadorasExcluidas.map(t => `'${t}'`).join(',')})` 
+                : ''}
+            ${resultado.rows.length > 0 
+                ? `AND enf.nfe_chave_acesso_44d NOT IN ${formatado}` 
+                : ''}
             GROUP BY enf.transportadora_apelido, cp.nome, nqp.produto_codigo
             ORDER BY enf.transportadora_apelido ASC, produto_nome ASC;
         `;

@@ -41,111 +41,80 @@
         <nav class="sidebar-nav">
           <ul>
             <li><a href="/"><i class="fas fa-home fa-fw"></i> <span>Menu Principal</span></a></li>
-            {{#if (eq cargo 'ADM')}}
+            
+            {{!-- Monitoramento de Marketplaces --}}
             <li class="nav-module">
-              <a href="#" class="module-toggle"><i class="fas fa-store fa-fw"></i> <span>Madeira - Lucas</span> <i class="fas fa-chevron-right arrow"></i></a>
+              <a href="#" class="module-toggle"><i class="fas fa-chart-line fa-fw"></i> <span>Monitoramento</span> <i class="fas fa-chevron-right arrow"></i></a>
               <ul class="sub-menu">
+                <li class="sub-menu-header">Madeira - Lucas</li>
                 <li><a href="/madeira/urls"><i class="fas fa-clipboard-list fa-fw"></i> Gerenciar Produtos</a></li>
                 <li><a href="/madeira/monitoring"><i class="fas fa-chart-line fa-fw"></i> Monitorar Produtos</a></li>
-                <li><a href="/madeira/non-competitive-products"><i class="fas fa-handshake fa-fw"></i> P. Sem Concorrentes</a></li>
+                <li><a href="/madeira/non-competitive-products"><i class="fas fa-handshake fa-fw"></i> Produtos Sem Concorrentes</a></li>
                 <li><a href="/madeira/out-of-promotion"><i class="fas fa-tags fa-fw"></i> Produtos Sem Promoção</a></li>
-              </ul>
-            </li>
-            <li class="nav-module">
-              <a href="#" class="module-toggle"><i class="fas fa-store fa-fw"></i> <span>Madeira - Eliane</span> <i class="fas fa-chevron-right arrow"></i></a>
-              <ul class="sub-menu">
+                <li class="sub-menu-header">Madeira - Eliane</li>
                 <li><a href="/madeiramadeira/urls"><i class="fas fa-clipboard-list fa-fw"></i> Gerenciar Produtos</a></li>
                 <li><a href="/madeiramadeira/monitoring"><i class="fas fa-chart-line fa-fw"></i> Monitorar Produtos</a></li>
-                <li><a href="/madeiramadeira/non-competitive-products"><i class="fas fa-handshake fa-fw"></i> P. Sem Concorrentes</a></li>
+                <li><a href="/madeiramadeira/non-competitive-products"><i class="fas fa-handshake fa-fw"></i> Produtos Sem Concorrentes</a></li>
                 <li><a href="/madeiramadeira/out-of-promotion"><i class="fas fa-tags fa-fw"></i> Produtos Sem Promoção</a></li>
-              </ul>
-            </li>
-            <span style="position: absolute; margin-left: 500px; font-family: 'DynaPuff', system-ui; font-size: 90px;">Igor</span>
-            <li class="nav-module">
-              <a href="#" class="module-toggle"><i class="fas fa-shopping-bag fa-fw"></i> <span>ViaVarejo</span> <i class="fas fa-chevron-right arrow"></i></a>
-              <ul class="sub-menu">
-                 <li><a href="/viavarejo/urls"><i class="fas fa-clipboard-list fa-fw"></i> Gerenciar Produtos</a></li>
+                <li class="sub-menu-header">ViaVarejo</li>
+                <li><a href="/viavarejo/urls"><i class="fas fa-clipboard-list fa-fw"></i> Gerenciar Produtos</a></li>
                 <li><a href="/viavarejo/home"><i class="fas fa-chart-line fa-fw"></i> Monitorar Produtos</a></li>
-                <li><a href="/viavarejo/non-competitive-products"><i class="fas fa-handshake fa-fw"></i> P. Sem Concorrentes</a></li>
-                <li><a href="/viavarejo/empty-products"><i class="fas fa-box-open fa-fw"></i> P. Sem Estoque</a></li>
+                <li><a href="/viavarejo/non-competitive-products"><i class="fas fa-handshake fa-fw"></i> Produtos Sem Concorrentes</a></li>
+                <li><a href="/viavarejo/empty-products"><i class="fas fa-box-open fa-fw"></i> Produtos Sem Estoque</a></li>
               </ul>
             </li>
 
+            {{!-- Notas Fiscais e Faturamento --}}
             <li class="nav-module">
-              <a href="#" class="module-toggle"><i class="fas fa-solid fa-file fa-fw"></i> <span>Nota Fiscal</span> <i class="fas fa-chevron-right arrow"></i></a>
+              <a href="#" class="module-toggle"><i class="fas fa-file-invoice fa-fw"></i> <span>Notas Fiscais</span> <i class="fas fa-chevron-right arrow"></i></a>
               <ul class="sub-menu">
                 <li><a href="/emissao"><i class="fas fa-barcode fa-fw"></i> Gerenciar Emissões</a></li>
-                <li><a href="/emissao/nfe-management"><i class="fas fa-light fa-sticky-note fa-fw"></i> Gerar Etiquetas</a></li>
+                <li><a href="/emissao/nfe-management"><i class="fas fa-sticky-note fa-fw"></i> Gerar Etiquetas NFe</a></li>
                 <li><a href="/faturamento-automatico"><i class="fas fa-chart-line fa-fw"></i> Faturador Automático</a></li>
                 <li><a href="/acompanhamento/pedidos"><i class="fas fa-shopping-cart fa-fw"></i> Gerenciar Pedidos</a></li>
-                <li><a href="/produtos/listagem"><i class="fas fa-box fa-fw"></i> Gerenciar Produtos</a></li>
-                <li><a href="/assistencias"><i class="fas fa-solid fa-file-invoice fa-fw"></i> Assistências</a></li>
+                <li><a href="/assistencias"><i class="fas fa-file-invoice fa-fw"></i> Assistências</a></li>
+                <li><a href="/historico-nfe"><i class="fas fa-history fa-fw"></i> Histórico de Notas</a></li>
               </ul>
             </li>
 
+            {{!-- Produtos --}}
             <li class="nav-module">
-              <a href="#" class="module-toggle"><i class="fas fa-tags fa-fw"></i> <span>Etiquetas ML</span> <i class="fas fa-chevron-right arrow"></i></a>
+              <a href="#" class="module-toggle"><i class="fas fa-box fa-fw"></i> <span>Produtos</span> <i class="fas fa-chevron-right arrow"></i></a>
+              <ul class="sub-menu">
+                <li><a href="/produtos/listagem"><i class="fas fa-box fa-fw"></i> Gerenciar Produtos</a></li>
+                <li><a href="/tipos"><i class="fas fa-file-export fa-fw"></i> Gerenciar Tipos de Produtos</a></li>
+                <li><a href="/product-sync"><i class="fas fa-sync fa-fw"></i> Sincronizar Produtos</a></li>
+              </ul>
+            </li>
+
+            {{!-- Expedição e Etiquetas --}}
+            <li class="nav-module">
+              <a href="#" class="module-toggle"><i class="fas fa-tags fa-fw"></i> <span>Expedição</span> <i class="fas fa-chevron-right arrow"></i></a>
               <ul class="sub-menu">
                 <li><a href="/etiquetas"><i class="fas fa-tag fa-fw"></i> Ordenador de Etiquetas</a></li>
                 <li><a href="/etiquetas/bipagem"><i class="fas fa-barcode fa-fw"></i> Bipagem de Produtos</a></li>
-                <li><a href="/etiquetas/listagem"><i class="fas fa-indent fa-fw"></i> Histórico Etiquetas</a></li>
-                <li><a href="/tipos"><i class="fas fa-file-export fa-fw"></i> Gerenciar Tipos Prod.</a></li>
-                <li><a href="/product-sync"><i class="fas fa-bezier-curve fa-fw"></i> Sincronizar Prod.</a></li>
+                <li><a href="/etiquetas/listagem"><i class="fas fa-list fa-fw"></i> Histórico de Etiquetas</a></li>
               </ul>
             </li>
 
+            {{!-- Conferência --}}
+            <li class="nav-module">
+              <a href="#" class="module-toggle"><i class="fas fa-check-circle fa-fw"></i> <span>Conferência</span> <i class="fas fa-chevron-right arrow"></i></a>
+              <ul class="sub-menu">
+                <li><a href="/conferencia/bipagem"><i class="fas fa-boxes fa-fw"></i> Conferência de Expedição</a></li>
+                <li><a href="/conferencia/gerenciamento-codigos"><i class="fas fa-cog fa-fw"></i> Gerenciar Códigos</a></li>
+              </ul>
+            </li>
+
+            {{!-- Transporte e Logística --}}
             <li class="nav-module">
               <a href="#" class="module-toggle"><i class="fas fa-truck fa-fw"></i> <span>Transporte</span> <i class="fas fa-chevron-right arrow"></i></a>
               <ul class="sub-menu">
                 <li><a href="/relacoes"><i class="fas fa-truck fa-fw"></i> Gerenciar Relações</a></li>
                 <li><a href="/rastreio"><i class="fas fa-paper-plane fa-fw"></i> Acompanhamentos</a></li>
-                <li><a href="/historico-nfe"><i class="fas fa-solid fa-sim-card fa-fw"></i> Histórico de Notas</a></li>
               </ul>
             </li>
-            {{/if}}
-            
-            {{#if (eq cargo 'NFE')}}
-            <li class="nav-module">
-              <a href="#" class="module-toggle"><i class="fas fa-solid fa-file fa-fw"></i> <span>Nota Fiscal</span> <i class="fas fa-chevron-right arrow"></i></a>
-              <ul class="sub-menu">
-                <li><a href="/emissao"><i class="fas fa-barcode fa-fw"></i> Gerenciar Emissões</a></li>
-                <li><a href="/emissao/nfe-management"><i class="fas fa-light fa-sticky-note fa-fw"></i> Gerar Etiquetas</a></li>
-                <li><a href="/faturamento-automatico"><i class="fas fa-chart-line fa-fw"></i> Faturador Automático</a></li>
-                <li><a href="/acompanhamento/pedidos"><i class="fas fa-shopping-cart fa-fw"></i> Gerenciar Pedidos</a></li>
-                <li><a href="/produtos/listagem"><i class="fas fa-box fa-fw"></i> Gerenciar Produtos</a></li>
-                <li><a href="/assistencias"><i class="fas fa-solid fa-file-invoice fa-fw"></i> Assistências</a></li>
-                <li><a href="/historico-nfe"><i class="fas fa-solid fa-sim-card fa-fw"></i> Histórico de Notas</a></li>
-              </ul>
-            </li>
-            <li class="nav-module">
-              <a href="#" class="module-toggle"><i class="fas fa-tags fa-fw"></i> <span>Etiquetas ML</span> <i class="fas fa-chevron-right arrow"></i></a>
-              <ul class="sub-menu">
-                <li><a href="/etiquetas"><i class="fas fa-tag fa-fw"></i> Ordenador de Etiquetas</a></li>
-                <li><a href="/etiquetas/bipagem"><i class="fas fa-barcode fa-fw"></i> Bipagem de Produtos</a></li>
-                <li><a href="/etiquetas/listagem"><i class="fas fa-indent fa-fw"></i> Histórico Etiquetas</a></li>
-                <li><a href="/tipos"><i class="fas fa-file-export fa-fw"></i> Gerenciar Tipos Prod.</a></li>
-                <li><a href="/product-sync"><i class="fas fa-bezier-curve fa-fw"></i> Sincronizar Prod.</a></li>
-              </ul>
-            </li>
-            {{/if}}
-            {{#if (eq cargo 'REL')}}
-            <li class="nav-module">
-              <a href="#" class="module-toggle"><i class="fas fa-truck fa-fw"></i> <span>Transporte</span> <i class="fas fa-chevron-right arrow"></i></a>
-              <ul class="sub-menu">
-                <li><a href="/relacoes"><i class="fas fa-truck fa-fw"></i> Gerenciar Relações</a></li>
-                <li><a href="/historico-nfe"><i class="fas fa-solid fa-sim-card fa-fw"></i> Histórico de Notas</a></li>
-              </ul>
-            </li>
-            <li class="nav-module">
-              <a href="#" class="module-toggle"><i class="fas fa-tags fa-fw"></i> <span>Etiquetas ML</span> <i class="fas fa-chevron-right arrow"></i></a>
-              <ul class="sub-menu">
-                <li><a href="/etiquetas"><i class="fas fa-tag fa-fw"></i> Ordenador de Etiquetas</a></li>
-                <li><a href="/etiquetas/bipagem"><i class="fas fa-barcode fa-fw"></i> Bipagem de Produtos</a></li>
-                <li><a href="/etiquetas/listagem"><i class="fas fa-indent fa-fw"></i> Histórico Etiquetas</a></li>
-                <li><a href="/tipos"><i class="fas fa-file-export fa-fw"></i> Gerenciar Tipos Prod.</a></li>
-              </ul>
-            </li>
-            {{/if}}
+
             <hr class="sidebar-divider"> 
             <li><a href="/logout"><i class="fas fa-sign-out-alt fa-fw"></i> <span>Sair</span></a></li> 
           </ul>

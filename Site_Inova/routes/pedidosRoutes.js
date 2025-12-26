@@ -4,7 +4,6 @@ const express = require('express');
 const router = express.Router();
 const pedidosController = require('../controllers/pedidosController');
 const authController = require('../controllers/authController');
-const pedidosFullController = require('../controllers/pedidosFullController');
 const multer = require('multer');
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -35,7 +34,5 @@ router.post('/acompanhamento/pedidos/upload', upload.fields([
 
 // Rota para BAIXAR o relatório consolidado (permanece a mesma)
 router.get('/acompanhamento/pedidos/download', pedidosController.baixarRelatorioConsolidado);
-
-router.post('/api/pedidos-full/sync', pedidosFullController.iniciarSincronizacaoFull);
 
 module.exports = router;

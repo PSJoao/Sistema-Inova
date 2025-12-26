@@ -1,128 +1,330 @@
 /* public/styles/main-menu.css */
 
-body.main-menu-page { /* Adicionaremos esta classe ao body no mainMenu.handlebars */
-  background-color: var(--bg-primary); /* Fundo escuro do tema */
+body.main-menu-page {
+  background-color: var(--bg-primary);
   color: var(--text-primary);
   font-family: var(--font-primary);
   margin: 0;
   padding: 0;
   min-height: 100vh;
   display: flex;
-  flex-direction: column; /* Para o cabeçalho e o grid */
+  flex-direction: column;
   align-items: center;
-  /* Imagem de fundo (se desejar manter) */
-  /* background-image: url('/public/styles/imagens/mulherapontandotrue.png'); ou madeiramadeirabackground.jpg */
-  /* background-size: cover; */
-  /* background-position: center; */
-  /* background-repeat: no-repeat; */
-  /* background-attachment: fixed; */ /* Para a imagem não rolar com o conteúdo */
-  /* Se usar imagem de fundo, pode ser necessário um overlay para legibilidade: */
-  /* position: relative; */
+  padding-bottom: 100px; /* Espaço para o footer */
 }
-/* body.main-menu-page::before { */ /* Overlay para imagem de fundo */
-  /* content: ''; */
-  /* position: absolute; */
-  /* top: 0; left: 0; width: 100%; height: 100%; */
-  /* background-color: rgba(30, 30, 47, 0.7); */ /* --bg-primary com alpha */
-  /* z-index: -1; */ /* Atrás do conteúdo */
-/* } */
-
 
 .main-menu-header {
-  padding: 30px 20px 20px; /* Mais padding no topo */
+  padding: 30px 20px 20px;
   text-align: center;
   width: 100%;
-  /* background-color: rgba(var(--bg-secondary-rgb), 0.5); */ /* Opcional: Fundo semi-transparente para o header se tiver imagem de fundo no body */
 }
 
 .main-menu-title-brand {
   display: flex;
   justify-content: center;
   align-items: baseline;
+  flex-wrap: wrap;
 }
 .main-menu-title-brand h1 {
   color: var(--text-primary);
-  font-size: 2.8rem;
+  font-size: clamp(2rem, 5vw, 2.8rem);
   margin: 0 5px;
   font-weight: 700;
-  text-shadow: 0 2px 4px rgba(0,0,0,0.3); /* Sombra para destaque */
+  text-shadow: 0 2px 4px rgba(0,0,0,0.3);
 }
 .main-menu-title-brand .accent {
   color: var(--accent-orange);
-  font-size: 3.3rem;
+  font-size: clamp(2.5rem, 6vw, 3.3rem);
 }
 
 .menu-grid-container {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 25px; /* Espaçamento entre os cards de módulo */
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
   padding: 20px;
   width: 100%;
-  max-width: 1200px; /* Limita a largura do grid */
+  max-width: 1400px;
   margin-top: 20px;
 }
 
+/* Cards de Módulo Base */
 .module-card {
   background-color: var(--bg-secondary);
   color: var(--text-primary);
   border-radius: var(--border-radius-lg);
   padding: 25px;
-  width: 100%;
-  max-width: 320px; /* Largura dos cards de módulo */
   box-shadow: var(--box-shadow-medium);
-  text-align: center;
   display: flex;
   flex-direction: column;
-  align-items: center;
   transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  border: 1px solid var(--bg-tertiary);
 }
+
 .module-card:hover {
-  box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  border-color: var(--accent-orange);
 }
 
-.module-card h2 { /* Título do módulo (ex: "Monitoramento") */
-  font-size: 1.6rem;
-  color: var(--text-primary);
+/* Header do Módulo */
+.module-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 20px;
-  border-bottom: 2px solid var(--accent-orange); /* Linha laranja abaixo do título */
-  padding-bottom: 10px;
-  display: inline-block; /* Para a borda se ajustar ao texto */
+  padding-bottom: 15px;
+  border-bottom: 2px solid var(--accent-orange);
 }
 
-.module-card .btn { /* Botões dentro dos cards de módulo */
-  width: 90%; /* Largura dos botões */
-  margin-top: 10px; /* Espaçamento entre botões */
-  padding: 10px 15px;
-  font-size: 0.95rem;
-  /* Usar .btn-accent ou .btn-outline-accent para os botões */
+.module-icon {
+  font-size: 1.8rem;
+  color: var(--accent-orange);
+  flex-shrink: 0;
 }
 
-/* Exemplo de como diferenciar botões se necessário, mas prefira usar as classes .btn-accent, etc. */
+.module-card h2 {
+  font-size: 1.4rem;
+  color: var(--text-primary);
+  margin: 0;
+  font-weight: 600;
+  flex: 1;
+}
+
+/* Container de Botões */
+.module-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+/* Módulo Pequeno (1-2 itens) - Layout Horizontal Compacto */
+.module-small {
+  max-width: 100%;
+}
+
+.module-small .module-buttons {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.module-small .btn-card {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 0.9rem;
+  justify-content: flex-start;
+}
+
+.module-small .btn-full {
+  grid-column: 1 / -1; /* Ocupa toda a largura se for apenas 1 item */
+}
+
+/* Quando módulo pequeno tem apenas 1 botão, centralizar */
+.module-small .btn-full {
+  max-width: 100%;
+}
+
+/* Módulo Médio (3-4 itens) */
+.module-medium {
+  max-width: 100%;
+}
+
+.module-medium .module-buttons {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.module-medium .btn-card {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 0.9rem;
+  justify-content: flex-start;
+}
+
+/* Módulo Grande (5+ itens) - Layout Vertical */
+.module-large {
+  max-width: 100%;
+}
+
+.module-large .module-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.module-large .btn-card {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 0.9rem;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+/* Botões dentro dos cards */
 .module-card .btn-card {
-  /* background: linear-gradient(to left, rgb(255, 100, 28) 20%, #ff8c20 80%); */
-  /* Use var(--accent-orange) ou uma variação */
-}
-.module-card .btn-viavarejo {
-  /* background: linear-gradient(to bottom, blue 50%, red 50%); */
-  /* Crie variáveis para essas cores se precisar de gradientes específicos */
-  /* Ou use cores sólidas do tema: */
-  background-color: var(--color-info); /* Exemplo */
-  border-color: var(--color-info);
-  color: #fff;
-}
-.module-card .btn-viavarejo:hover {
-  background-color: hsl(from var(--color-info) h s calc(l - 7%));
-  border-color: hsl(from var(--color-info) h s calc(l - 10%));
+  width: 100%;
+  margin: 0;
+  padding: 12px 16px;
+  font-size: 0.9rem;
+  border-radius: var(--border-radius-md);
+  transition: all var(--transition-fast);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.module-card .btn-mercadolivre {
-  /* Estilo para Mercado Livre, pode ser um amarelo ou outra cor do tema */
-  background-color: var(--color-warning);
-  border-color: var(--color-warning);
-  color: #1e1e2f;
+.module-card .btn-card:hover {
+  transform: translateX(4px);
+  box-shadow: 0 4px 12px rgba(240, 124, 0, 0.3);
 }
-.module-card .btn-mercadolivre:hover {
-  background-color: hsl(from var(--color-warning) h s calc(l - 7%));
-  border-color: hsl(from var(--color-warning) h s calc(l - 10%));
+
+.module-card .btn-card i {
+  margin-right: 8px;
+  font-size: 1rem;
+}
+
+/* Footer com Botão de Sair */
+.menu-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 20px;
+  background: linear-gradient(to top, var(--bg-primary) 0%, rgba(18, 18, 18, 0.95) 100%);
+  backdrop-filter: blur(10px);
+  display: flex;
+  justify-content: center;
+  z-index: 100;
+  border-top: 1px solid var(--bg-tertiary);
+}
+
+.btn-logout {
+  padding: 12px 30px;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: var(--border-radius-lg);
+  box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+  transition: all var(--transition-fast);
+}
+
+.btn-logout:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(220, 53, 69, 0.4);
+}
+
+/* Responsividade - Mobile */
+@media (max-width: 768px) {
+  .main-menu-header {
+    padding: 20px 15px 15px;
+  }
+
+  .menu-grid-container {
+    grid-template-columns: 1fr;
+    gap: 15px;
+    padding: 15px;
+  }
+
+  .module-card {
+    padding: 20px;
+  }
+
+  .module-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .module-icon {
+    font-size: 1.5rem;
+  }
+
+  .module-card h2 {
+    font-size: 1.2rem;
+  }
+
+  /* Módulos pequenos em mobile ficam verticais */
+  .module-small .module-buttons,
+  .module-medium .module-buttons {
+    grid-template-columns: 1fr;
+  }
+
+  .module-buttons {
+    gap: 8px;
+  }
+
+  .btn-card {
+    padding: 10px 14px;
+    font-size: 0.85rem;
+  }
+
+  .menu-footer {
+    padding: 15px;
+  }
+
+  .btn-logout {
+    width: 100%;
+    max-width: 300px;
+    padding: 14px 20px;
+  }
+}
+
+/* Responsividade - Tablet */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .menu-grid-container {
+    grid-template-columns: repeat(2, 1fr);
+    max-width: 900px;
+  }
+
+  .module-small {
+    grid-column: span 1;
+  }
+
+  .module-medium {
+    grid-column: span 2;
+  }
+
+  .module-large {
+    grid-column: span 2;
+  }
+}
+
+/* Responsividade - Desktop */
+@media (min-width: 1025px) {
+  .menu-grid-container {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  /* Módulos pequenos ocupam 1 coluna */
+  .module-small {
+    grid-column: span 1;
+  }
+
+  /* Módulos médios ocupam 1 coluna */
+  .module-medium {
+    grid-column: span 1;
+  }
+
+  /* Módulos grandes ocupam 2 colunas */
+  .module-large {
+    grid-column: span 2;
+  }
+
+  /* Se houver 2 módulos grandes seguidos, ajustar */
+  .module-large + .module-large {
+    grid-column: span 1;
+  }
+}
+
+/* Responsividade - Telas Muito Grandes */
+@media (min-width: 1400px) {
+  .menu-grid-container {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .module-large {
+    grid-column: span 2;
+  }
 }
