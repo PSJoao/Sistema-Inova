@@ -319,7 +319,7 @@ document.addEventListener('DOMContentLoaded', function() {
         pecasContainer.insertAdjacentHTML('beforeend', pecaHTML);
     }
 
-    function preencherFormularioComDadosNF(data) {
+    /*function preencherFormularioComDadosNF(data) {
         document.getElementById('nome_pedido').value = data.nome_pedido || '';
         document.getElementById('documento_cliente').value = data.documento_cliente || '';
         document.getElementById('numero_pedido_venda').value = data.numero_pedido_venda || '';
@@ -327,7 +327,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Limpa o container de produtos caso o usuário queira adicionar manualmente depois
         elements.produtosContainer.innerHTML = '';
         produtoIndex = 0;
-    }
+    }*/
 
     /**
      * Configura todos os listeners de eventos.

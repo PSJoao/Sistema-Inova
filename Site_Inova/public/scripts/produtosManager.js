@@ -177,7 +177,7 @@ document.addEventListener('DOMContentLoaded', function() {
         paginationHtml += `<select id="produtos-page-select" class="page-select-dropdown">`;
         
         for (let i = 1; i <= totalPages; i++) {
-            paginationHtml += `<option value="${i}"${i === currentPage ? 'selected' : ''}>${i}</option>`;
+            paginationHtml += `<option value="${i}"Página ${i === currentPage ? 'selected' : ''}>${i}</option>`;
         }
         
         paginationHtml += `</select> de ${totalPages}

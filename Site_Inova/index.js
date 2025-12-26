@@ -6,40 +6,44 @@ const exphbs = require('express-handlebars');
 const emissaoRoutes = require('./routes/emissaoRoutes');
 const monitoringRoutes = require('./routes/monitoringRoutes');
 const madeiraRoutes = require('./routes/madeiraRoutes');
-const viaVarejoRoutes = require('./routes/viaVarejoRoutes');
-const pedidosRoutes = require('./routes/pedidosRoutes');
+const viaVarejoRoutes = require('./routes/viaVarejoRoutes'); // Importar as rotas do Via Varejo
 const relacaoRoutes = require('./routes/relacaoRoutes');
 const rastreioRoutes = require('./routes/rastreioRoutes'); 
+const pedidosRoutes = require('./routes/pedidosRoutes');
 const handlebarsHelpers = require('./helpers/handlebarsHelpers');
 const authRoutes = require('./routes/authRoutes');
 const authController = require('./controllers/authController');
 const rastreioService = require('./services/rastreioService');
-const mlRoutes = require('./routes/mercadoLivreRoutes');
 const nfeHistoryRoutes = require('./routes/nfeHistoryRoutes');
+const { updatePrices } = require('./updatePrices.js');
+const { updatePricesMM } = require('./updatePricesMM.js');
+const { runScheduledTokenRefresh } = require('./services/blingTokenManager');
+const mlRoutes = require('./routes/mercadoLivreRoutes');
 const assistenciaRoutes = require('./routes/assistenciaRoutes');
 const etiquetasRoutes = require('./routes/etiquetasRoutes');
-const blingWebhookRoutes = require('./routes/blingWebhookRoutes');
 const tiposRoutes = require('./routes/tiposRoutes');
-const produtosRoutes = require('./routes/produtosRoutes');
 const prodSyncRoutes = require('./routes/productSyncRoutes');
 const conferenciaRoutes = require('./routes/conferenciaRoutes.js');
+<<<<<<< HEAD
 const mercadoLivreSyncService = require('./services/mercadoLivreSyncService');
+=======
+const produtosRoutes = require('./routes/produtosRoutes');
+>>>>>>> 50d824e32b25a92a05d8c98e90cb53a25a56987a
 const faturamentoAutomaticoRoutes = require('./routes/faturamentoAutomaticoRoutes');
-//const { updatePrices } = require('./updatePrices.js');
-//const { runScheduledTokenRefresh } = require('./services/blingTokenManager');
-const { syncRecentEmittedNFe, syncNFeEliane, syncNFeLucas } = require('./blingSyncService.js');
-//const { updateUrlCostsAndData } = require('./costUpdater.js');
+const { syncBlingProductsLucas, syncBlingProductsEliane } = require('./blingSyncService.js');
+const { updateUrlCostsAndData } = require('./costUpdater.js');
+const mercadoLivreSyncService = require('./services/mercadoLivreSyncService');
+const blingWebhookRoutes = require('./routes/blingWebhookRoutes');
 const path = require('path');
 const fs = require('fs').promises;
 const PDF_STORAGE_DIR_CLEANUP = path.join(__dirname, 'pdfEtiquetas');
-const MAX_FILE_AGE_DAYS = 23;
+const MAX_FILE_AGE_DAYS = 30;
 const favicon = require('serve-favicon');
 const cron = require('node-cron'); 
 const { exec } = require('child_process');
 
 const app = express();
 const PORT = 3000;
-
 
 // Configurar o body-parser para analisar solicitações com o corpo em formato URL-encoded e JSON
 app.use(bodyParser.urlencoded({ limit: '500mb', extended: true }));
@@ -58,7 +62,7 @@ app.use('/public', express.static('public'));
 app.use(favicon(path.join(__dirname, 'public/icons', 'favicon.ico')));
 
 // Rotas de login
-app.use('/', authRoutes);// Usar rotas de autenticação
+app.use('/', authRoutes);
 app.use(authController.sessionMiddleware);
 app.use(flash());
 
@@ -88,26 +92,27 @@ app.get('/', authController.requireAuth, (req, res) => {
     title: 'Menu Principal', 
     username: req.session.username,
     cargo: req.session.role,
-    layout: false 
+    layout: false // Adicione esta linha
   });
 });
 
-app.use('/', pedidosRoutes);
 // Usar rotas de monitoramento
 app.use('/', madeiraRoutes);
 app.use('/', monitoringRoutes); // Usar rotas da Madeira Madeira
 app.use('/', viaVarejoRoutes); // Usar rotas do Via Varejo
 app.use('/', emissaoRoutes); // Usar rotas de emissão
-app.use('/', relacaoRoutes); // Usar rotas de relações
+app.use('/', relacaoRoutes);
+app.use('/', pedidosRoutes);
 app.use('/rastreio', rastreioRoutes);
-app.use('/historico-nfe', nfeHistoryRoutes); // Define o prefixo da nova página
+app.use('/historico-nfe', nfeHistoryRoutes);
 app.use('/assistencias', assistenciaRoutes);
+app.use('/', mlRoutes);
 app.use('/', etiquetasRoutes);
 app.use('/', tiposRoutes);
-app.use('/', mlRoutes);
 app.use('/', produtosRoutes);
 app.use('/faturamento-automatico', faturamentoAutomaticoRoutes);
 app.use('/product-sync', prodSyncRoutes);
+app.use('/conferencia', conferenciaRoutes);
 app.use('/webhooks/bling', blingWebhookRoutes);
 app.use('/conferencia', conferenciaRoutes);
 
@@ -154,70 +159,83 @@ cron.schedule('0 3 * * *', async () => {
 
 //Agendar tarefa para atualizar preços da madeira a cada 20 minutos
 //cron.schedule('*/20 * * * *', async () => {
-  //console.log(`${new Date().toISOString()}: Executando tarefa agendada de atualização de preços...`);
-  //try {
-    //await updatePrices();
-  //} catch (error) {
-    //console.error(`${new Date().toISOString()}: Erro pego na execução agendada de updatePrices:`, error);
-  //}
-//})//;
-//0 */5 * * *
+/*  console.log(`${new Date().toISOString()}: Executando tarefa agendada de atualização de preços...`);
+  try {
+    await Promise.all([
+            updatePrices(),
+            updatePricesMM()
+        ]);
+  } catch (error) {
+    console.error(`${new Date().toISOString()}: Erro pego na execução agendada de updatePrices:`, error);
+  }
+});*/
+//0 */2 * * *
 //cron.schedule('0 */2 * * *', async () => { // A cada 2 horas
-  //console.log(`${new Date().toISOString()}: Disparando job agendado de atualização de tokens Bling...`);
-  //try {
-    //await runScheduledTokenRefresh();
-  //} catch (error) {
+/*  console.log(`${new Date().toISOString()}: Disparando job agendado de atualização de tokens Bling...`);
+  try {
+    await runScheduledTokenRefresh();
+  } catch (error) {
     // O runScheduledTokenRefresh já deve logar seus próprios erros internos,
     // mas podemos logar um erro geral do agendador aqui se a promessa for rejeitada.
-    //console.error(`${new Date().toISOString()}: Erro pego pelo agendador node-cron ao executar runScheduledTokenRefresh:`, error);
-  //}
-//});
-//console.log('Job de refresh de tokens Bling agendado para rodar a cada 5 horas.');
+    console.error(`${new Date().toISOString()}: Erro pego pelo agendador node-cron ao executar runScheduledTokenRefresh:`, error);
+  }
+});*/
+console.log('Job de refresh de tokens Bling agendado para rodar a cada 5 horas.');
 
 // Sincroniza produtos uma vez por semana (às 4h da manhã de todo domingo)
+//0 23 * * *
+/*cron.schedule('0 4 * * 0', async () => {
+    console.log(`${new Date().toISOString()}: Disparando job agendado semanal de sincronização de PRODUTOS.`);
+    try {
+        await syncBlingProductsLucas();
+    } catch (error) {
+        console.error(`${new Date().toISOString()}: Erro pego pelo agendador ao sincronizar produtos:`, error);
+    }
+});
 
-//cron.schedule('0 4 * * 0', async () => {
-    //console.log(`${new Date().toISOString()}: Disparando job agendado semanal de sincronização de PRODUTOS.`);
-    //try {
-        //await syncAllBlingProducts();
-    //} catch (error) {
-        //console.error(`${new Date().toISOString()}: Erro pego pelo agendador ao sincronizar produtos:`, error);
-    //}
-//});
-//console.log('Job de sincronização de produtos agendado para rodar todo Domingo às 4h da manhã.');
-
+cron.schedule('0 4 * * 0', async () => {
+    console.log(`${new Date().toISOString()}: Disparando job agendado semanal de sincronização de PRODUTOS.`);
+    try {
+        await syncBlingProductsEliane();
+    } catch (error) {
+        console.error(`${new Date().toISOString()}: Erro pego pelo agendador ao sincronizar produtos:`, error);
+    }
+});
+console.log('Job de sincronização de produtos agendado para rodar todo Domingo às 4h da manhã.');*/
 // Sincroniza as NF-e emitidas a cada 1 hora
 //0 * * * *
-//cron.schedule('1-59/1 * * * *', async () => {
-    //console.log(`${new Date().toISOString()}: Disparando job agendado de sincronização de NF-e.`);
-    //try {
-        //await Promise.all([
-            //syncNFeEliane(),
-            //syncNFeLucas()
-        //]);
-    //} catch (error) {
-        //console.error(`${new Date().toISOString()}: Erro pego pelo agendador ao sincronizar NF-e:`, error);
-    //}
+//*/15 1-59 * * * *
+//cron.schedule('*/15 1-59 * * * *', async () => {
+//    console.log(`${new Date().toISOString()}: Disparando job agendado de sincronização de NF-e.`);
+//    try {
+//        await Promise.all([
+//            syncNFeEliane(),
+//            syncNFeLucas()
+//        ]);
+//    } catch (error) {
+//        console.error(`${new Date().toISOString()}: Erro pego pelo agendador ao sincronizar NF-e:`, error);
+//    }
 //});
 //console.log('Job de sincronização de NF-e emitidas agendado para rodar a cada hora.');
 
 //0 5 * * 3
-//cron.schedule('0 5 * * 3', async () => {
-    //console.log(`${new Date().toISOString()}: Disparando job agendado de atualização de custos e dados de anúncios...`);
-    //try {
-        //await updateUrlCostsAndData();
-    //} catch (error) {
-        //console.error(`${new Date().toISOString()}: Erro pego pelo agendador ao executar updateUrlCostsAndData:`, error);
-    //}
-//});
+//cron.schedule('0 * * * *', async () => {
+/*    console.log(`${new Date().toISOString()}: Disparando job agendado de atualização de custos e dados de anúncios...`);
+    try {
+        await updateUrlCostsAndData();
+    } catch (error) {
+        console.error(`${new Date().toISOString()}: Erro pego pelo agendador ao executar updateUrlCostsAndData:`, error);
+    }
+});*/
+console.log('Job de atualização de custos e dados de URLs agendado para rodar semanalmente.');
 
-//console.log('Job de atualização de custos e dados de URLs agendado para rodar semanalmente.');
-//let isRastreioJobRunning = false;
-//console.log('[CRON] Agendando rotina de rastreio para executar a cada hora.');
+let isRastreioJobRunning = false;
+
+console.log('[CRON] Agendando rotina de rastreio para executar a cada hora.');
 // A expressão '0 * * * *' executa no minuto 0 de cada hora.
 //1-59/1 * * * *
-//cron.schedule('*/1 * * * *', async () => {
-  /*const dataHora = new Date().toLocaleString('pt-BR');
+//cron.schedule('0 * * * *', async () => {
+/*const dataHora = new Date().toLocaleString('pt-BR');
 
   if (isRastreioJobRunning) {
         console.log(`[CRON] A rotina de rastreio já está em execução. Pulando esta chamada. - ${dataHora}`);
