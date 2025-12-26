@@ -34,7 +34,7 @@ async function gerarPdfRelatorio(etiquetasCompletas, etiquetasOrdenadas) {
 
     // --- ETAPA 1: Agrega as quantidades totais por SKU (Lógica Original) ---
     // Usa 'etiquetasCompletas' pois a ordem não importa para a contagem total
-    for (const etiqueta of etiquetasCompletas) {
+    for (const etiqueta of etiquetasOrdenadas) {
         const nfeNumeroParaBusca = etiqueta.nfeNumero;
         const locEtiqueta = etiqueta.locations;
         if (nfeNumeroParaBusca && etiqueta.skus && etiqueta.skus.length > 0) {

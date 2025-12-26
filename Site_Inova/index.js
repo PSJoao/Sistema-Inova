@@ -22,6 +22,7 @@ const blingWebhookRoutes = require('./routes/blingWebhookRoutes');
 const tiposRoutes = require('./routes/tiposRoutes');
 const produtosRoutes = require('./routes/produtosRoutes');
 const prodSyncRoutes = require('./routes/productSyncRoutes');
+const conferenciaRoutes = require('./routes/conferenciaRoutes.js');
 const mercadoLivreSyncService = require('./services/mercadoLivreSyncService');
 const faturamentoAutomaticoRoutes = require('./routes/faturamentoAutomaticoRoutes');
 //const { updatePrices } = require('./updatePrices.js');
@@ -108,6 +109,7 @@ app.use('/', produtosRoutes);
 app.use('/faturamento-automatico', faturamentoAutomaticoRoutes);
 app.use('/product-sync', prodSyncRoutes);
 app.use('/webhooks/bling', blingWebhookRoutes);
+app.use('/conferencia', conferenciaRoutes);
 
 //mercadoLivreSyncService.startOrderSync(300000);
 

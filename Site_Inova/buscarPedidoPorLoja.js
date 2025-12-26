@@ -47,7 +47,7 @@ async function buscarPedido() {
         await getValidBlingToken(ACCOUNT_TYPE);
         
         console.log('\n[PASSO 1] Buscando ID do pedido...');
-        const pedidoSearchUrl = `${BLING_API_BASE_URL}/pedidos/vendas?numerosLojas[]=${numeroLoja}`;
+        const pedidoSearchUrl = `${BLING_API_BASE_URL}/pedidos/vendas?numero=${numeroLoja}`;
         const pedidoSearchResponse = await apiRequestWithRetry(pedidoSearchUrl, ACCOUNT_TYPE);
 
         if (!pedidoSearchResponse.data || pedidoSearchResponse.data.length === 0) {

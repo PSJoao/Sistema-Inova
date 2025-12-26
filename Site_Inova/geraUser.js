@@ -31,4 +31,4 @@ async function adicionarUsuario(username, password) {
 
 
 // Exemplo de uso
-adicionarUsuario("Rafaela","Rafaela123@");
+adicionarUsuario("Jesus","Jesus123@");
