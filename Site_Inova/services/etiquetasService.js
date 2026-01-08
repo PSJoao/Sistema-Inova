@@ -1255,7 +1255,7 @@ async function gerarPdfBipagem(labelsToPrint, palletMarkers) {
     const font = await finalPdfDoc.embedFont(StandardFonts.HelveticaBold);
     
     // Agrupa as etiquetas por arquivo de origem para carregar cada PDF apenas uma vez
-    const sourceFileMap = new Map(); // Key: 'nome-arquivo.pdf', Value: { doc: PDFDocument, labels: [...] }
+    const sourceFileMap = new Map(); 
     
     for (const label of labelsToPrint) {
         if (!sourceFileMap.has(label.pdf_arquivo_origem)) {
@@ -1277,24 +1277,20 @@ async function gerarPdfBipagem(labelsToPrint, palletMarkers) {
     }
 
     let labelCounter = 0;
-    let currentPallet = palletMarkers.shift();
+    
+    // Fazemos uma cópia da fila de paletes para manipular com segurança
+    const palletsQueue = [...palletMarkers]; 
+    let currentPallet = palletsQueue.shift();
 
-    // Adiciona a primeira página de palete (se houver)
-    if (currentPallet && currentPallet.index === 0) {
+    // 1. Verifica se há paletes ANTES da primeira etiqueta (índice 0)
+    while (currentPallet && currentPallet.index === labelCounter) {
         const page = finalPdfDoc.addPage();
         page.drawText(`Palete ${currentPallet.number}`, { x: 50, y: page.getHeight() / 2, size: 50, font: font });
-        currentPallet = palletMarkers.shift();
+        currentPallet = palletsQueue.shift();
     }
 
-    // Itera na ordem de impressão
+    // 2. Itera sobre as etiquetas de produtos
     for (const label of labelsToPrint) {
-        // Verifica se devemos adicionar a *próxima* página de palete
-        if (currentPallet && labelCounter === currentPallet.index) {
-            const page = finalPdfDoc.addPage();
-            page.drawText(`Palete ${currentPallet.number}`, { x: 50, y: page.getHeight() / 2, size: 50, font: font });
-            currentPallet = palletMarkers.shift();
-        }
-
         // Copia a página da etiqueta
         const source = sourceFileMap.get(label.pdf_arquivo_origem);
         if (source && source.doc) {
@@ -1302,7 +1298,23 @@ async function gerarPdfBipagem(labelsToPrint, palletMarkers) {
             finalPdfDoc.addPage(copiedPage);
         }
         
+        // Incrementa o contador POIS acabamos de adicionar uma etiqueta
         labelCounter++;
+
+        // 3. Verifica se há paletes logo APÓS esta etiqueta
+        while (currentPallet && currentPallet.index === labelCounter) {
+            const page = finalPdfDoc.addPage();
+            page.drawText(`Palete ${currentPallet.number}`, { x: 50, y: page.getHeight() / 2, size: 50, font: font });
+            currentPallet = palletsQueue.shift();
+        }
+    }
+
+    // 4. CORREÇÃO PRINCIPAL: "Trailing Pallets"
+    // Se sobraram paletes que foram adicionados APÓS o último produto (no final da lista), eles são processados aqui.
+    while (currentPallet) {
+        const page = finalPdfDoc.addPage();
+        page.drawText(`Palete ${currentPallet.number}`, { x: 50, y: page.getHeight() / 2, size: 50, font: font });
+        currentPallet = palletsQueue.shift();
     }
 
     const pdfBytes = await finalPdfDoc.save();

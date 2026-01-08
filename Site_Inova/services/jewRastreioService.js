@@ -20,7 +20,7 @@ function mapearStatusJew(codigoOcorrencia) {
     const codigo = String(codigoOcorrencia);
     const mapaStatus = {
         '0': 'Em Trânsito', '12': 'Em Trânsito', '15': 'Em Trânsito',
-        '22': 'Em Trânsito', '31': 'Em Trânsito', '35': 'Entregue - Conferir'
+        '22': 'Em Trânsito', '31': 'Em Trânsito', '35': 'Entregue - Confirmado'
     };
     return mapaStatus[codigo] || 'Fora do Comum';
 }

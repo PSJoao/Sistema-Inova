@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
     const listContainer = document.getElementById('bipagemListContainer');
     const addPalletBtn = document.getElementById('bipagemAddPalletBtn');
     const finalizeBtn = document.getElementById('bipagemFinalizeBtn');
+    const resetBtn = document.getElementById('bipagemResetBtn');
     
     const currentScanListEl = document.getElementById('currentScanList');
     //const fecharProdutoBtn = document.getElementById('bipagemFecharProdutoBtn');
@@ -270,7 +271,7 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
 
     /**
      * Gerencia a troca do Contador.
-     * Para DESLIGAR, exige senha. Para LIGAR, verifica se a lista está limpa.
+     * Salva o estado IMEDIATAMENTE após qualquer alteração válida.
      */
     async function handlePalletCounterSwitch(e) {
         const tryingToTurnOn = e.target.checked;
@@ -278,15 +279,10 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
 
         if (!tryingToTurnOn) {
             // --- TENTATIVA DE DESLIGAR (Requer Senha) ---
-            
-            // 1. Impede a mudança visual imediata (mantém marcado até digitar a senha)
             e.preventDefault();
-            checkbox.checked = true; 
+            checkbox.checked = true; // Mantém ligado visualmente até a senha
 
-            // 2. Cria um ID único para o input de senha
             const passInputId = 'authPass_' + Date.now();
-            
-            // 3. Monta o HTML do Modal com Input
             const modalHtml = `
                 <div class="text-left">
                     <p class="mb-2">Este recurso deve permanecer ativo por padrão.</p>
@@ -298,52 +294,48 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
             ModalSystem.confirm(
                 modalHtml, 
                 'Autenticação Requerida', 
-                async function() { // Callback de confirmação
+                async function() { // Callback de confirmação (Senha Certa)
                     const inputEl = document.getElementById(passInputId);
                     const typedPass = inputEl ? inputEl.value : '';
 
                     if (typedPass === '332211') {
-                        // SENHA CORRETA
+                        // Ação permitida: Desliga e Reseta
                         isPalletCounterActive = false;
-                        palletCount = 1; // Reseta ao desligar
-                        checkbox.checked = false; // Desmarca visualmente agora
+                        palletCount = 1; 
+                        checkbox.checked = false; // Atualiza visualmente
                         
-                        ModalSystem.showToast('Contador desbloqueado e resetado.', 'success');
                         updateStats();
-                        await saveStateToBackend();
+                        // SALVA IMEDIATAMENTE (Independente de lista vazia)
+                        await saveStateToBackend(); 
+                        ModalSystem.showToast('Contador desbloqueado e resetado.', 'success');
                     } else {
-                        // SENHA INCORRETA
                         ModalSystem.showToast('Senha incorreta. Ação negada.', 'error');
-                        // O checkbox continua marcado pois prevenimos o default no início
+                        // Não salva nada, estado permanece o anterior
                     }
                 },
-                null, // Callback cancelar (não faz nada, mantém marcado)
+                null, 
                 { isHtml: true, confirmText: 'Confirmar', cancelText: 'Cancelar' }
             );
 
         } else {
-            // --- TENTATIVA DE LIGAR ---
-            
-            // Regra: Só pode ativar se NÃO houver paletes na lista atual
+            // --- TENTATIVA DE LIGAR (Sem senha, mas valida lista) ---
             const hasPalletInList = scanList.some(item => item.type === 'pallet');
             
             if (hasPalletInList) {
-                ModalSystem.alert(
-                    'Para reativar o contador, remova os paletes manuais da lista ou finalize a bipagem atual.', 
-                    'Ação Bloqueada'
-                );
+                ModalSystem.alert('Para reativar o contador, remova os paletes manuais da lista ou finalize a bipagem atual.', 'Ação Bloqueada');
                 e.preventDefault();
                 checkbox.checked = false;
                 return;
             }
             
-            // Se passou, ativa e inicia do 1
+            // Ação permitida: Liga e Reseta para 1
             isPalletCounterActive = true;
             palletCount = 1; 
-            ModalSystem.showToast('Contador Diário ATIVO. Iniciando do Palete 1.', 'success');
             
             updateStats();
+            // SALVA IMEDIATAMENTE
             await saveStateToBackend();
+            ModalSystem.showToast('Contador ATIVO. Estado salvo.', 'success');
         }
     }
 
@@ -358,7 +350,7 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
         // Verifica duplicata no grupo atual
         if (currentBips.includes(componentSku)) {
             // errorSound.play();
-            ModalSystem.alert(`A estrutura ${componentSku} já foi bipada neste grupo.`, 'Duplicado');
+            ModalSystem.alert(`A estrutura ${componentSku} já foi bipada neste grupo.`, 'Duplicado', () => bipagemInput.focus());
             bipagemInput.value = '';
             bipagemInput.focus();
             return;
@@ -406,7 +398,7 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
                     await saveStateToBackend();
                 }
                 // Mostra o erro (seja kit ou não)
-                return ModalSystem.alert(data.message, 'Falha na Validação');
+                return ModalSystem.alert(data.message, 'Falha na Validação', () => bipagemInput.focus());
             }
 
             // Sucesso! O backend validou.
@@ -462,7 +454,7 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
         if (!isKitMode) {
             // Tentando ENTRAR no modo Kit
             if (currentBips.length > 0) {
-                ModalSystem.alert('Limpe a bipagem atual antes de montar um kit.', 'Aviso');
+                ModalSystem.alert('Limpe a bipagem atual antes de montar um kit.', 'Aviso', () => bipagemInput.focus());
                 return;
             }
             isKitMode = true;
@@ -471,7 +463,7 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
         } else {
             // Tentando FECHAR o kit (botão agora diz "Fechar Kit")
             if (currentBips.length === 0) {
-                 ModalSystem.alert('Bipe pelo menos uma estrutura para fechar o kit.', 'Aviso');
+                 ModalSystem.alert('Bipe pelo menos uma estrutura para fechar o kit.', 'Aviso', () => bipagemInput.focus());
                  return;
             }
             // Chama a mesma função de validação usada pelo scan único
@@ -591,11 +583,11 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
      */
     async function handleAddPallet() {
         if (scanList.length === 0) {
-            return ModalSystem.alert('Feche pelo menos um produto antes de adicionar um novo palete.', 'Aviso');
+            return ModalSystem.alert('Feche pelo menos um produto antes de adicionar um novo palete.', 'Aviso', () => bipagemInput.focus());
         }
 
         if (scanList.length > 0 && scanList[scanList.length - 1].type === 'pallet') {
-            return ModalSystem.alert('Você já adicionou um palete. Bipe um produto.', 'Aviso');
+            return ModalSystem.alert('Você já adicionou um palete. Bipe um produto.', 'Aviso', () => bipagemInput.focus());
         }
         
         // Usa o palletCount atual e DEPOIS incrementa
@@ -615,7 +607,7 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
      */
     async function handleFinalize() {
         if (scanList.length === 0) {
-            return ModalSystem.alert('Nenhum item foi bipado.', 'Aviso');
+            return ModalSystem.alert('Nenhum item foi bipado.', 'Aviso', () => bipagemInput.focus());
         }
         
         let produtosCompletos = 0;
@@ -624,7 +616,7 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
         }
         
         if (produtosCompletos === 0) {
-            return ModalSystem.alert('Nenhum produto foi fechado.', 'Aviso');
+            return ModalSystem.alert('Nenhum produto foi fechado.', 'Aviso', () => bipagemInput.focus());
         }
 
         // Prepara o scanList para o backend ("achata" a lista)
@@ -646,7 +638,7 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
         
         // Verifica se a lista achatada tem itens (pode não ter se só tiver paletes vazios)
         if (flatScanList.filter(i => i.type === 'item').length === 0) {
-             return ModalSystem.alert('Nenhum produto foi fechado.', 'Aviso');
+             return ModalSystem.alert('Nenhum produto foi fechado.', 'Aviso', () => bipagemInput.focus());
         }
 
         ModalSystem.confirm(
@@ -729,6 +721,39 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
             { confirmText: "Sim, Finalizar", cancelText: "Cancelar", isHtml: true }
         );
     }
+
+    /**
+     * Reseta toda a listagem e volta o contador para 1.
+     * Funciona independente se o modo persistente está ativo ou não.
+     */
+    async function handleResetListing() {
+        ModalSystem.confirm(
+            'Tem certeza? Isso <strong>apagará todos os itens</strong> bipados e <strong>voltará o Palete para o número 1</strong>.<br>Esta ação não pode ser desfeita.',
+            'Confirmar Reset Total',
+            async function() {
+                // 1. Limpa todas as listas e estados temporários
+                scanList = [];
+                productAggregates = {};
+                currentBips = [];
+                isKitMode = false;
+                
+                // 2. FORÇA o contador para 1 (Regra solicitada)
+                // Nota: O 'isPalletCounterActive' permanece como estava (ligado ou desligado).
+                // Apenas reiniciamos a contagem numérica.
+                palletCount = 1;
+                
+                // 3. Atualiza UI e Salva no Banco
+                updateStats();
+                renderUI();
+                await saveStateToBackend();
+                
+                ModalSystem.showToast('Listagem resetada. Iniciando do Palete 1.', 'success');
+                bipagemInput.focus();
+            },
+            null,
+            { isHtml: true, confirmText: 'Sim, Resetar', cancelText: 'Cancelar' }
+        );
+    }
     
     /**
      * Remove um item da lista principal (Produto ou Palete)
@@ -806,6 +831,9 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
     }
     if (palletCounterCheckbox) {
         palletCounterCheckbox.addEventListener('change', handlePalletCounterSwitch);
+    }
+    if (resetBtn) {
+        resetBtn.addEventListener('click', handleResetListing);
     }
 
     // --- Carregamento Inicial ---

@@ -134,6 +134,7 @@ async function atualizarStatusPedidosSsw(pedidosSsw) {
     for (const pedido of pedidosSsw) {
         try {
             const response = await axios.post('https://ssw.inf.br/api/trackingdanfe', { chave_nfe: pedido.chave_nfe }, { headers: { 'Content-Type': 'application/json' } });
+            console.log('Response JSON:', JSON.stringify(response, null, 2));
             const dadosRastreioRaw = response.data;
             if (!dadosRastreioRaw || !dadosRastreioRaw.success || !dadosRastreioRaw.documento || !dadosRastreioRaw.documento.tracking || dadosRastreioRaw.documento.tracking.length === 0) {
                 continue;

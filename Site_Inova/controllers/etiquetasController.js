@@ -7,22 +7,36 @@ const path = require('path');
 const { Pool } = require('pg');
 const ExcelJS = require('exceljs');
 const cron = require('node-cron');
-
+//0 19 * * *
 cron.schedule('0 19 * * *', async () => {
-    console.log('[CRON] Executando reset DIÁRIO do Contador de Paletes às 19h...');
+    console.log('[CRON 19h] Verificando condições para reset do Contador de Paletes...');
     const client = await pool.connect();
+    
     try {
-        // AGORA: Força "isPalletCounterActive" para TRUE e "palletCount" para 1.
-        // Garante que o dia seguinte comece com o contador ligado e zerado.
-        const query = `
-            UPDATE ml_bipagem_state 
-            SET state_json = state_json || '{"isPalletCounterActive": true, "palletCount": 1}'::jsonb
-            WHERE state_key = 'mercado_livre_bipagem';
-        `;
-        await client.query(query);
-        console.log('[CRON] Contador resetado para 1 e ATIVADO para o dia seguinte.');
+        // 1. Busca o estado ATUAL antes de decidir
+        const checkQuery = `SELECT state_json FROM ml_bipagem_state WHERE state_key = 'mercado_livre_bipagem'`;
+        const res = await client.query(checkQuery);
+        const currentState = res.rows[0]?.state_json || {};
+        const scanList = currentState.scanList || [];
+
+        // 2. Verifica se existe trabalho em andamento
+        if (scanList.length > 0) {
+            // CENÁRIO: Operador trabalhando. NÃO RESETAR.
+            console.log(`[CRON 19h] ABORTADO. Existem ${scanList.length} itens na lista de bipagem. O reset não será aplicado para preservar o trabalho do usuário.`);
+        } else {
+            // CENÁRIO: Lista vazia. RESET SEGURO.
+            // Força "isPalletCounterActive" para TRUE e "palletCount" para 1.
+            const updateQuery = `
+                UPDATE ml_bipagem_state 
+                SET state_json = state_json || '{"isPalletCounterActive": true, "palletCount": 1}'::jsonb
+                WHERE state_key = 'mercado_livre_bipagem';
+            `;
+            await client.query(updateQuery);
+            console.log('[CRON 19h] SUCESSO. Lista vazia detectada. Contador resetado para 1 e ATIVADO para o dia seguinte.');
+        }
+
     } catch (error) {
-        console.error('[CRON] Erro ao resetar contador:', error);
+        console.error('[CRON 19h] Erro ao tentar resetar contador:', error);
     } finally {
         client.release();
     }
@@ -690,13 +704,13 @@ exports.saveAndRotateRecentPdf = async (pdfBuffer, filename) => {
         fileStats.sort((a, b) => b.time - a.time);
 
         // 5. Se tiver mais de 5, apaga os excedentes (os mais antigos)
-        if (fileStats.length > 5) {
+        /*if (fileStats.length > 5) {
             const filesToDelete = fileStats.slice(5);
             for (const fileData of filesToDelete) {
                 await fs.unlink(fileData.fullPath);
                 console.log(`[Rotação] Arquivo antigo removido: ${fileData.file}`);
             }
-        }
+        }*/
     } catch (error) {
         console.error('Erro na rotação de PDFs recentes:', error);
     }

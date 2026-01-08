@@ -565,10 +565,10 @@ async function processarLoteNotas(notas, accountName, token) {
             }
             
 
-            if (!isML) {
+            /*if (!isML) {
                 await processingClient.query('COMMIT'); 
                 continue; // Pula se não for Mercado Livre
-            }
+            }*/
 
             // Regra da Quantidade > 1
             if (totalQuantidade > 1) {

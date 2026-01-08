@@ -27,17 +27,20 @@
             <div class="custom-control custom-switch">
                 <input type="checkbox" class="custom-control-input" id="palletCounterCheckbox" checked>
                 <label class="custom-control-label font-weight-bold text-dark" for="palletCounterCheckbox" style="cursor: pointer; user-select: none;">
-                    <i class="fas fa-history text-primary"></i> Contador de Paletes Diário
+                    <i class="fas fa-history text-primary"></i> Contador de Paletes
                 </label>
             </div>
             <small class="text-muted d-none d-sm-block">
-                <i class="fas fa-info-circle"></i> Inicia do 1 e reseta às 19h.
+                <i class="fas fa-info-circle"></i> Apenas desligue-o se for realmente necessário.
             </small>
         </div>
     </div>
 
     {{! Botões de Ação Principais (inalterado) }}
     <div class="bipagem-actions">
+        <button type="button" class="btn btn-warning ml-2" id="bipagemResetBtn" title="Zerar lista e voltar contador para 1">
+            <i class="fas fa-trash-restore"></i> Resetar Listagem
+        </button>
         <button type="button" class="btn btn-accent" id="bipagemAddPalletBtn">
             <i class="fas fa-pallet"></i> Adicionar Palete
         </button>

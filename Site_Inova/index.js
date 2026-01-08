@@ -14,6 +14,7 @@ const handlebarsHelpers = require('./helpers/handlebarsHelpers');
 const authRoutes = require('./routes/authRoutes');
 const authController = require('./controllers/authController');
 const rastreioService = require('./services/rastreioService');
+const produtosRoutes = require('./routes/produtosRoutes.js');
 const nfeHistoryRoutes = require('./routes/nfeHistoryRoutes');
 const { updatePrices } = require('./updatePrices.js');
 const { updatePricesMM } = require('./updatePricesMM.js');
@@ -24,11 +25,6 @@ const etiquetasRoutes = require('./routes/etiquetasRoutes');
 const tiposRoutes = require('./routes/tiposRoutes');
 const prodSyncRoutes = require('./routes/productSyncRoutes');
 const conferenciaRoutes = require('./routes/conferenciaRoutes.js');
-<<<<<<< HEAD
-const mercadoLivreSyncService = require('./services/mercadoLivreSyncService');
-=======
-const produtosRoutes = require('./routes/produtosRoutes');
->>>>>>> 50d824e32b25a92a05d8c98e90cb53a25a56987a
 const faturamentoAutomaticoRoutes = require('./routes/faturamentoAutomaticoRoutes');
 const { syncBlingProductsLucas, syncBlingProductsEliane } = require('./blingSyncService.js');
 const { updateUrlCostsAndData } = require('./costUpdater.js');
