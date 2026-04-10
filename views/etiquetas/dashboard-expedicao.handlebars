@@ -1,0 +1,137 @@
+{{#section "head" }} <link href="/public/styles/dashboardExpedicao.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap4.min.css">
+    {{/section}}
+
+    <div class="dashboard-wrapper">
+        <div class="dashboard-header">
+            <h1 class="page-title-dark">Painel de Gestão da Expedição</h1>
+        </div>
+
+        {{> messages}}
+
+        <div class="dashboard-panel">
+            <h4 class="panel-title"><i class="fas fa-chart-pie"></i> Balanço do Dia</h4>
+            <div class="stat-grid">
+                <div class="stat-card heranca">
+                    <h4>Herança Ontem</h4>
+                    <div class="stat-value" id="dash-heranca">0</div>
+                </div>
+                <div class="stat-card novos">
+                    <h4>Criados Hoje</h4>
+                    <div class="stat-value" id="dash-novos">0</div>
+                </div>
+                <div class="stat-card subtracoes">
+                    <h4>Pausados/Cancelados</h4>
+                    <div class="stat-value" id="dash-subtracoes">0</div>
+                </div>
+                <div class="stat-card destaque">
+                    <h4>Total a Expedir</h4>
+                    <div class="stat-value" id="dash-total">0</div>
+                </div>
+                <div class="stat-card success">
+                    <h4><i class="fas fa-check-double" style="margin-right: 4px;"></i> Expedidos Hoje</h4>
+                    <div class="stat-value" id="dash-expedidos">0</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel-group" style="display: flex; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
+            <div class="dashboard-panel" style="flex: 1; min-width: 350px;">
+                <h4 class="panel-title"><i class="fas fa-users"></i> Gerar Etiquetas de Equipe</h4>
+                <p class="description-text mb-3">Insira os dados da equipe para gerar etiquetas em PDF prontas para
+                    bipagem.</p>
+
+                <form id="form-etiquetas-carregadores">
+                    <div id="carregadores-container">
+                        <!-- Preenchido via JS do banco de dados -->
+                    </div>
+
+                    <div class="btn-actions-group"
+                        style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px; gap: 10px;">
+                        <button type="button" id="btn-add-carregador" class="btn-premium outline">
+                            <i class="fas fa-plus"></i> Novo Carregador
+                        </button>
+                        <button type="submit" id="btn-gerar-zip" class="btn-premium orange">
+                            <i class="fas fa-file-archive"></i> Baixar ZIP
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="dashboard-panel" style="flex: 1; min-width: 350px;">
+                <h4 class="panel-title"><i class="fas fa-trophy"></i> Produtividade Diária</h4>
+                <div class="table-responsive">
+                    <table class="table" id="tabela-produtividade" style="width: 100%">
+                        <thead>
+                            <tr>
+                                <th>Carregador</th>
+                                <th>Kits Separados</th>
+                                <th>Itens Unitários</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="dashboard-panel">
+            <div class="table-controls"
+                style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; gap: 10px;">
+                <h4 class="panel-title mb-0" style="border: none; padding: 0;"><i class="fas fa-clipboard-list"></i>
+                    Fila de Expedição e Pendências</h4>
+                <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <button id="btn-exportar-tabela-full" class="btn-premium orange" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px;">
+                            <i class="fas fa-file-excel"></i> Gerar Relatório
+                        </button>
+                        <button id="btn-exportar-tabela-agrupada" class="btn-premium orange" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px;">
+                            <i class="fas fa-boxes"></i> Contagem SKU
+                        </button>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <label for="filtro-status-tabela"
+                            style="color: var(--text-secondary); margin: 0; font-size: 0.9rem;">Filtro:</label>
+                        <select id="filtro-status-tabela" class="form-control-dark">
+                            <option value="">Todos os Status</option>
+                            <option value="Pendente">Pendentes</option>
+                            <option value="Sem Estoque">Sem Estoque</option>
+                            <option value="Cancelado">Cancelados</option>
+                            <option value="Expedido">Expedidos</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table" id="tabela-pendencias" style="width: 100%">
+                    <thead>
+                        <tr>
+                            <th>Data Entrada</th>
+                            <th>Identificador</th>
+                            <th>SKU / Produto</th>
+                            <th>Status</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="dashboard-panel mt-4">
+            <h4 class="panel-title mb-1" style="border: none; padding: 0;"><i class="fas fa-history"></i> Histórico de Expedições Encerradas</h4>
+            <p class="description-text mb-3">Dias finalizados disponíveis para geração de planilhas de conferência logística.</p>
+            <div id="historico-container" style="display: flex; flex-wrap:wrap; gap: 15px;">
+                <!-- O JS preenche isso com stat-cards de histórico -->
+            </div>
+        </div>
+    </div>
+
+    {{#section "scripts"}}
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap4.min.js"></script>
+    <script src="/public/scripts/expedicaoDashboardManager.js"></script>
+    {{/section}}

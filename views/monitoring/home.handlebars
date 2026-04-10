@@ -1,0 +1,88 @@
+{{!< main}}
+
+<div class="content-card">
+  <h1 class="page-title">{{title}}</h1>
+  <div class="action-buttons">
+    <a href="/madeiramadeira/generate-monitoring-report" class="btn btn-success-alt"><i class="fas fa-file-excel"></i> Gerar Relatório</a>
+  </div>
+  <div class="table-responsive-wrapper">
+    <table id="productTable" class="dataTable display" style="width:100%">
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>ID</th>
+          <th>Produto</th>
+          <th>Custo</th>
+          <th>Nosso Preço (A vista)</th>
+          <th>Menor Preço Concorrente</th>
+          <th>Vendedor Concorrente</th>
+          <th>Nosso Preço (A Prazo)</th>
+          <th>Rentabilidade Atual</th>
+          <th>Novo Preço a Prazo Sugerido</th>
+          <th>Rentabilidade Sugerida</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each productsToMonitor}}
+        <tr>
+          <td>{{sku}}</td>
+          <td>{{product_id}}</td>
+          <td><a href={{url}} target="_blank">{{description}}</a></td> {{!-- URL está em url_principal --}}
+          <td>{{formatPrice custo}}</td>
+          <td>{{formatPrice inovaMóveisPrice}}</td>
+          <td>{{formatPrice lowestPrice}}</td>
+          <td>{{lowestSeller}}</td>
+          <td>{{formatPrice prazoPrice}}</td>
+          <th class="margin-cell {{#if (isLowMargin atualMargin)}}highlight-red{{/if}}">{{atualMargin}}%</th>
+          <td>{{formatPrice newPrice}}</td> {{!-- newPrice é o "Novo Preço a Prazo" --}}
+          <td class="margin-cell {{#if (isLowMargin margin)}}highlight-red{{/if}}">{{margin}}%</td> 
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{{!-- Script para seleção de célula e highlight (se necessário para ESTA tabela específica) --}}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const tableId = '#productTable'; // ID da tabela desta página
+  const tableElement = document.querySelector(tableId);
+
+  if (tableElement) {
+    // Lógica de seleção de célula
+    tableElement.addEventListener('click', function(event) {
+      const targetCell = event.target.closest('td, th');
+      if (!targetCell) return;
+
+      tableElement.querySelectorAll('td.selected, th.selected').forEach(el => {
+        el.classList.remove('selected');
+      });
+      targetCell.classList.add('selected');
+    });
+
+    // Função de highlight (se o global highlightIssues.js não for suficiente ou precisar ser chamado no draw)
+    // Se o seu dataTables.js já chama highlightIssues no drawCallback para todas as tabelas,
+    // este bloco específico de highlight pode não ser necessário aqui.
+    function applyRowHighlight() {
+      $(tableId + ' tbody tr').each(function() {
+        const marginCell = $(this).find('.margin-cell');
+        // Removendo parseFloat daqui, pois o helper 'isLowMargin' faria a lógica
+        // Se 'isLowMargin' não existir, você precisaria da lógica de parseFloat aqui
+        // e adicionar/remover 'highlight-red' diretamente.
+      });
+    }
+
+    // Se você usa DataTables e ele redesenha a tabela (ex: paginação, busca)
+    if (typeof $ !== 'undefined' && $.fn.dataTable.isDataTable(tableId)) {
+      $(tableId).on('draw.dt', function() {
+        // Se você tem uma função global highlightIssues que sabe qual tabela tratar, chame-a
+        // if (typeof highlightIssues === 'function') highlightIssues(tableId);
+        // ou aplique a lógica específica:
+        // applyRowHighlight();
+      });
+    }
+    // applyRowHighlight(); // Chamada inicial se necessário e não houver drawCallback
+  }
+});
+</script>

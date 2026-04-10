@@ -1,0 +1,119 @@
+/* public/styles/tipos.css */
+
+/* --- Abas --- */
+/* (Estilos copiados de assistencia.css para garantir) */
+.nav-tabs {
+    border-bottom: 1px solid var(--bg-tertiary);
+    display: flex;
+    flex-wrap: nowrap;
+}
+.nav-tabs .nav-item {
+    margin-bottom: -1px;
+}
+.nav-tabs .nav-link {
+    border: 1px solid transparent;
+    border-top-left-radius: var(--border-radius-md);
+    border-top-right-radius: var(--border-radius-md);
+    color: var(--text-secondary);
+    font-weight: 500;
+    padding: 0.75rem 1.25rem;
+    transition: all var(--transition-fast);
+    text-decoration: none; /* Garante que não haja sublinhado */
+}
+.nav-tabs .nav-link:hover {
+    border-color: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+.nav-tabs .nav-link.active {
+    background-color: var(--bg-secondary);
+    border-color: var(--bg-tertiary) var(--bg-tertiary) var(--bg-secondary);
+    color: var(--accent-orange);
+}
+
+/* --- Layout dos Forms --- */
+.form-container-wrapper {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    justify-content: center;
+    margin-top: 1.5rem;
+}
+
+.form-card {
+    flex: 1;
+    min-width: 350px;
+    max-width: 500px;
+    padding: 1.5rem;
+    background-color: var(--bg-main);
+    border-radius: var(--border-radius-md);
+    border: 1px solid var(--bg-tertiary);
+}
+
+.form-card-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid var(--bg-tertiary);
+    padding-bottom: 0.75rem;
+}
+
+/* --- Estilos de Formulário --- */
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+}
+
+/*.form-control {
+    width: 100%;
+    padding: 0.65rem 1rem;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    color: var(--text-primary);
+    background-color: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    box-sizing: border-box;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.form-control:focus {
+    border-color: var(--accent-blue);
+    outline: 0;
+    box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+}*/
+
+.form-text {
+    display: block;
+    margin-top: 0.5rem;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+/* --- Upload Customizado --- */
+.custom-file-upload input[type="file"] {
+    display: none;
+}
+
+.custom-file-upload .btn {
+    cursor: pointer;
+    width: 100%;
+}
+
+.file-list {
+    margin-top: 1rem;
+    font-size: 0.9rem;
+    font-style: italic;
+    color: var(--text-secondary);
+    word-break: break-all;
+}
+
+.btn-block {
+    width: 100%;
+}

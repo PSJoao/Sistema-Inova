@@ -1,0 +1,86 @@
+/* * Estilos para a Página de Política de Privacidade
+ * Tema Escuro
+ */
+
+.dark-theme {
+    background-color: #121212;
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+.policy-container {
+    max-width: 850px;
+    margin: 40px auto;
+    padding: 30px 50px;
+    background-color: #1e1e1e;
+    border-radius: 8px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.7);
+    border: 1px solid #333;
+}
+
+.policy-logo {
+    display: block;
+    margin: 0 auto 30px auto;
+    max-width: 100px; /* Ajuste o tamanho conforme necessário */
+}
+
+.policy-container h1 {
+    color: #ffffff;
+    font-size: 2.3em;
+    font-weight: 700;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #f07c00; /* Laranja da logo Inova */
+    padding-bottom: 10px;
+    text-align: center;
+}
+
+.policy-container h2 {
+    color: #f07c00; /* Laranja da logo Inova */
+    font-size: 1.7em;
+    font-weight: 600;
+    margin-top: 35px;
+    margin-bottom: 15px;
+}
+
+.policy-container p, 
+.policy-container ul, 
+.policy-container ol {
+    font-size: 1.05em;
+    margin-bottom: 15px;
+    color: #c7c7c7;
+}
+
+.policy-container ul,
+.policy-container ol {
+    padding-left: 30px;
+}
+
+.policy-container li {
+    margin-bottom: 10px;
+}
+
+.policy-container strong {
+    color: #ffffff;
+    font-weight: 600;
+}
+
+.policy-container a {
+    color: #f07c00;
+    text-decoration: none;
+}
+
+.policy-container a:hover {
+    text-decoration: underline;
+}
+
+.last-updated {
+    font-style: italic;
+    color: #aaa;
+    font-size: 0.9em;
+    text-align: center;
+    margin-top: -15px;
+    margin-bottom: 30px;
+}

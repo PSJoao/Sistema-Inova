@@ -1,0 +1,101 @@
+{{!< main}}
+
+{{#section "head"}}
+  {{!-- Adicionando um CSS dedicado para esta nova página --}}
+  <link href="/public/styles/nfe-management.css" rel="stylesheet">
+{{/section}}
+
+<div class="content-card">
+  <div class="page-header-actions">
+    <h1 class="page-title">{{title}}</h1>
+    <div class="header-buttons">
+        <button id="btnSyncNfe" class="btn btn-primary">
+            <i class="fas fa-sync-alt"></i> Sincronizar Novas NF-e
+        </button>
+        <button id="btnGerarEtiquetas" class="btn btn-accent" disabled>
+            <i class="fas fa-print"></i> Gerar Etiquetas Selecionadas
+        </button>
+    </div>
+  </div>
+
+  {{!-- Barra de Filtros e Controles --}}
+  <div class="nfe-controls-bar">
+    <div class="filter-group" style="padding-left: 30px;">
+      <label for="accountFilter">Conta:</label>
+      <select id="accountFilter" class="form-control">
+        <option value="">Todas</option>
+        <option value="lucas">INOVA MAGAZINE</option>
+        <option value="eliane">ELIANE TRIDAPALLI</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label for="sortFilter">Ordenar por:</label>
+      <select id="sortFilter" class="form-control">
+        <option value="data_desc">Mais Recentes</option>
+        <option value="data_asc">Mais Antigas</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label for="situationFilter">Filtrar por:</label>
+      <select id="situationFilter" class="form-control">
+        <option value="">Todas</option>
+        <option value="Aprovado">Autorizado</option>
+        <option value="Emitida">Emitida</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label for="platformFilter">Plataforma:</label>
+      <select id="platformFilter" class="form-control form-control-sm">
+          <option value="">Todas as Plataformas</option>
+          <option value="03.007.331/0001-41">Mercado Livre</option>
+          <option value="35.635.824/0001-12">Shopee</option>
+          <option value="10.490.181/0001-35">Madeira Madeira</option>
+          <option value="47.960.950/0001-21">Magalu</option>
+          <option value="15.436.940/0001-03">Amazon</option>
+          <option value="33.041.260/0652-90">Via Varejo</option>
+          <option value="00.776.574/0006-60">Americanas</option>
+      </select>
+    </div>
+    <div class="filter-group search-group">
+      <label for="searchFilter">Pesquisar:</label>
+      <input type="text" id="searchFilter" class="form-control" placeholder="Nº da NF ou Transportadora...">
+    </div>
+  </div>
+
+  {{!-- Barra de Informações da Seleção --}}
+  <div id="selectionInfoBar" class="selection-info-bar" style="display: none;">
+    <span id="selectionCount">0</span> nota(s) selecionada(s).
+    <button id="clearSelectionBtn" title="Limpar seleção">&times;</button>
+  </div>
+
+  <div class="nfe-list-header">
+    <div class="nfe-card-selection">
+      <input type="checkbox" id="selectAllCheckbox" title="Selecionar todos nesta página">
+    </div>
+    <div class="nfe-card-info">
+      <div class="info-line-1">
+        <span class="header-label nfe-numero-header">Nº da Nota</span>
+        <span class="header-label transportadora-header">Transportadora</span>
+      </div>
+      <div class="info-line-2">
+        <span class="header-label volumes-header">Volumes</span>
+        <span class="header-label data-emissao-header">Data de Emissão</span>
+      </div>
+    </div>
+  </div>
+
+  {{!-- Container para a lista de cards de NF-e --}}
+  <div id="nfeCardListContainer" class="nfe-card-list-container">
+    {{!-- O JavaScript irá preencher esta área com os cards das notas --}}
+    <div class="loading-spinner"></div> {{!-- Indicador de carregamento --}}
+  </div>
+
+  {{!-- Container para os controles de paginação --}}
+  <div id="paginationControlsContainer" class="pagination-controls"></div>
+
+</div>
+
+{{#section "scripts"}}
+  {{!-- Chamando o novo gerente para esta página --}}
+  <script src="/public/scripts/nfeManagementManager.js"></script>
+{{/section}}

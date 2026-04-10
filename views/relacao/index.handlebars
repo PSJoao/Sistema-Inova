@@ -1,0 +1,74 @@
+{{#section "head"}}
+  <link href="/public/styles/relacoes.css" rel="stylesheet">
+  {{!-- O DataTables CSS já deve ser carregado pelo main.handlebars --}}
+{{/section}}
+
+<div class="content-card">
+  <div class="page-header-actions">
+    <h1 class="page-title">{{title}}</h1>
+  </div>
+
+  <div class="transportadoras-section">
+    <h3 class="section-title">Transportadoras com NF-e Pendentes</h3>
+    <div class="transportadoras-grid">
+      {{#if transportadoras.length}}
+        {{#each transportadoras}}
+          <a href="/relacoes/{{this.apelido}}" class="transportadora-card">
+            <h3>{{this.apelido}}</h3>
+            <p>{{this.count}} NF-e pendente(s)</p>
+          </a>
+        {{/each}}
+      {{else}}
+        <p class="text-muted" style="grid-column: 1 / -1; text-align: center;">Nenhuma transportadora com NF-e pendente no momento.</p>
+      {{/if}}
+    </div>
+  </div>
+
+    <hr class="styled-divider">
+
+    <div class="admin-section">
+        <h2 class="section-title">Histórico de Relações</h2>
+        <table id="salvasTable" class="display" style="width:100%">
+            <thead>
+               <tr>
+                    <th>Título da Relação</th>
+                    <th>Transportadora</th>
+                    <th>Gerada por</th>
+                    <th>Data de Validação</th> {{!-- CORREÇÃO AQUI --}}
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+    </div>
+
+        <table id="justificadasTable" class="display" style="width:100%; display: none;">
+            <thead>
+                <tr>
+                    <th>Nº da NF-e</th>
+                    <th>Situação</th>
+                    <th>Transportadora</th>
+                    <th>Lista de Produtos</th>
+                    <th>Última Justificativa</th>
+                    <th>Data da Ação</th>
+                    <th>Nova Ação</th>
+                </tr>
+             </thead>
+            <tbody>
+            </tbody>
+        </table>
+
+        {{!-- [NOVO] Container para o contador de estruturas (começa escondido) --}}
+        <div id="missing-products-container" style="display: none; margin-top: 2rem;">
+            <h3 class="section-title">Estruturas Faltantes (Contador)</h3>
+            <ul id="missing-products-list" class="missing-products-list">
+                {{!-- A lista de estruturas será inserida aqui --}}
+            </ul>
+        </div>
+</div>
+
+{{#section "scripts"}}
+  <script src="/public/scripts/relacaoManager.js"></script>
+  <script src="/public/scripts/relacoesIndexManager.js"></script>
+{{/section}}

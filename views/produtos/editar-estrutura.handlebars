@@ -1,0 +1,53 @@
+{{!-- views/produtos/editar-estrutura.handlebars --}}
+{{!< main}}
+
+{{#section "head"}}
+    <link href="/public/styles/forms.css" rel="stylesheet">
+{{/section}}
+
+<div class="content-card">
+    <h1 class="page-title">{{title}}</h1>
+    <h3 class="page-subtitle">SKU Original: {{estrutura.component_sku}}</h3>
+
+    <div class="form-container">
+        <form action="/produtos/editar/estrutura" method="POST">
+            
+            {{!-- SKU original oculto para identificar o registro no POST --}}
+            <input type="hidden" name="old_component_sku" value="{{estrutura.component_sku}}">
+
+            <div class="form-row">
+                <div class="form-group col-md-4">
+                    <label for="component_sku">SKU Componente</label>
+                    <input type="text" id="component_sku" name="component_sku" class="form-control" value="{{estrutura.component_sku}}" required>
+                </div>
+                <div class="form-group col-md-8">
+                    <label for="structure_name">Nome da Estrutura</label>
+                    <input type="text" id="structure_name" name="structure_name" class="form-control" value="{{estrutura.structure_name}}">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group col-md-4">
+                    <label for="component_location">Localização</label>
+                    <input type="text" id="component_location" name="component_location" class="form-control" value="{{estrutura.component_location}}" placeholder="Ex: A-01-B">
+                </div>
+                <div class="form-group col-md-4">
+                    <label for="gtin">GTIN</label>
+                    <input type="text" id="gtin" name="gtin" class="form-control" value="{{estrutura.gtin}}">
+                </div>
+                <div class="form-group col-md-4">
+                    <label for="gtin_embalagem">GTIN Embalagem</label>
+                    <input type="text" id="gtin_embalagem" name="gtin_embalagem" class="form-control" value="{{estrutura.gtin_embalagem}}">
+                </div>
+            </div>
+
+            <hr>
+
+            <div class="form-actions">
+                {{!-- Volta para a listagem de estruturas --}}
+                <a href="/produtos/listagem?tipo=estrutura" class="btn btn-secondary">Cancelar</a>
+                <button type="submit" class="btn btn-primary">Salvar Alterações</button>
+            </div>
+        </form>
+    </div>
+</div>

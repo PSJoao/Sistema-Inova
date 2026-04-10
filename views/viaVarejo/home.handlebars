@@ -1,0 +1,61 @@
+{{!< main}}
+
+<div class="content-card">
+  <h1 class="page-title">{{title}}</h1>
+
+  <div class="table-responsive-wrapper">
+    <table id="viaVarejoMonitoringTable" class="dataTable display" style="width:100%"> {{!-- ID ÚNICO --}}
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Produto</th>
+          <th>Custo</th>
+          <th>Nome Ganhador</th>
+          <th>Prazo Ganhador</th>
+          <th>A Vista Ganhador</th>
+          <th>Nosso Preço</th>
+          <th>Valor Recomendado</th>
+          <th>Nome Concorrente</th>
+          <th>Valor Concorrente</th>
+          <th>Margem</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each urls}} {{!-- Ou productsToMonitor, ajuste conforme seu controller --}}
+        <tr>
+          <td>{{sku}}</td>
+          <td>{{produto}}</td>
+          <td>{{formatPrice custo}}</td>
+          <td>{{nome_ganhador}}</td>
+          <td>{{#if prazo_ganhador}}{{formatPrice prazo_ganhador}}{{else}}R$ 0,00{{/if}}</td>
+          <td>{{#if a_vista_ganhador}}{{formatPrice a_vista_ganhador}}{{else}}R$ 0,00{{/if}}</td>
+          <td>{{#if nosso_preco}}{{formatPrice nosso_preco}}{{else}}R$ 0,00{{/if}}</td>
+          <td>{{#if recommendedPrice}}{{formatPrice recommendedPrice}}{{else}}R$ 0,00{{/if}}</td>
+          <td>{{#if menor_concorrente}}{{menor_concorrente}}{{else}}Nenhum{{/if}}</td>
+          <td>{{#if valor_menor_concorrente}}{{formatPrice valor_menor_concorrente}}{{else}}R$ 0,00{{/if}}</td>
+          <td class="margin-cell {{#if (isLowMargin margin)}}highlight-red{{/if}}">
+            {{#if (neq margin 'N/A')}}{{margin}}%{{else}}0%{{/if}}
+          </td>
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const tableId = '#viaVarejoMonitoringTable'; // ID ÚNICO
+  const tableElement = document.querySelector(tableId);
+
+  if (tableElement) {
+    tableElement.addEventListener('click', function(event) {
+      const targetCell = event.target.closest('td, th');
+      if (!targetCell) return;
+      tableElement.querySelectorAll('td.selected, th.selected').forEach(el => el.classList.remove('selected'));
+      targetCell.classList.add('selected');
+    });
+  }
+  // Se necessário, inicialização específica do DataTables aqui.
+});
+</script>

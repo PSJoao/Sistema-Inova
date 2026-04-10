@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{title}} - InovaXPress</title>
+  <link rel="shortcut icon" href="/public/icons/favicon.ico" type="image/x-icon">
+
+  <link href="/public/styles/reset.css" rel="stylesheet">
+  <link href="/public/styles/theme.css" rel="stylesheet">
+  <link href="/public/styles/login.css" rel="stylesheet">
+  
+  {{!-- <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css"> --}}
+</head>
+<body class="login-page"> {{!-- Classe para aplicar estilos de corpo específicos do login --}}
+
+  <div class="login-title-brand">
+    <h1>INOVA</h1><h1 class="accent">X</h1><h1>PRESS</h1>
+  </div>
+
+  <div class="login-container">
+    {{#if heading}} {{!-- Opcional: um título dentro da caixa de login --}}
+      <h2>{{heading}}</h2>
+    {{/if}}
+
+    <div class="error-message">
+      {{#if errorMessage}}
+        {{errorMessage}}
+      {{/if}}
+    </div>
+
+    <form action="/login" method="post">
+      <div class="form-group">
+        <label for="username">Usuário:</label>
+        <input type="text" id="username" name="username" placeholder="Digite seu usuário" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="password">Senha:</label>
+        <input type="password" id="password" name="password" placeholder="Digite sua senha" required>
+      </div>
+
+      <button type="submit" class="btn btn-accent">Entrar</button> {{!-- Usando classes de botão globais --}}
+    </form>
+  </div>
+
+</body>
+</html>

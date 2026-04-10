@@ -1,0 +1,90 @@
+{{! views/conferencia/ml-mapping-upload.handlebars }}
+
+<div class="content-card">
+    <div class="page-header-actions">
+        <h2>Mapeamento de Pack ID</h2>
+        <a href="/conferencia/ml-batch" class="btn btn-accent">
+            <i class="fas fa-arrow-left"></i> Voltar
+        </a>
+    </div>
+
+    <h4>Alimentar Tabela de Conversão</h4>
+
+    <ul class="form-text mt-2">
+        <li><strong>Linha de Início:</strong> Leitura a partir da <strong>Linha 2</strong>.</li>
+        <li><strong>Coluna A:</strong> Número Real da Venda (ex: <code>#420000000</code>).</li>
+        <li><strong>Coluna B:</strong> Pack ID (ex: <code>#200000555</code>).</li>
+    </ul>
+    <br><br>
+    <form id="mappingUploadForm" enctype="multipart/form-data" class="mt-4">
+        <div class="row">
+            <div class="col-md-12 mb-3">
+                <label for="planilhaMapeamento" class="form-label fw-bold">Selecione o Relatório de Referência:</label>
+                <input class="form-control" type="file" id="planilhaMapeamento" name="planilhaMapeamento" accept=".xlsx, .xls, .csv" required>
+            </div>
+        </div>
+
+        <br>
+
+        <button type="submit" class="btn btn-success-alt btn-lg" id="btnEnviarMap">
+            <i class="fas fa-cloud-upload-alt"></i> Atualizar
+        </button>
+
+    </form>
+</div>
+
+{{! Scripts (Mantidos com a lógica do ModalSystem) }}
+<script src="/scripts/modal.js"></script>
+<script>
+    document.getElementById('mappingUploadForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const fileInput = document.getElementById('planilhaMapeamento');
+        if (!fileInput.files.length) {
+            alert("Por favor, selecione um arquivo.");
+            return;
+        }
+
+        if (typeof ModalSystem !== 'undefined') {
+            ModalSystem.showLoading(
+                'Lendo planilha e atualizando a tabela de conversão no banco de dados...<br>Aguarde um momento.',
+                'Atualizando Mapeamento'
+            );
+        }
+
+        const formData = new FormData(this);
+
+        try {
+            const response = await fetch('/conferencia/ml-mapping/process', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (typeof ModalSystem !== 'undefined') {
+                ModalSystem.hideLoading();
+            }
+
+            if (response.ok && result.success) {
+                setTimeout(() => {
+                    alert(`Sucesso!\n\n${result.message}\nRegistros Processados: ${result.count}`);
+                    fileInput.value = '';
+                }, 300);
+            } else {
+                throw new Error(result.message || 'Erro desconhecido ao processar.');
+            }
+
+        } catch (error) {
+            console.error(error);
+            if (typeof ModalSystem !== 'undefined') {
+                ModalSystem.hideLoading();
+                setTimeout(() => {
+                    alert('Erro ao processar: ' + error.message);
+                }, 300);
+            } else {
+                alert('Erro: ' + error.message);
+            }
+        }
+    });
+</script>

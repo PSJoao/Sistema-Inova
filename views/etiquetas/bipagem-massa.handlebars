@@ -1,0 +1,49 @@
+{{#section 'head'}}
+    <link href="/public/styles/bipagemMassa.css" rel="stylesheet">
+{{/section}}
+
+<div class="massa-header" style="justify-content: center;">
+    <h1 class="massa-header-title">Bipagem em Massa</h1>
+    <div style="width: 24px;"></div> <!-- Spacer -->
+</div>
+
+<div class="massa-controls">
+    <div>
+        <label class="form-label-dark">Alterar status para:</label>
+        <select id="massa-status-select" class="massa-select">
+            <option value="pendente">Pendente (Retomar)</option>
+            <option value="sem_estoque">Sem Estoque (Pausado)</option>
+            <option value="cancelado">Cancelado</option>
+        </select>
+    </div>
+    
+    <div class="massa-input-container">
+        <i class="fas fa-barcode input-icon"></i>
+        <input type="text" id="massa-barcode-input" class="massa-input" placeholder="Bipar NF..." autocomplete="off">
+    </div>
+</div>
+
+<div class="massa-list-container" id="massa-list-container">
+    <!-- Lista será gerada via JS -->
+    <div id="massa-empty-state" style="text-align: center; margin-top: 40px; color: var(--text-muted, #666);">
+        <i class="fas fa-box-open" style="font-size: 3.5rem; margin-bottom: 20px; opacity: 0.3; color: var(--accent-orange);"></i>
+        <p style="font-size: 1.1rem; color: var(--text-secondary);">Nenhuma etiqueta bipada no momento.</p>
+        <p style="font-size: 0.9rem; margin-top: 5px; opacity: 0.7;">Bipe os códigos acima para popular a lista.</p>
+    </div>
+</div>
+
+<div class="massa-footer">
+    <div class="massa-counter">Total Bipado: <strong id="massa-total-count">0</strong></div>
+    <button class="btn-massa-finalizar" id="btn-massa-finalizar" disabled>
+        <i class="fas fa-check-circle"></i> Atualizar Status
+    </button>
+</div>
+
+<!-- Audio Feedback -->
+<audio id="audio-success" src="/public/sounds/notification.mp3"></audio>
+<audio id="audio-error" src="/public/sounds/error.mp3"></audio>
+
+{{#section 'scripts'}}
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="/public/scripts/bipagemMassaManager.js"></script>
+{{/section}}

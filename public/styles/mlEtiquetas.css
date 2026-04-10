@@ -1,0 +1,45 @@
+/* public/styles/mlEtiquetasList.css */
+
+/* Herda a maioria dos estilos de nfeHistory.css */
+
+/* Adiciona linhas separadoras entre as linhas da tabela */
+.nfe-history-table tbody tr {
+    border-bottom: 1px solid var(--border-color-light); /* Linha cinza clara entre as rows */
+}
+
+/* Adiciona mais espaçamento interno (padding) às células */
+.nfe-history-table th,
+.nfe-history-table td {
+    padding: 12px 10px; /* Aumenta o padding vertical para 12px e mantém o horizontal em 10px (ajuste conforme preferir) */
+    vertical-align: middle; /* Alinha o conteúdo verticalmente ao centro */
+}
+
+/* Opcional: Ajuste para a última linha não ter borda inferior, se desejar */
+.nfe-history-table tbody tr:last-child {
+    border-bottom: none;
+}
+
+/* Ajustes específicos que você já tinha (mantidos) */
+.nfe-status.status-pendente { background-color: #ffc107; color: #333; }
+.nfe-status.status-associado { background-color: #17a2b8; color: white; }
+.nfe-status.status-impresso { background-color: #28a745; color: white; }
+
+.sku-list, .location-list, .filename {
+    max-width: 200px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: default;
+}
+
+/* Garante que o span.nfe-status tenha um padding interno */
+.nfe-status {
+    padding: 4px 8px; /* Adiciona um padding interno ao status */
+    border-radius: var(--border-radius-sm);
+    font-size: 0.8em;
+    font-weight: bold;
+    text-transform: capitalize;
+    display: inline-block; /* Necessário para o padding funcionar corretamente */
+    text-align: center;
+    min-width: 80px; /* Garante uma largura mínima */
+}

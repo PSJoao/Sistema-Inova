@@ -1,0 +1,146 @@
+/* public/styles/print-relacao.css */
+
+/* Define as configurações para a impressão da página */
+@page {
+    size: A4 portrait; /* Diz para a impressora: use papel A4 na orientação PAISAGEM (deitada) */
+    margin: 1cm 0.5cm; /* Margens: 1cm em cima/baixo, 0.5cm nas laterais */
+}
+
+/* Estilos gerais para o corpo do documento */
+body {
+    font-family: Calibri, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 8pt; /* Reduz um pouco a fonte base para caber mais informação */
+    -webkit-print-color-adjust: exact !important; /* Força cores de fundo no Chrome/Edge */
+    print-color-adjust: exact !important;         /* Padrão para outros navegadores */
+    margin: 0;
+    padding: 0;
+}
+
+.watermark {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-45deg);
+    font-size: 150pt;
+    font-weight: bold;
+    color: rgba(255, 0, 0, 0.15); /* Vermelho bem claro e transparente */
+    z-index: -1; /* Fica atrás do conteúdo */
+    pointer-events: none; /* Não interfere com cliques */
+    letter-spacing: 5px;
+}
+
+.print-button-container {
+    text-align: center;
+    margin-bottom: 15px;
+}
+
+.btn {
+    display: inline-block;
+    padding: 10px 20px;
+    font-size: 1rem;
+    font-weight: 500;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    border-radius: 5px;
+    border: 1px solid transparent;
+}
+.btn-accent {
+    background-color: var(--accent-orange, #F58634);
+    color: var(--accent-orange-text, #fff);
+}
+.btn-accent:hover {
+    background-color: var(--accent-orange-hover, #d96d21);
+}
+.btn i {
+    margin-right: 8px;
+}
+
+.print-container {
+    width: 100%;
+}
+
+.report-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.report-table td, .report-table th {
+    border: 1px solid black;
+    padding: 2px 4px;
+    vertical-align: middle;
+    text-align: center;
+    word-wrap: break-word; /* Quebra palavras longas para não estourar a célula */
+}
+
+.report-table thead th {
+    font-weight: bold;
+}
+
+/* Estilos para os retângulos grandes mesclados */
+.merged-cell {
+    border: 2px solid black !important;
+    vertical-align: bottom;
+    text-align: left;
+    padding: 2px 8px; /* Padding interno */
+}
+
+.signature-box-top { height: 65px; }
+.title-box { height: 30px; }
+.signature-box-bottom { height: 50px; }
+.signature-box-small { height: 40px; }
+
+/* Linhas vazias para espaçamento */
+.empty-row-spacer td { border: none !important; height: 8px; }
+.empty-row-spacer-large td { border: none !important; height: 15px; }
+
+/* Linhas de informação da empresa (sem bordas) */
+.company-info-row td { border: none !important; text-align: left; font-weight: bold; vertical-align: bottom; padding: 1px 2px; }
+.company-info-row .value { font-weight: normal; }
+.company-info-row .date-cell { text-align: right; }
+
+/* Célula da divisória preta */
+.divider-cell {
+    background-color: black !important;
+    border-left: 1px solid black !important;
+    border-right: 1px solid black !important;
+}
+
+/* Estilos para as tabelas de totais */
+.total-geral-label { text-align: right; font-weight: bold; }
+.total-geral-value { text-align: center; font-weight: bold; }
+.total-company-header { text-align: center; font-weight: bold; background-color: #D9D9D9 !important; }
+.label { text-align: left; }
+.value { text-align: center; }
+
+/* Esconde a lista de referência na impressão */
+.reference-list {
+    display: none;
+}
+
+.print-actions-panel {
+    text-align: center;
+    padding: 15px;
+    margin-bottom: 20px;
+    background-color: var(--bg-secondary, #f8f9fa);
+    border: 1px solid var(--bg-tertiary, #dee2e6);
+    border-radius: var(--border-radius-md, .25rem);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 15px; /* Espaço entre os botões */
+}
+
+/* Bloco @media print para garantir que os estilos sejam aplicados na impressão */
+@media print {
+    .print-actions-panel {
+        display: none !important;
+    }
+    body { font-size: 8pt; }
+    .print-button-container, .reference-list {
+        display: none !important; /* Esconde o botão e a lista de referência na impressão */
+    }
+    .watermark {
+        display: none !important; /* Esconde a marca d'água na impressão também */
+    }
+}

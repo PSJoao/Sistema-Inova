@@ -1,0 +1,310 @@
+/* public/styles/etiquetas.css */
+
+/* Importa estilos de formulários e componentes se não estiverem no global */
+/* @import url('forms.css'); */
+/* @import url('components.css'); */
+
+/* --- Abas --- */
+/* (Estilos copiados de assistencia.css para garantir) */
+.nav-tabs {
+    border-bottom: 1px solid var(--bg-tertiary);
+    display: flex;
+    flex-wrap: nowrap;
+}
+.nav-tabs .nav-item {
+    margin-bottom: -1px;
+}
+.nav-tabs .nav-link {
+    border: 1px solid transparent;
+    border-top-left-radius: var(--border-radius-md);
+    border-top-right-radius: var(--border-radius-md);
+    color: var(--text-secondary);
+    font-weight: 500;
+    padding: 0.75rem 1.25rem;
+    transition: all var(--transition-fast);
+    text-decoration: none; /* Garante que não haja sublinhado */
+}
+.nav-tabs .nav-link:hover {
+    border-color: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+.nav-tabs .nav-link.active {
+    background-color: var(--bg-secondary);
+    border-color: var(--bg-tertiary) var(--bg-tertiary) var(--bg-secondary);
+    color: var(--accent-orange);
+}
+
+/* --- Container de Upload --- */
+.upload-container {
+    max-width: 600px;
+    margin: 2rem auto;
+    padding: 2rem;
+    background-color: var(--bg-main);
+    border-radius: var(--border-radius-md);
+    border: 1px solid var(--bg-tertiary);
+}
+
+.upload-description {
+    font-size: 1rem;
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+    text-align: center;
+    line-height: 1.5;
+}
+
+/* --- Estilos de Formulário --- */
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+}
+
+.form-text {
+    display: block;
+    margin-top: 0.5rem;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+/* --- Upload Customizado --- */
+.custom-file-upload input[type="file"] {
+    display: none;
+}
+
+.custom-file-upload .btn {
+    cursor: pointer;
+    width: 100%;
+}
+
+.file-list {
+    margin-top: 1rem;
+    font-style: italic;
+    color: var(--text-secondary);
+    word-break: break-all;
+}
+
+.btn-block {
+    width: 100%;
+}
+
+/* Adicionar ao final de public/styles/etiquetas.css */
+
+.file-list ul {
+    list-style: none;
+    padding-left: 0;
+    margin-top: 10px;
+}
+
+.file-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 10px;
+    border: 1px solid var(--bg-tertiary);
+    border-radius: var(--border-radius-sm);
+    margin-bottom: 5px;
+    background-color: var(--bg-main);
+}
+
+.file-list li span {
+    display: flex;
+    align-items: center;
+    gap: 8px; /* Espaço entre o ícone e o texto */
+    word-break: break-all;
+}
+
+.remove-file-btn {
+    background: none;
+    border: none;
+    color: var(--accent-red);
+    font-size: 1.5rem;
+    font-weight: bold;
+    cursor: pointer;
+    padding: 0 5px;
+    line-height: 1;
+}
+
+.remove-file-btn:hover {
+    color: darkred;
+}
+
+/* ==========================================
+   TABELA DE SEPARAÇÃO (MODAL MERCADO LIVRE)
+   ========================================== */
+
+/* Aumenta a largura do modal pai especificamente quando esta tabela estiver nele */
+.custom-modal:has(.modal-separacao-wrapper) {
+    max-width: 700px !important;
+}
+
+.modal-separacao-wrapper {
+    border: 1px solid var(--bg-tertiary);
+    border-radius: var(--border-radius-md);
+    box-shadow: inset 0 0 5px rgba(0,0,0,0.2);
+    background-color: var(--bg-primary); /* Fundo escuro alinhado ao tema */
+    scrollbar-width: thin;
+    scrollbar-color: var(--bg-tertiary) var(--bg-primary);
+}
+
+.modal-separacao-table {
+    margin-bottom: 0;
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    color: var(--text-secondary);
+}
+
+/* Cabeçalho Fixo (Sticky) */
+.modal-separacao-table thead th {
+    position: sticky;
+    top: 0;
+    background-color: var(--bg-tertiary);
+    z-index: 10;
+    border-bottom: 2px solid var(--accent-orange); /* Destaque laranja do sistema */
+    color: var(--text-primary);
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    letter-spacing: 0.05em;
+    padding: 12px 8px;
+}
+
+.modal-separacao-table tbody tr {
+    transition: background-color var(--transition-fast);
+}
+
+.modal-separacao-table tbody tr:hover {
+    background-color: var(--bg-tertiary); /* Fundo sutil no hover respeitando o Dark Mode */
+}
+
+.modal-separacao-table td {
+    vertical-align: middle;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--bg-tertiary);
+    padding: 10px 8px;
+}
+
+/* Badge de Total Bonito */
+.badge-total-modal {
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--text-muted);
+    color: var(--text-primary);
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.95em;
+    font-weight: bold;
+    display: inline-block;
+}
+
+/* Input Customizado e Limpo (Tema Dark) */
+.abatimento-input {
+    text-align: center;
+    font-weight: bold;
+    color: #ff6b6b; /* Vermelho claro para dar contraste no fundo escuro */
+    border: 1px solid var(--bg-tertiary);
+    border-radius: 6px;
+    background-color: var(--bg-secondary);
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.abatimento-input:focus {
+    background-color: var(--bg-primary);
+    color: #ff6b6b;
+    border-color: var(--accent-orange);
+    box-shadow: 0 0 0 0.2rem rgba(240, 124, 0, 0.25);
+    outline: 0;
+}
+
+/* Remove as setinhas do input type="number" */
+.abatimento-input::-webkit-outer-spin-button,
+.abatimento-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.abatimento-input[type=number] {
+    -moz-appearance: textfield;
+}
+
+/* ==========================================
+   PÁGINA GÔNDOLA (TEMA DARK / TRUE BLACK)
+   ========================================== */
+
+.gondola-card {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--bg-tertiary);
+    border-radius: var(--border-radius-md);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.gondola-card-header {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-weight: 700;
+    padding: 1rem 1.25rem;
+    border-bottom: 2px solid var(--accent-orange); /* Destaque padrão do sistema */
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1.05rem;
+    letter-spacing: 0.02em;
+}
+
+.gondola-card-body {
+    padding: 1.25rem;
+    flex: 1 1 auto;
+}
+
+.gondola-card-footer {
+    padding: 1rem 1.25rem;
+    background-color: var(--bg-primary); /* Fundo ainda mais escuro para o rodapé */
+    border-top: 1px solid var(--bg-tertiary);
+}
+
+.custom-hr {
+    border-color: var(--bg-tertiary);
+    margin: 1.5rem 0;
+}
+
+/* Tabelas Customizadas com Scroll Responsivo */
+.gondola-table-wrapper {
+    border: 1px solid var(--bg-tertiary);
+    border-radius: 6px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--bg-tertiary) var(--bg-primary);
+}
+
+.gondola-table-wrapper thead th {
+    position: sticky;
+    top: 0;
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+    border-bottom: 2px solid var(--bg-primary) !important;
+    z-index: 10;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 12px 10px;
+}
+
+.gondola-table-wrapper tbody tr {
+    transition: background-color var(--transition-fast);
+}
+
+.gondola-table-wrapper tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.03); /* Leve clareada no Dark Mode */
+}
+
+.gondola-table-wrapper td {
+    color: var(--text-secondary);
+    vertical-align: middle;
+    padding: 10px;
+    border-top: 1px solid var(--bg-tertiary);
+}

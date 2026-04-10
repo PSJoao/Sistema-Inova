@@ -1,0 +1,427 @@
+@import 'theme.css';
+
+/* ==========================================================================
+   ESTRUTURA PRINCIPAL (Match com bipagem-wrapper)
+   ========================================================================== */
+.dashboard-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    padding: 15px;
+    max-width: 1400px;
+    margin: 0 auto;
+    font-family: var(--font-primary, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif);
+}
+
+.dashboard-header {
+    display: flex;
+    align-items: center;
+    background: linear-gradient(135deg, rgba(240, 124, 0, 0.15) 0%, rgba(30, 30, 30, 0.8) 100%);
+    border-left: 4px solid var(--accent-orange, #f07c00);
+    padding: 1.5rem;
+    border-radius: var(--border-radius-lg, 12px);
+    box-shadow: var(--box-shadow-soft, 0 4px 6px rgba(0, 0, 0, 0.1));
+}
+
+.page-title-dark {
+    font-size: 1.6rem;
+    color: var(--text-primary, #fff);
+    margin: 0;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+}
+
+.page-title-dark i {
+    color: var(--accent-orange, #f07c00);
+    margin-right: 12px;
+}
+
+.description-text {
+    color: var(--text-secondary, #aaa);
+    font-size: 0.95rem;
+    margin-top: 0.5rem;
+}
+
+/* ==========================================================================
+   PAINÉIS E CARDS (Match com bipagem-panel)
+   ========================================================================== */
+.dashboard-panel {
+    background: var(--bg-secondary, #1e1e1e);
+    border-radius: var(--border-radius-lg, 12px);
+    padding: 1.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: var(--box-shadow-medium, 0 8px 25px rgba(0, 0, 0, 0.5));
+    display: flex;
+    flex-direction: column;
+}
+
+.panel-title {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--text-primary, #fff);
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding-bottom: 1rem;
+}
+
+.panel-title i {
+    color: var(--accent-orange, #f07c00);
+    margin-right: 10px;
+}
+
+/* ==========================================================================
+   STATS GRID (Responsividade Automática Inteligente)
+   ========================================================================== */
+.stat-grid {
+    display: grid;
+    /* Isso cria colunas automáticas sem quebrar em telas pequenas */
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+}
+
+.stat-card {
+    background: var(--bg-tertiary, #2a2a2a);
+    border-radius: var(--border-radius-md, 8px);
+    padding: 1.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.02);
+    display: flex;
+    flex-direction: column;
+    text-align: center;
+    transition: transform var(--transition-fast, 0.3s) ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-5px);
+}
+
+.stat-card h4 {
+    color: var(--text-muted, #888);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+    letter-spacing: 1px;
+    font-weight: 600;
+}
+
+.stat-value {
+    font-size: 2.2rem;
+    font-weight: 800;
+    color: #fff;
+    line-height: 1;
+}
+
+/* Cores específicas dos cards */
+.stat-card.heranca .stat-value { color: var(--color-warning, #ffc107); }
+.stat-card.novos .stat-value { color: var(--color-info, #17a2b8); }
+.stat-card.subtracoes .stat-value { color: var(--color-danger, #dc3545); }
+
+.stat-card.destaque {
+    border: 1px solid var(--accent-orange, #f07c00);
+    background: linear-gradient(180deg, rgba(240, 124, 0, 0.1) 0%, transparent 100%);
+}
+
+.stat-card.destaque .stat-value {
+    color: var(--accent-orange, #f07c00);
+}
+
+/* ==========================================================================
+   FORMULÁRIOS E BOTÕES (Match com inputs de Bipagem)
+   ========================================================================== */
+.form-control-dark, .bip-select {
+    background-color: var(--bg-tertiary, #2a2a2a);
+    color: var(--text-primary, #fff);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--border-radius-md, 6px);
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+    outline: none;
+    transition: all var(--transition-fast, 0.3s);
+    width: 100%;
+}
+
+.form-control-dark:focus, .bip-select:focus {
+    border-color: var(--accent-orange, #f07c00);
+    box-shadow: 0 0 0 2px rgba(240, 124, 0, 0.2);
+}
+
+.btn-premium {
+    background: var(--bg-tertiary, #2a2a2a);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-primary, #fff);
+    border-radius: var(--border-radius-md, 6px);
+    padding: 0.75rem 1.5rem;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all var(--transition-fast, 0.3s);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.btn-premium:hover {
+    background: var(--bg-primary, #121212);
+    border-color: var(--accent-orange, #f07c00);
+    color: var(--accent-orange, #f07c00);
+}
+
+.btn-premium.orange {
+    background: var(--accent-orange, #f07c00);
+    border-color: var(--accent-orange, #f07c00);
+    color: #fff;
+    box-shadow: 0 4px 15px rgba(240, 124, 0, 0.2);
+}
+
+.btn-premium.orange:hover {
+    background: #d86f00;
+    transform: translateY(-2px);
+}
+
+/* ==========================================================================
+   REFORMULAÇÃO TOTAL DO DATATABLES
+   ========================================================================== */
+.table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    border-radius: var(--border-radius-md, 8px);
+}
+
+/* Ajustes estruturais da Tabela */
+table.dataTable {
+    width: 100% !important;
+    border-collapse: collapse !important; /* Resolve colunas separadas/fantasmas */
+    margin: 1.5rem 0 !important;
+    color: var(--text-secondary, #ccc);
+}
+
+table.dataTable thead th, 
+table.dataTable tbody td {
+    box-sizing: border-box; /* Previne que o padding quebre as larguras */
+    padding: 1rem 1.2rem;
+    border: none;
+    vertical-align: middle;
+}
+
+/* Cabeçalho */
+table.dataTable thead th {
+    background-color: rgba(255, 255, 255, 0.03);
+    border-bottom: 2px solid var(--accent-orange, #f07c00) !important;
+    color: var(--text-primary, #fff);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    text-align: left;
+    white-space: nowrap;
+}
+
+/* Linhas do Corpo */
+table.dataTable tbody tr {
+    background-color: transparent !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    transition: background 0.2s ease;
+}
+
+table.dataTable tbody tr:hover {
+    background-color: rgba(240, 124, 0, 0.05) !important;
+}
+
+/* ==========================================================================
+   CONTROLES DO DATATABLES (Filtros, Busca e Info)
+   ========================================================================== */
+.dataTables_wrapper .dataTables_length,
+.dataTables_wrapper .dataTables_filter,
+.dataTables_wrapper .dataTables_info {
+    color: var(--text-secondary, #aaa) !important;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+}
+
+/* Padronizando os inputs gerados pelo DataTables */
+.dataTables_wrapper .dataTables_length select,
+.dataTables_wrapper .dataTables_filter input {
+    background-color: var(--bg-tertiary, #2a2a2a) !important;
+    color: var(--text-primary, #fff) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: var(--border-radius-md, 6px);
+    padding: 0.5rem 1rem;
+    outline: none;
+    transition: all var(--transition-fast, 0.3s);
+}
+
+.dataTables_wrapper .dataTables_length select:focus,
+.dataTables_wrapper .dataTables_filter input:focus {
+    border-color: var(--accent-orange, #f07c00) !important;
+    box-shadow: 0 0 0 2px rgba(240, 124, 0, 0.2) !important;
+}
+
+/* ==========================================================================
+   PAGINAÇÃO DO DATATABLES (Estilo Premium)
+   ========================================================================== */
+.dataTables_wrapper .dataTables_paginate {
+    display: flex !important;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 1.5rem !important;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+    background: var(--bg-tertiary, #2a2a2a) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    color: var(--text-primary, #fff) !important;
+    padding: 0.5rem 1rem !important;
+    border-radius: var(--border-radius-md, 6px) !important;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all var(--transition-fast, 0.2s) ease !important;
+    margin: 0 !important; /* Remove margens zoadas do padrão */
+}
+
+/* Hover nos botões normais */
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover:not(.current):not(.disabled) {
+    background: var(--bg-primary, #121212) !important;
+    border-color: var(--accent-orange, #f07c00) !important;
+    color: var(--accent-orange, #f07c00) !important;
+    box-shadow: 0 0 10px rgba(240, 124, 0, 0.1);
+}
+
+/* Botão Ativo (Página Atual) */
+.dataTables_wrapper .dataTables_paginate .paginate_button.current,
+.dataTables_wrapper .dataTables_paginate .paginate_button.current:hover {
+    background: var(--accent-orange, #f07c00) !important;
+    border-color: var(--accent-orange, #f07c00) !important;
+    color: #fff !important;
+    box-shadow: 0 4px 10px rgba(240, 124, 0, 0.2) !important;
+}
+
+/* Botão Desativado (Ex: Voltar na página 1) */
+.dataTables_wrapper .dataTables_paginate .paginate_button.disabled {
+    opacity: 0.3 !important;
+    cursor: not-allowed !important;
+    background: transparent !important;
+    border-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Esconde spans que o DT as vezes joga em volta dos números para evitar desalinhamento */
+.dataTables_wrapper .dataTables_paginate span {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* ==========================================================================
+   CORREÇÃO: BOTÕES DE PAGINAÇÃO (PREENCHIMENTO TOTAL)
+   ========================================================================== */
+
+/* 1. Força todos os botões a serem "blocos" preenchidos, e não apenas textos soltos */
+.dataTables_wrapper .dataTables_paginate .paginate_button,
+.dataTables_wrapper .dataTables_paginate .page-item .page-link {
+    display: inline-block !important; 
+    margin: 0 3px !important; /* Dá um respiro entre os botões */
+    border-radius: var(--border-radius-md, 6px) !important;
+    text-align: center;
+    vertical-align: middle;
+}
+
+/* 2. Aplica o laranja preenchendo o bloco inteiro quando estiver ativo */
+.dataTables_wrapper .dataTables_paginate .paginate_button.current,
+.dataTables_wrapper .dataTables_paginate .paginate_button.current:hover,
+.dataTables_wrapper .dataTables_paginate .page-item.active .page-link {
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    pointer-events: none; /* Evita que o usuário clique na página que já está aberta */
+}
+
+/* ==========================================================================
+   BADGES (Status da Tabela)
+   ========================================================================== */
+.badge {
+    padding: 0.4rem 0.8rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    display: inline-block;
+}
+
+.badge-orange {
+    background: rgba(240, 124, 0, 0.1);
+    border: 1px solid var(--accent-orange, #f07c00);
+    color: var(--accent-orange, #f07c00);
+}
+
+/* ==========================================================================
+   AÇÕES DA TABELA (Botões das linhas)
+   ========================================================================== */
+.table-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+}
+
+.btn-icon {
+    width: 35px;
+    height: 35px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--bg-tertiary, #2a2a2a);
+    color: var(--text-primary, #fff);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-icon:hover:not(.disabled) {
+    transform: scale(1.1);
+}
+
+.btn-outline-accent:hover { background: rgba(240, 124, 0, 0.1); border-color: var(--accent-orange, #f07c00); color: var(--accent-orange, #f07c00); }
+.btn-outline-warning:hover { background: rgba(255, 193, 7, 0.1); border-color: #ffc107; color: #ffc107; }
+.btn-outline-danger:hover { background: rgba(220, 53, 69, 0.1); border-color: #dc3545; color: #dc3545; }
+
+/* ==========================================================================
+   RESPONSIVIDADE (Ajustes finos para Mobile)
+   ========================================================================== */
+@media (max-width: 768px) {
+    .dashboard-wrapper {
+        padding: 10px;
+    }
+
+    .dashboard-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+        padding: 1rem;
+    }
+
+    /* DataTables vira em bloco no mobile */
+    .dataTables_wrapper .dataTables_filter,
+    .dataTables_wrapper .dataTables_length {
+        float: none !important;
+        text-align: left !important;
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 1rem;
+    }
+
+    .dataTables_wrapper .dataTables_filter input,
+    .dataTables_wrapper .dataTables_length select {
+        width: 100% !important;
+        margin-left: 0 !important;
+        margin-top: 0.5rem;
+    }
+
+    .dataTables_wrapper .dataTables_paginate {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+}

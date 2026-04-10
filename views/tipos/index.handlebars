@@ -1,0 +1,69 @@
+{{! views/tipos/index.handlebars }}
+<link rel="stylesheet" href="/public/styles/tipos.css">
+
+<div class="content-card">
+    {{!-- Cabeçalho da Página --}}
+    <div class="page-header-actions">
+        <h1 class="page-title">Gerenciar Tipos Prod.</h1>
+    </div>
+
+    {{!-- Container para notificações (sucesso, erro) --}}
+    <div id="notification-container">
+        {{{_sections.messages}}}
+    </div>
+
+    {{!-- Conteúdo da Aba --}}
+    <div class="tab-content mt-3">
+        <div class="tab-pane fade show active" role="tabpanel">
+
+            <div class="form-container-wrapper">
+                
+                {{!-- Formulário de Atualização em Massa --}}
+                <div class="form-card">
+                    <h2 class="form-card-title">Atualização em Massa</h2>
+                    {{! ----- MODIFICADO AQUI ----- }}
+                    <form id="tiposUploadForm" action="/tipos/upload" method="POST" enctype="multipart/form-data">
+                        <div class="form-group">
+                            <label for="tiposPlanilha" class="form-label">Planilha de Tipos (.xlsx):</label>
+                            <div class="custom-file-upload">
+                                <input type="file" id="tiposPlanilha" name="tiposPlanilha" accept="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+                                <label for="tiposPlanilha" class="btn btn-secondary"><i class="fas fa-file-excel"></i> Escolher Arquivo</label>
+                            </div>
+                            <small class="form-text">Colunas: A (caixaria), B (fino), C (kit) e D (quadrado). Linha 1 é ignorada.</small>
+                        </div>
+                        {{! ----- E AQUI ----- }}
+                        <div id="tiposFileList" class="file-list"></div>
+                        <button type="submit" class="btn btn-primary btn-block"><i class="fas fa-upload"></i> Processar Planilha</button>
+                    </form>
+                </div>
+
+                {{!-- Formulário de Atualização Individual --}}
+                <div class="form-card">
+                    <h2 class="form-card-title">Atualização Individual</h2>
+                    <form id="individualForm" action="/tipos/update-individual" method="POST">
+                        <div class="form-group">
+                            <label for="skuInput" class="form-label">SKU do Produto:</label>
+                            <input type="text" id="skuInput" name="sku" class="form-control" placeholder="Digite o SKU" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="tipoSelect" class="form-label">Selecionar Tipo:</label>
+                            <select id="tipoSelect" name="tipo" class="form-control" required>
+                                <option value="NENHUM">Remover Tipo / Nenhum</option>
+                                <option value="caixaria">Caixaria</option>
+                                <option value="fino">Fino</option>
+                                <option value="kit">Kit</option>
+                                <option value="quadrado">Quadrado</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-success-alt btn-block"><i class="fas fa-save"></i> Salvar Alteração</button>
+                    </form>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+{{#section "scripts"}}
+  <script src="/public/scripts/tiposManager.js"></script>
+{{/section}}

@@ -1,0 +1,36 @@
+{{!-- views/partials/rastreio-card.handlebars --}}
+<a href="/rastreio/detalhe/{{this.id}}" class="rastreio-card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-box icon"></i> Pedido {{this.numero_pedido}}</h3>
+        {{#if this.data_entrega}}
+            <span class="card-status status-entregue">Entregue</span>
+        {{else if this.conferencia_necessaria}}
+            <span class="card-status status-conferencia">Conferir</span>
+        {{else if (isAtrasado this.data_previsao_entrega)}}
+            <span class="card-status status-atrasado">Atrasado</span>
+        {{!-- [NOVA LÓGICA] --}}
+        {{else if (containsCode80 this.dados_rastreio_raw.documento.tracking)}}
+            <span class="card-status status-transito">Em Trânsito</span>
+        {{else}}
+            <span class="card-status status-pendente">Outros</span> {{!-- Usando uma nova classe CSS 'status-pendente' --}}
+        {{/if}}
+    </div>
+    <div class="card-body">
+        <div class="info-line">
+            <span class="info-label"><i class="fas fa-calendar-alt icon"></i> Previsão:</span>
+            <span class="info-value">{{formatDate this.data_previsao_entrega}}</span>
+        </div>
+        <div class="info-line">
+            <span class="info-label">NFE:</span>
+            <span class="info-value">{{this.numero_nfe}}</span>
+        </div>
+        <div class="info-line">
+            <span class="info-label">Transportadora:</span>
+            <span class="info-value">{{this.transportadora}}</span>
+        </div>
+        <div class="info-line">
+            <span class="info-label">Situação:</span>
+            <span class="info-value" title="{{this.situacao_atual}}">{{truncate this.situacao_atual 40}}</span>
+        </div>
+    </div>
+</a>

@@ -1,0 +1,47 @@
+{{!< main}}
+
+<div class="content-card">
+  <h1 class="page-title">{{title}}</h1>
+
+  <div class="table-responsive-wrapper">
+    <table id="productTable" class="dataTable display" style="width:100%"> {{!-- Nota: ID "productTable" é o mesmo da view home.hbs. Se coexistirem ou tiverem JS diferente, considere IDs únicos como "productsOutOfPromotionTable" --}}
+      <thead>
+        <tr>
+          <th style="width: 15%;">SKU</th> {{!-- Exemplo de como adicionar width se muito necessário, mas prefira classes --}}
+          <th style="width: 85%;">Produto</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each productsOutOfPromotion}}
+        <tr>
+          <td>{{sku}}</td>
+          <td><a href={{url}} target="_blank">{{description}}</a></td>
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{{!-- Script para seleção de célula (ajustado para esta tabela) --}}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const tableId = '#productTable'; // CUIDADO: ID REPETIDO DA PÁGINA ANTERIOR. MUDE PARA ALGO ÚNICO.
+                                   // Sugestão: '#productsOutOfPromotionTable' e atualize o <table> tag.
+  const tableElement = document.querySelector(tableId);
+
+  if (tableElement) {
+    tableElement.addEventListener('click', function(event) {
+      const targetCell = event.target.closest('td, th');
+      if (!targetCell) return;
+
+      tableElement.querySelectorAll('td.selected, th.selected').forEach(el => {
+        el.classList.remove('selected');
+      });
+      targetCell.classList.add('selected');
+    });
+  }
+  // Se o seu dataTables.js já cobre a inicialização desta tabela pelo ID correto, ótimo.
+  // Senão, adicione a inicialização do DataTables aqui se for diferente da padrão.
+});
+</script>

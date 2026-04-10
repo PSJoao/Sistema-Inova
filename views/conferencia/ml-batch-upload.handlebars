@@ -1,0 +1,111 @@
+{{! views/conferencia/ml-batch-upload.handlebars }}
+
+<div class="content-card">
+    <div class="page-header-actions">
+        <h2>Conferência para Faturamento</h2>
+        <a href="/conferencia/ml-mapping" class="btn btn-accent">
+            <i class="fas fa-database"></i> Mapear Pack IDs
+        </a>
+    </div>
+
+    <h4>Processar Pedidos</h4>
+    <p>Envie a planilha de vendas do Mercado Livre para atualizar as situações no Bling automaticamente.</p>
+
+    <ul class="form-text mt-2">
+        <li>O sistema lê a <strong>Coluna A</strong> a partir da <strong>Linha 7</strong>.</li>
+        <li>Formatos aceitos: <strong>.xlsx</strong> ou <strong>.xls</strong>.</li>
+    </ul>
+
+    <br><br>
+    <form id="uploadForm" enctype="multipart/form-data" class="mt-4">
+        <div class="row">
+            <div class="col-md-12 mb-3">
+                <label for="planilha" class="form-label fw-bold">Selecione a Planilha:</label>
+                <input class="form-control" type="file" id="planilha" name="planilha" accept=".xlsx, .xls" required>
+            </div>
+        </div>
+
+        <br>
+
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-success-alt btn-lg" id="btnEnviar">
+                <i class="fas fa-play-circle"></i> Processar e Atualizar
+            </button>
+        </div>
+        
+        <div class="form-text mt-2">
+            O download do relatório de sucesso/erro iniciará automaticamente ao fim do processo.
+        </div>
+    </form>
+</div>
+
+{{! Scripts (Mantidos com a lógica do ModalSystem) }}
+<script src="/scripts/modal.js"></script>
+<script>
+    document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+        e.preventDefault(); 
+        
+        const fileInput = document.getElementById('planilha');
+        if (!fileInput.files.length) {
+            alert("Por favor, selecione um arquivo.");
+            return;
+        }
+
+        if (typeof ModalSystem !== 'undefined') {
+            ModalSystem.showLoading(
+                'Lendo planilha, buscando pedidos e atualizando situações no Bling...<br><br>Isso pode levar alguns minutos.<br>O download iniciará automaticamente.',
+                'Processando Lote ML'
+            );
+        }
+
+        const formData = new FormData(this);
+
+        try {
+            const response = await fetch('/conferencia/ml-batch/process', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText || 'Erro no processamento do servidor.');
+            }
+
+            const blob = await response.blob();
+            
+            let fileName = 'Relatorio_Processamento.xlsx';
+            const disposition = response.headers.get('Content-Disposition');
+            if (disposition && disposition.indexOf('attachment') !== -1) {
+                const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+                const matches = filenameRegex.exec(disposition);
+                if (matches != null && matches[1]) { 
+                    fileName = matches[1].replace(/['"]/g, '');
+                }
+            }
+
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            if (typeof ModalSystem !== 'undefined') {
+                ModalSystem.hideLoading();
+            }
+
+        } catch (error) {
+            console.error(error);
+            if (typeof ModalSystem !== 'undefined') {
+                ModalSystem.hideLoading();
+                setTimeout(() => {
+                    alert('Erro ao processar: ' + error.message); 
+                }, 300);
+            } else {
+                alert('Erro: ' + error.message);
+            }
+        }
+    });
+</script>

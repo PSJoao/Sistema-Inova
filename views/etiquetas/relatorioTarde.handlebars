@@ -1,0 +1,78 @@
+{{! views/etiquetas/relatorioTarde.handlebars }}
+<link rel="stylesheet" href="/public/styles/etiquetas.css">
+
+<div class="content-card">
+    <div class="page-header-actions mb-4">
+        <h1 class="page-title">Gerenciar Relatório Tarde</h1>
+    </div>
+
+    <div id="notification-container"></div>
+
+    <div class="row">
+        <!-- Upload Section -->
+        <div class="col-lg-5 mb-4">
+            <div class="gondola-card h-100">
+                <div class="gondola-card-header" style="border-bottom-color: var(--accent-orange);">
+                    <i class="fas fa-upload text-warning"></i> Importar Planilha de Vendas
+                </div>
+                <div class="gondola-card-body">
+                    <p class="text-secondary mb-4" style="font-size: 0.95rem; line-height: 1.5;">
+                        Faça o upload da planilha de <strong>Vendas do Mercado Livre</strong>. O sistema começará a ler a partir da linha 7 para extrair os SKUs.
+                    </p>
+
+                    <form id="relatorioTardeForm">
+                        <div class="form-group mb-4">
+                            <label for="excelVendas" class="form-label">Selecione a planilha (.xlsx, .xls):</label>
+                            <div class="custom-file-upload mt-2">
+                                <input type="file" id="excelVendas" accept=".xlsx, .xls" style="display: none;">
+                                <label for="excelVendas" class="btn btn-outline-secondary w-100 mb-0" style="cursor: pointer; padding: 10px;">
+                                    <i class="fas fa-file-excel mr-2"></i> Escolher Planilha
+                                </label>
+                            </div>
+                            <small id="nomeArquivoVendas" class="form-text text-center font-weight-bold mt-3" style="color: var(--accent-orange);"></small>
+                        </div>
+
+                        <div style="text-align: center;">
+                            <button type="submit" class="btn btn-accent" id="btn-gerar-tarde">
+                                <i class="fas fa-cogs mr-2"></i> Processar e Gerar Relatório
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <br><br>
+
+        <!-- History Section -->
+        <div class="col-lg-7 mb-4">
+            <div class="gondola-card h-100">
+                <div class="gondola-card-header d-flex justify-content-between align-items-center">
+                    <div>
+                        <i class="fas fa-history"></i> Histórico de Relatórios (Últimos 5)
+                    </div>
+                </div>
+                <div class="gondola-card-body p-0">
+                    <div class="table-responsive gondola-table-wrapper" style="height: 100%; border: none;">
+                        <table class="table mb-0" id="tabela-historico-tarde-container" style="width: 100%;">
+                            <thead>
+                                <tr>
+                                    <th>Nome do Relatório</th>
+                                    <th>Data de Geração</th>
+                                    <th style="width: 180px; text-align: center;">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabela-historico-tarde">
+                                <tr id="linha-vazia"><td colspan="3" class="text-center text-muted" style="padding: 2rem 0;">Carregando histórico...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{#section "scripts"}}
+  <script src="/public/scripts/relatorioTarde.js"></script>
+{{/section}}

@@ -1,0 +1,101 @@
+{{#section "head" }} <link href="/public/styles/bipagemExpedicao.css" rel="stylesheet" />
+{{/section}}
+
+<div class="bipagem-wrapper">
+    <div class="bipagem-header">
+        <h1>Conferência de Expedição</h1>
+    </div>
+
+    {{> messages}}
+
+    <div class="bipagem-grid">
+        <!-- ÁREA DO SCANNER -->
+        <div class="bipagem-panel" id="area-bipagem"
+            style="opacity: 0.3; pointer-events: none; transition: opacity 0.3s;">
+            <div class="bipagem-panel-title">
+                <i class="fas fa-qrcode"></i> Leitura de Volumes
+            </div>
+
+            <div class="scanner-area">
+                <label class="scanner-label">Aguardando Leitura...</label>
+                <input type="text" id="input-bipagem" class="scanner-input" placeholder="BIPAR CÓDIGO AQUI"
+                    autocomplete="off">
+            </div>
+
+            <div class="bip-status-grid">
+                <div class="bip-status-box" id="box-nf-atual">
+                    <h6>NF Atual Aberta</h6>
+                    <div id="display-nf" class="nf-display-value text-muted"
+                        style="color: var(--text-muted) !important;">Nenhuma</div>
+                    <button id="btn-encerrar-nf" class="btn-bip-encerrar" style="display: none;">
+                        <i class="fas fa-check-circle"></i> Gravar
+                    </button>
+                </div>
+
+                <div class="bip-status-box">
+                    <h6>Carregadores (Rateio)</h6>
+                    <ul id="lista-carregadores-bipados" class="carregadores-list">
+                        <li style="background: transparent; padding: 0;"><span class="text-muted"
+                                style="font-size: 0.9rem;">Nenhum bipado.</span></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="bipagem-panel">
+            <div class="bipagem-panel-title">
+                <i class="fas fa-truck"></i> Destino da Carga
+            </div>
+
+            <div class="bip-form-group">
+                <label class="bip-label">1. Coleta (Caminhão)</label>
+                <div class="bip-input-group">
+                    <select id="select-coleta" class="bip-select">
+                        <option value="">Carregando...</option>
+                    </select>
+                    <button id="btn-nova-coleta" class="btn-bip" title="Criar Nova Coleta"><i
+                            class="fas fa-plus"></i></button>
+                    <button id="btn-delete-coleta" class="btn-bip danger" title="Deletar Coleta"><i
+                            class="fas fa-trash"></i></button>
+                </div>
+            </div>
+
+            <div class="bip-form-group" style="margin-top: 1rem;">
+                <label class="bip-label">2. Palete Atual</label>
+                <div class="bip-input-group">
+                    <select id="select-palete" class="bip-select" disabled>
+                        <option value="">Selecione coleta primeiro</option>
+                    </select>
+                    <button id="btn-novo-palete" class="btn-bip" title="Criar Novo Palete" disabled><i
+                            class="fas fa-plus"></i></button>
+                    <button id="btn-delete-palete" class="btn-bip danger" title="Deletar Palete" disabled><i
+                            class="fas fa-trash"></i></button>
+                </div>
+            </div>
+
+            <div id="status-configuracao" class="alert-custom">
+                <i class="fas fa-exclamation-triangle"></i> Defina a coleta e o palete para iniciar.
+            </div>
+        </div>
+    </div>
+
+    <!-- HIERARQUIA EM TEMPO REAL -->
+    <div class="hierarchy-panel">
+        <div class="hierarchy-header">
+            <h2>Resumo de Expedição (Hoje)</h2>
+            <div class="hierarchy-badge" id="badge-total-nfs">0 NFs expedidas</div>
+        </div>
+        <div class="hierarchy-body" id="hierarquia-container">
+            <div style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                <i class="fas fa-spinner fa-spin"></i> Carregando hierarquia real...
+            </div>
+        </div>
+    </div>
+</div>
+
+<audio id="audio-success" src="/public/sounds/notification.mp3"></audio>
+<audio id="audio-error" src="/public/sounds/error.mp3"></audio>
+
+{{#section "scripts"}}
+<script src="/public/scripts/bipagemExpedicaoManager.js"></script>
+{{/section}}

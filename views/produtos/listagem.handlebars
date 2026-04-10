@@ -1,0 +1,63 @@
+{{!-- views/produtos/listagem.handlebars --}}
+{{!< main}}
+
+{{#section "head"}}
+    {{!-- Reutiliza o mesmo CSS da listagem de etiquetas e histórico --}}
+    {{!-- Isso garante as linhas da tabela e o estilo de paginação --}}
+    <link href="/public/styles/nfeHistory.css" rel="stylesheet">
+    <link href="/public/styles/mlEtiquetasList.css" rel="stylesheet">
+{{/section}}
+
+<div class="content-card">
+    {{!-- Cabeçalho --}}
+    <div class="page-header-actions">
+        <h1 class="page-title">{{title}}</h1>
+
+        <a href="/product-sync" class="btn btn-accent">
+            <i class="fas fa-bezier-curve"></i> Sincronizar em Massa
+        </a>
+    </div>
+
+    {{!-- Filtros (Padrão nfe-history-filters) --}}
+    <div class="nfe-history-filters">
+        
+        {{!-- Grupo de Busca Rápida --}}
+        <div class="filter-group search-group">
+            <label for="produtos-search-input">Buscar:</label>
+            <input type="text" id="produtos-search-input" class="form-control" placeholder="SKU, Nome, GTIN..." style="min-width: 280px;">
+        </div>
+        
+        {{!-- Filtro principal (Produto/Estrutura) - AO LADO DA BUSCA --}}
+        <div class="filter-group">
+            <label for="produtos-tipo-filter">Exibir:</label>
+            <select id="produtos-tipo-filter" class="form-control form-control-sm" style="min-width: 150px;">
+                <option value="produto" selected>Produtos</option>
+                <option value="estrutura">Estruturas</option>
+            </select>
+        </div>
+    </div>
+
+    {{!-- Tabela Container (Padrão nfe-history-table para as linhas) --}}
+    <div class="table-container">
+        <table class="nfe-history-table">
+            {{!-- O Cabeçalho será preenchido pelo JS --}}
+            <thead id="produtos-table-head">
+                {{!-- JS irá inserir <th> aqui --}}
+            </thead>
+            {{!-- O Corpo será preenchido pelo JS --}}
+            <tbody id="produtos-table-body">
+                <tr><td colspan="10" class="text-center p-5">Carregando...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    {{!-- Paginação (Padrão nfe-history-pagination) --}}
+    <div id="produtos-pagination" class="nfe-history-pagination">
+        {{!-- Controles de paginação serão inseridos pelo JavaScript --}}
+    </div>
+</div>
+
+{{#section "scripts"}}
+    {{!-- Inclui o novo script JS para esta página --}}
+    <script src="/public/scripts/produtosManager.js"></script>
+{{/section}}

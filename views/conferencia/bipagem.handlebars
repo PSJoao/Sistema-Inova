@@ -1,0 +1,102 @@
+{{!< main}}
+
+{{#section "head"}}
+  <link href="/public/styles/conferencia.css" rel="stylesheet">
+{{/section}}
+
+<div class="content-card" style="padding: 0; height: 100%; border: none; box-shadow: none; background: transparent; margin-bottom: 100px;">
+    
+    {{!-- Cabeçalho da Página --}}
+    <div class="page-header-actions" style="padding: 15px 20px; background: #1e1e1e; border-bottom: 1px solid #333; margin-bottom: 0;">
+        <h1 class="page-title" style="color: #e0e0e0;"><i class="fas fa-boxes" style="color: #ff6b00;"></i> {{title}}</h1>
+    </div>
+
+    <div class="conferencia-container">
+
+        <div class="conferencia-card conferidas-container" style="display: flex; flex-direction: column; margin-top: 10px;">
+            <div class="pendentes-titulo" style="display: flex; justify-content: space-between; align-items: center;">
+                <span><i class="fas fa-list-check" style="color: #28a745;"></i> Conferidas (Aguardando)</span>
+                <div>
+                    {{!-- Botão Principal de Disparo --}}
+                    <button id="btn-sync-completed" class="btn btn-sm btn-success" title="Enviar notas conferidas para o Bling" style="margin-right: 5px; font-weight: bold;">
+                        <i class="fas fa-paper-plane"></i> Conferir
+                    </button>
+                    {{!-- Botão de Limpar --}}
+                    <button id="btn-clear-completed" class="btn btn-sm btn-outline-secondary" title="Limpar histórico da tela">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="completed-notes-list">
+                {{!-- Renderizado via JS --}}
+                <div class="text-center mt-3" style="font-size: 0.9rem; color: #555;">
+                    Nenhuma nota aguardando conferência.
+                </div>
+            </div>
+        </div>
+
+        {{!-- PAINEL 1: NOTA ATIVA (Foco Principal) --}}
+        <div id="active-note-panel" class="conferencia-card nota-ativa-card" style="display: none;">
+            <div class="nota-ativa-header">
+                <span class="nota-ativa-titulo">
+                    <i class="fas fa-file-invoice"></i> NF <span id="active-nfe-number">---</span>
+                </span>
+                <button class="btn btn-sm btn-outline-danger" id="btn-close-active-note" title="Pausar e Voltar para Pendentes">
+                    <i class="fas fa-arrow-right"></i> Pausar
+                </button>
+            </div>
+            
+            {{!-- [ALTERAÇÃO] Removida a div 'nota-ativa-info' (Cliente/Local) --}}
+            {{!-- A lista de produtos ganha destaque imediato --}}
+
+            <div class="progress-container">
+                <div id="active-progress-bar" class="progress-bar">0/0</div>
+            </div>
+
+            <div style="margin-top: 10px; color: #aaa; font-size: 0.9rem;">
+                <i class="fas fa-list"></i> Produtos/Estruturas a conferir:
+            </div>
+
+            {{!-- Lista de Volumes para conferir --}}
+            <div id="active-volumes-list" class="active-volumes-list" style="overflow-y: auto;">
+                {{!-- Renderizado via JS --}}
+            </div>
+        </div>
+
+        {{!-- ESTADO VAZIO (Quando nenhuma nota está ativa) --}}
+        <div id="empty-state-panel" class="conferencia-card empty-state-panel" style="text-align: center; ">
+            <i class="fas fa-barcode fa-4x mb-4" style="color: #333;"></i>
+            <h3 style="color: #888;">Nenhuma Nota Ativa</h3>
+            <p style="color: #555;">Bipe uma Nota Fiscal para iniciar a conferência<br>ou selecione uma nota pendente ao lado.</p>
+        </div>
+
+        {{!-- PAINEL 2: LISTA DE PENDENTES (Multitarefa) --}}
+        <div class="conferencia-card pendentes-container">
+            <div class="pendentes-titulo">
+                <i class="fas fa-clock"></i> Pendentes / Em Pausa
+            </div>
+            <div id="pending-notes-list">
+                {{!-- Renderizado via JS --}}
+                <div class="text-center mt-5" style="font-size: 0.9rem; color: #555;">
+                    <i class="fas fa-check-double fa-2x mb-2"></i><br>
+                    Lista vazia.
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+    {{!-- FOOTER: INPUT FIXO DE BIPAGEM --}}
+    <div class="input-area-fixed">
+        <div class="input-icon-wrapper">
+            <i class="fas fa-barcode"></i>
+            <input type="text" class="input-bipagem" id="conferenciaInput" placeholder="Bipe a Chave da NF, SKU ou Código..." autocomplete="off" autofocus>
+        </div>
+    </div>
+
+{{#section "scripts"}}
+  {{!-- Script Gerenciador da Conferência --}}
+  <script src="/public/scripts/conferenciaManager.js"></script>
+{{/section}}

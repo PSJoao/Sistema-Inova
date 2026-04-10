@@ -1,0 +1,149 @@
+/* public/styles/nfe-management.css */
+
+.nfe-controls-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    padding: 15px;
+    background-color: var(--bg-secondary);
+    border-radius: var(--border-radius-lg);
+    margin-bottom: 20px;
+}
+.filter-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.filter-group label {
+    font-weight: 500;
+    font-size: 0.9em;
+}
+.filter-group.search-group {
+    flex-grow: 1;
+}
+
+.selection-info-bar {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    background-color: hsl(from var(--accent-orange) h s l / 0.1);
+    border: 1px solid hsl(from var(--accent-orange) h s l / 0.3);
+    color: var(--accent-orange);
+    padding: 10px 15px;
+    border-radius: var(--border-radius-md);
+    margin-bottom: 20px;
+    font-weight: 500;
+}
+#clearSelectionBtn {
+    background: none; border: none; font-size: 1.5em;
+    cursor: pointer; color: var(--accent-orange); line-height: 1;
+}
+
+.nfe-card-list-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.nfe-card {
+    display: flex;
+    align-items: center;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--bg-tertiary);
+    border-radius: var(--border-radius-md);
+    padding: 15px;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+.nfe-card:hover {
+    border-color: var(--accent-orange);
+}
+.nfe-card.selected {
+    border-color: var(--accent-orange);
+    background-color: hsl(from var(--accent-orange) h s l / 0.05);
+}
+
+.nfe-card-selection {
+    padding-right: 15px;
+}
+.nfe-select-checkbox {
+    transform: scale(1.3);
+}
+
+.nfe-card-info {
+    flex-grow: 1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.info-line-1, .info-line-2 {
+    display: flex;
+    gap: 20px;
+    align-items: baseline;
+}
+.nfe-numero { font-size: 1.1em; font-weight: bold; }
+.transportadora { font-style: italic; }
+.volumes, .data-emissao { font-size: 0.9em; color: var(--text-muted); }
+
+.loading-spinner, .no-results-message {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-muted);
+}
+
+/* Em public/styles/nfe-management.css, no final do arquivo */
+
+.pagination-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.page-select-dropdown {
+    width: auto; /* Faz o dropdown ter a largura do seu conteúdo */
+    padding: 5px 8px;
+    height: auto;
+}
+
+/* Em public/styles/nfe-management.css */
+
+/* --- Estilos para o Novo Cabeçalho da Lista --- */
+.nfe-list-header {
+    display: flex;
+    align-items: center;
+    padding: 10px 15px;
+    background-color: var(--bg-secondary);
+    border-bottom: 2px solid var(--bg-tertiary);
+    font-weight: bold;
+    color: var(--text-secondary);
+    font-size: 0.9em;
+    margin-bottom: 5px; /* Espaço entre o header e o primeiro card */
+}
+
+.nfe-list-header .header-label {
+    display: block;
+}
+
+/* Garante que o alinhamento do header bata com o dos cards */
+.nfe-list-header .nfe-card-info,
+.nfe-card .nfe-card-info {
+    display: flex;
+    flex-grow: 1;
+    justify-content: space-between;
+}
+
+.nfe-list-header .info-line-1,
+.nfe-card .info-line-1 {
+    flex-basis: 60%; /* Ajuste a porcentagem se necessário */
+    display: flex;
+    justify-content: space-between;
+}
+
+.nfe-list-header .info-line-2,
+.nfe-card .info-line-2 {
+    flex-basis: 35%; /* Ajuste a porcentagem se necessário */
+    display: flex;
+    justify-content: space-between;
+    text-align: right;
+}

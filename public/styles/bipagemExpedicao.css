@@ -1,0 +1,505 @@
+@import 'theme.css';
+
+/* 
+ * ESTILO PREMIUM: Bipagem de Expedição (Orange-Dark)
+ * Arquivo Exclusivo: bipagemExpedicao.css
+ * Projetado para responsividade total em coletores/mobile
+ */
+
+.bipagem-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    padding: 15px;
+    max-width: 1400px;
+    margin: 0 auto;
+    font-family: var(--font-primary);
+    box-sizing: border-box;
+}
+
+.bipagem-header {
+    display: flex;
+    align-items: center;
+    background: linear-gradient(135deg, rgba(240, 124, 0, 0.15) 0%, rgba(30, 30, 30, 0.8) 100%);
+    border-left: 4px solid var(--accent-orange);
+    padding: 1.5rem;
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--box-shadow-soft);
+    margin-bottom: 0.5rem;
+}
+
+.bipagem-header h1 {
+    font-size: 1.6rem;
+    color: var(--text-primary);
+    margin: 0;
+    font-weight: 700;
+}
+
+.bipagem-header i {
+    color: var(--accent-orange);
+    margin-right: 12px;
+}
+
+/* Painéis Principais */
+.bipagem-grid {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 1.5rem;
+    align-items: stretch;
+}
+
+.bipagem-panel {
+    background: var(--bg-secondary);
+    border-radius: var(--border-radius-lg);
+    padding: 1.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: var(--box-shadow-medium);
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    width: 100%;
+}
+
+.bipagem-panel-title {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    padding-bottom: 1rem;
+}
+
+.bipagem-panel-title i {
+    color: var(--accent-orange);
+    margin-right: 10px;
+}
+
+/* Campos de Formulário Customizados */
+.bip-form-group {
+    margin-bottom: 1.25rem;
+}
+
+.bip-label {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.bip-input-group {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.bip-select {
+    flex: 1;
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: var(--border-radius-md);
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+    outline: none;
+    transition: all var(--transition-fast);
+    width: 100%;
+}
+
+.bip-select:focus {
+    border-color: var(--accent-orange);
+    box-shadow: 0 0 0 2px rgba(240, 124, 0, 0.2);
+}
+
+.bip-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Botões de Ação Menores */
+.btn-bip {
+    background: var(--bg-tertiary);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: var(--text-primary);
+    border-radius: var(--border-radius-md);
+    padding: 0 1rem;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-bip:hover:not(:disabled) {
+    background: var(--bg-primary);
+    border-color: var(--accent-orange);
+    color: var(--accent-orange);
+}
+
+.btn-bip.danger:hover:not(:disabled) {
+    border-color: var(--color-danger);
+    color: var(--color-danger);
+}
+
+.btn-bip:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+/* Categoria Scanner Gigante */
+.scanner-area {
+    text-align: center;
+    margin-bottom: 2rem;
+    width: 100%;
+}
+
+.scanner-label {
+    color: var(--accent-orange);
+    font-weight: 700;
+    font-size: 1.1rem;
+    margin-bottom: 1rem;
+    display: block;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 0.8; }
+    50% { opacity: 1; text-shadow: 0 0 10px rgba(240,124,0,0.5); }
+    100% { opacity: 0.8; }
+}
+
+.scanner-input {
+    width: 100%;
+    background-color: #000;
+    color: var(--text-primary);
+    border: 2px dashed var(--accent-orange);
+    border-radius: var(--border-radius-lg);
+    padding: 1.5rem;
+    font-size: 2rem;
+    text-align: center;
+    font-family: monospace;
+    letter-spacing: 2px;
+    outline: none;
+    transition: all var(--transition-fast);
+    box-sizing: border-box;
+}
+
+.scanner-input:focus {
+    background-color: rgba(240, 124, 0, 0.05);
+    border-style: solid;
+    box-shadow: 0 0 20px rgba(240, 124, 0, 0.15);
+}
+
+.scanner-input::placeholder {
+    color: #444;
+}
+
+/* Sub-Painéis Internos da Bipagem */
+.bip-status-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.bip-status-box {
+    background: var(--bg-tertiary);
+    border-radius: var(--border-radius-md);
+    padding: 1.25rem;
+    border: 1px solid rgba(255,255,255,0.02);
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+}
+
+.bip-status-box h6 {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+    letter-spacing: 1px;
+}
+
+.nf-display-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 1rem;
+    word-break: break-all;
+    flex: 1;
+}
+
+.carregadores-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    flex: 1;
+}
+
+.carregadores-list li {
+    background: rgba(40, 167, 69, 0.1);
+    color: var(--color-success);
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--border-radius-sm);
+    margin-bottom: 0.5rem;
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    font-weight: 500;
+}
+
+.carregadores-list li i {
+    margin-right: 8px;
+}
+
+.btn-bip-encerrar {
+    background: var(--color-success);
+    color: #fff;
+    border: none;
+    padding: 1rem;
+    font-size: 1rem;
+    font-weight: 700;
+    border-radius: var(--border-radius-md);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+    box-shadow: 0 4px 15px rgba(40, 167, 69, 0.2);
+}
+
+.btn-bip-encerrar:hover {
+    background: #218838;
+}
+
+.btn-bip-encerrar i {
+    margin-right: 8px;
+}
+
+/* HIERARQUIA EM TEMPO REAL */
+.hierarchy-panel {
+    background: var(--bg-secondary);
+    border-radius: var(--border-radius-lg);
+    border: 1px solid rgba(255,255,255,0.05);
+    margin-top: 2rem;
+    overflow: hidden;
+}
+
+.hierarchy-header {
+    background: rgba(23, 162, 184, 0.1);
+    padding: 1rem 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(23, 162, 184, 0.2);
+}
+
+.hierarchy-header h2 {
+    font-size: 1.1rem;
+    color: var(--color-info);
+    margin: 0;
+    display: flex;
+    align-items: center;
+}
+
+.hierarchy-badge {
+    background: var(--color-info);
+    color: #fff;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.hierarchy-body {
+    padding: 1rem;
+}
+
+/* Árvore de Coleta (Sanfona customizada) */
+.h-coleta-card {
+    background: var(--bg-tertiary);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: var(--border-radius-md);
+    margin-bottom: 1rem;
+    overflow: hidden;
+}
+
+.h-coleta-header {
+    padding: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    background: rgba(255,255,255,0.02);
+    transition: background var(--transition-fast);
+}
+
+.h-coleta-header:hover {
+    background: rgba(255,255,255,0.05);
+}
+
+.h-coleta-title {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 1rem;
+}
+
+.h-coleta-stats {
+    background: rgba(240, 124, 0, 0.15);
+    color: var(--accent-orange);
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.h-coleta-content {
+    padding: 1rem;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    display: none; /* Controle via JS */
+}
+
+.h-coleta-content.open {
+    display: block;
+}
+
+/* Árvore de Palete */
+.h-palete-box {
+    background: rgba(0,0,0,0.2);
+    border-left: 3px solid var(--text-muted);
+    padding: 1rem;
+    border-radius: 0 var(--border-radius-md) var(--border-radius-md) 0;
+    margin-bottom: 1rem;
+}
+
+.h-palete-title {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.8rem;
+    font-weight: 600;
+    display: flex;
+    justify-content: space-between;
+}
+
+.h-nf-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.h-nf-tag {
+    background: var(--bg-primary);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: var(--text-secondary);
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-family: monospace;
+}
+
+.h-nf-tag.kit {
+    border-color: var(--accent-orange);
+    color: var(--accent-orange);
+}
+
+.alert-custom {
+    background: rgba(240, 124, 0, 0.1);
+    border: 1px solid rgba(240, 124, 0, 0.3);
+    color: var(--accent-orange);
+    padding: 12px 18px;
+    border-radius: var(--border-radius-md);
+    font-size: 0.9rem;
+    margin-top: 1.5rem;
+    display: flex;
+    align-items: center;
+}
+
+.alert-custom i {
+    margin-right: 10px;
+}
+
+
+
+/* RESPONSIVIDADE EXTREMA (MOBILE) */
+
+@media (max-width: 992px) {
+    .bipagem-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 600px) {
+    .bipagem-wrapper {
+        padding: 10px;
+        gap: 1rem;
+    }
+
+    .bipagem-header {
+        padding: 1rem;
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .bipagem-header h1 {
+        font-size: 1.3rem;
+    }
+
+    .bipagem-panel {
+        padding: 1rem;
+    }
+
+    .bipagem-panel-title {
+        font-size: 1.05rem;
+        margin-bottom: 1rem;
+    }
+
+    .bip-input-group {
+        flex-direction: row; /* Mantém na mesma linha mas reduz botões */
+    }
+
+    .bip-select {
+        font-size: 0.9rem;
+        padding: 0.6rem 0.8rem;
+    }
+
+    .btn-bip {
+        padding: 0 0.8rem;
+    }
+
+    /* O Scanner Gigante diminui no cel */
+    .scanner-label {
+        font-size: 0.95rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .scanner-input {
+        font-size: 1.3rem;
+        padding: 1rem;
+    }
+
+    /* As duas caixas inferiores ('NF Aberta' e 'Rateio') ficam empilhadas */
+    .bip-status-grid {
+        grid-template-columns: 1fr;
+        gap: 0.8rem;
+    }
+
+    .bip-status-box {
+        padding: 1rem;
+    }
+
+    .nf-display-value {
+        font-size: 1.2rem;
+    }
+
+    .carregadores-list li {
+        font-size: 0.85rem;
+        padding: 0.4rem 0.5rem;
+    }
+
+    .btn-bip-encerrar {
+        padding: 0.85rem;
+        font-size: 0.95rem;
+    }
+}

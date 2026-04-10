@@ -1,0 +1,54 @@
+{{!< main}} {{!-- Usa o layout principal --}}
+
+{{#section "head"}}
+  {{!-- Se precisar de estilos MUITO específicos para esta página, crie um CSS e linke aqui.
+       Por ora, vamos tentar usar o tables.css e relacoes.css globais. --}}
+  {{!-- <link href="/public/styles/canceladas.css" rel="stylesheet"> --}}
+  <link href="/public/styles/relacoes.css" rel="stylesheet"> {{!-- Estilos gerais do módulo de relações --}}
+{{/section}}
+
+<div class="content-card">
+  <div class="page-header-actions">
+    <h1 class="page-title">{{title}}</h1>
+    <div class="action-buttons">
+      <a href="/relacoes" class="btn btn-outline-accent"><i class="fas fa-arrow-left"></i> Voltar para Relações</a>
+    </div>
+  </div>
+
+  <div class="table-responsive-wrapper">
+    <table id="canceladasTable" class="dataTable display" style="width:100%">
+      <thead>
+        <tr>
+          <th>Emissão Original</th>
+          <th>Nº NF</th>
+          <th>Chave de Acesso (parcial)</th>
+          <th>Transportadora Original</th>
+          <th>Data Cancel./Proc.</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{!-- Os dados serão carregados aqui via JavaScript usando a API /api/relacoes/canceladas/all --}}
+        {{!-- Exemplo de linha (para referência, o JS irá popular):
+        <tr>
+          <td>Emissão - 01/01/2024 10:00:00</td>
+          <td>12345</td>
+          <td>3524...0001</td>
+          <td>JEW</td>
+          <td>02/01/2024</td>
+          <td class="table-actions">
+            <button class="btn btn-icon btn-success-alt btn-reativar-nfe" data-nfereportid="XYZ" title="Reativar NF-e (tornar pendente)">
+              <i class="fas fa-undo"></i> Reativar
+            </button>
+          </td>
+        </tr>
+        --}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{{#section "scripts"}}
+  {{!-- O relacaoManager.js será atualizado para lidar com esta página --}}
+  <script src="/public/scripts/relacaoManager.js"></script>
+{{/section}}
