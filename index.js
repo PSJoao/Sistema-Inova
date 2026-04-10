@@ -123,7 +123,7 @@ let isHubDevolucoesSyncRunning = false;
 
 // Agendamento para Monitorar Exclusivamente Devoluções e Mediações do Hub
 // Expressão '0 5 * * *' executa todos os dias às 05:00 da manhã.
-cron.schedule('0 18 * * *', async () => {
+/*cron.schedule('0 18 * * *', async () => {
     if (isHubDevolucoesSyncRunning) {
         console.log(`[HUB Devoluções Cron] Monitoramento de devoluções já em andamento. Pulando este ciclo...`);
         return; 
@@ -143,14 +143,14 @@ cron.schedule('0 18 * * *', async () => {
 }, {
     scheduled: true,
     timezone: "America/Sao_Paulo"
-});
+});*/
 
 let isHubSyncRunning = false;
 
 //Agendamento do hub
-cron.schedule('*/1 * * * *', async () => {
+//cron.schedule('*/1 * * * *', async () => {
     // 1. Verifica se já está rodando
-    if (isHubSyncRunning) {
+    /*if (isHubSyncRunning) {
         console.log(`[HUB Cron] Sincronização anterior ainda em andamento. Pulando este ciclo...`);
         return; // Sai da função e espera o próximo minuto
     }
@@ -173,14 +173,14 @@ cron.schedule('*/1 * * * *', async () => {
         // 5. IMPORTANTE: Solta a trava independente de sucesso ou erro
         isHubSyncRunning = false;
     }
-});
+});*/
 
 let isHubProdutosSyncRunning = false;
 
 // Agendamento para Sincronizar os Produtos do Hub
 // A expressão '0 22 * * *' faz rodar todos os dias às 22:00.
 // Se quiser mudar, ex: '0 */4 * * *' (a cada 4 horas), ou '0 0 * * 0' (todo domingo).
-cron.schedule('0 22 * * *', async () => {
+/*cron.schedule('0 22 * * *', async () => {
     if (isHubProdutosSyncRunning) {
         console.log(`[HUB Produtos Cron] Sincronização de anúncios já em andamento. Pulando este ciclo...`);
         return; 
@@ -202,9 +202,9 @@ cron.schedule('0 22 * * *', async () => {
 }, {
     scheduled: true,
     timezone: "America/Sao_Paulo"
-});
+});*/
 
-cron.schedule('0 3 * * *', async () => {
+/*cron.schedule('0 3 * * *', async () => {
     console.log(`[CRON Limpeza] Iniciando verificação de PDFs antigos em ${PDF_STORAGE_DIR_CLEANUP}...`);
     try {
         const files = await fs.readdir(PDF_STORAGE_DIR_CLEANUP);
@@ -241,11 +241,11 @@ cron.schedule('0 3 * * *', async () => {
 }, {
   scheduled: true,
   timezone: "America/Sao_Paulo"
-});
+});*/
 
 //Agendar tarefa para atualizar preços da madeira a cada 20 minutos
-cron.schedule('*/20 * * * *', async () => {
-  console.log(`${new Date().toISOString()}: Executando tarefa agendada de atualização de preços...`);
+//cron.schedule('*/20 * * * *', async () => {
+  /*console.log(`${new Date().toISOString()}: Executando tarefa agendada de atualização de preços...`);
   try {
     await Promise.all([
             updatePrices(),
@@ -254,7 +254,7 @@ cron.schedule('*/20 * * * *', async () => {
   } catch (error) {
     console.error(`${new Date().toISOString()}: Erro pego na execução agendada de updatePrices:`, error);
   }
-});
+});*/
 //0 */2 * * *
 cron.schedule('0 */2 * * *', async () => { // A cada 2 horas
   console.log(`${new Date().toISOString()}: Disparando job agendado de atualização de tokens Bling...`);
@@ -317,7 +317,7 @@ console.log('Job de sincronização de produtos agendado para rodar todo Domingo
 //console.log('Job de sincronização de NF-e emitidas agendado para rodar a cada hora.');
 
 //0 5 * * 3
-cron.schedule('0 * * * *', async () => {
+/*cron.schedule('0 * * * *', async () => {
     console.log(`${new Date().toISOString()}: Disparando job agendado de atualização de custos e dados de anúncios...`);
     try {
         await updateUrlCostsAndData();
@@ -325,14 +325,14 @@ cron.schedule('0 * * * *', async () => {
         console.error(`${new Date().toISOString()}: Erro pego pelo agendador ao executar updateUrlCostsAndData:`, error);
     }
 });
-console.log('Job de atualização de custos e dados de URLs agendado para rodar semanalmente.');
+console.log('Job de atualização de custos e dados de URLs agendado para rodar semanalmente.');*/
 
 let isRastreioJobRunning = false;
 
-console.log('[CRON] Agendando rotina de rastreio para executar a cada hora.');
+//console.log('[CRON] Agendando rotina de rastreio para executar a cada hora.');
 // A expressão '0 * * * *' executa no minuto 0 de cada hora.
 //1-59/1 * * * *
-cron.schedule('0 * * * *', async () => {
+/*cron.schedule('0 * * * *', async () => {
 const dataHora = new Date().toLocaleString('pt-BR');
 
   if (isRastreioJobRunning) {
@@ -365,7 +365,7 @@ const dataHora = new Date().toLocaleString('pt-BR');
 }, {
   scheduled: true,
   timezone: "America/Sao_Paulo"
-});
+});*/
 
 // Rota para lidar com páginas não encontradas
 app.use((req, res) => {

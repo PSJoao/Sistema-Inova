@@ -952,7 +952,61 @@ async function gerarPdfOrganizado(etiquetasOrdenadas, estoqueMapa = {}) {
                 font: boldFont, size: 9,
             });
 
-            page.drawText('DANFE', {
+            const qrCodeSize = 30; // Tamanho exato para encaixar no espaço restante do canhoto
+            const qrYPos = currentY - 28; // Ajuste vertical para centralizar com a linha do texto
+            let currentQrX = padding + 50; // Posição X logo ao lado do "Seq: "
+
+            // 1. QR Code da DANFE
+            if (etiqueta.chaveAcesso) {
+                const qrDanfeBytes = await bwip.toBuffer({
+                    bcid: 'qrcode',
+                    text: etiqueta.chaveAcesso,
+                    scale: 3
+                });
+                const qrDanfeImg = await finalPdfDoc.embedPng(qrDanfeBytes);
+                
+                page.drawImage(qrDanfeImg, {
+                    x: currentQrX,
+                    y: qrYPos,
+                    width: qrCodeSize,
+                    height: qrCodeSize
+                });
+                
+                // Mini legenda
+                page.drawText('DANFE', { 
+                    x: currentQrX + 6, 
+                    y: qrYPos + 32, 
+                    font: font, size: 5 
+                });
+            }
+
+            // 2. QR Code do Checkout
+            if (etiqueta.pedidoInterno) {
+                const qrCheckoutBytes = await bwip.toBuffer({
+                    bcid: 'qrcode',
+                    text: String(etiqueta.pedidoInterno),
+                    scale: 3
+                });
+                const qrCheckoutImg = await finalPdfDoc.embedPng(qrCheckoutBytes);
+                
+                page.drawImage(qrCheckoutImg, {
+                    x: currentQrX + 90,
+                    y: qrYPos,
+                    width: qrCodeSize,
+                    height: qrCodeSize
+                });
+                
+                // Mini legenda
+                page.drawText('Check', { 
+                    x: currentQrX + 97.5, 
+                    y: qrYPos + 32, 
+                    font: font, size: 5 
+                });
+                
+                currentQrX += qrCodeSize + 15; // Move o eixo X para o próximo QR Code
+            }
+
+            /*page.drawText('DANFE', {
                 x: padding + 235, y: currentY,
                 font: boldFont, size: 7,
             });
@@ -985,13 +1039,13 @@ async function gerarPdfOrganizado(etiquetasOrdenadas, estoqueMapa = {}) {
                     // Rotação de 90 graus para deixá-lo "em pé"
                     rotate: degrees(90),
                 });
-            }
+            }*/
 
 
             // --- Adicionar Etiqueta Original (redimensionada para o espaço restante) ---
             page.drawPage(embeddedPage, {
                 x: 0, y: 0,
-                width: pageWidth - 35,
+                width: pageWidth + 10,
                 height: etiquetaHeight,
             });
 
