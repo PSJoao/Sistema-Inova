@@ -2228,17 +2228,24 @@ async function registrarBipagemExpedicaoFinal(paleteId, nfLida, carregadoresIds)
 async function identificarCodigoBipado(codigo) {
     const client = await pool.connect();
     try {
+        let finalNfeNumero = codigo;
+
+        // NOVO: Bipagem pelo Número do Pedido (Checkout)
+        const pedidoQuery = await client.query('SELECT nfe_parent_numero FROM cached_pedido_venda WHERE numero = $1 LIMIT 1', [codigo]);
+        if (pedidoQuery.rows.length > 0 && pedidoQuery.rows[0].nfe_parent_numero) {
+            finalNfeNumero = pedidoQuery.rows[0].nfe_parent_numero;
+        }
+
         const carregadorQuery = await client.query('SELECT id, nome, codigo_barras FROM carregadores WHERE codigo_barras = $1 AND ativo = TRUE', [codigo]);
         if (carregadorQuery.rows.length > 0) {
             return { success: true, type: 'carregador', data: carregadorQuery.rows[0] };
         }
 
-        let finalNfeNumero = codigo;
-        if (codigo.length >= 44) {
-            const nfeQuery = await client.query('SELECT nfe_numero FROM cached_nfe WHERE chave_acesso = $1 LIMIT 1', [codigo]);
+        if (finalNfeNumero.length >= 44) {
+            const nfeQuery = await client.query('SELECT nfe_numero FROM cached_nfe WHERE chave_acesso = $1 LIMIT 1', [finalNfeNumero]);
             if (nfeQuery.rows.length > 0) finalNfeNumero = nfeQuery.rows[0].nfe_numero;
         } else {
-            const nfeQuery = await client.query('SELECT nfe_numero FROM cached_nfe WHERE nfe_numero = $1 LIMIT 1', [codigo]);
+            const nfeQuery = await client.query('SELECT nfe_numero FROM cached_nfe WHERE nfe_numero = $1 LIMIT 1', [finalNfeNumero]);
             if (nfeQuery.rows.length > 0) finalNfeNumero = nfeQuery.rows[0].nfe_numero;
         }
 
@@ -2549,6 +2556,33 @@ async function pausarNotasViradaDoDia() {
     }
 }
 
+async function gerarPdfPendentes(nfList) {
+    if (!nfList || nfList.length === 0) throw new Error('Nenhuma NF fornecida.');
+    const mergedPdf = await PDFDocument.create();
+    let foundCount = 0;
+    
+    for (const nf of nfList) {
+        try {
+            const resultado = await buscarEtiquetaPorNF(nf);
+            if (resultado.success && resultado.pdfBuffer) {
+                const individualPdf = await PDFDocument.load(resultado.pdfBuffer);
+                const [copiedPage] = await mergedPdf.copyPages(individualPdf, [0]);
+                mergedPdf.addPage(copiedPage);
+                foundCount++;
+            }
+        } catch (e) { 
+            console.error(`Erro ao buscar etiqueta da NF ${nf}:`, e.message); 
+        }
+    }
+    
+    if (foundCount === 0) {
+        throw new Error('Nenhuma etiqueta física foi encontrada no diretório para os identificadores fornecidos.');
+    }
+    
+    const pdfBytes = await mergedPdf.save();
+    return Buffer.from(pdfBytes);
+}
+
 module.exports = {
     processarEtiquetas,
     buscarEtiquetaPorNF,
@@ -2576,5 +2610,6 @@ module.exports = {
     obterHistoricoExpedicoes,
     gerarRelatorioExcelExpedicao,
     gerarExcelDinamicoDataTable,
-    pausarNotasViradaDoDia
+    pausarNotasViradaDoDia,
+    gerarPdfPendentes
 };

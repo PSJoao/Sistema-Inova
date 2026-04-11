@@ -256,8 +256,8 @@ let isHubProdutosSyncRunning = false;
   }
 });*/
 //0 */2 * * *
-cron.schedule('0 */2 * * *', async () => { // A cada 2 horas
-  console.log(`${new Date().toISOString()}: Disparando job agendado de atualização de tokens Bling...`);
+//cron.schedule('0 */2 * * *', async () => { // A cada 2 horas
+  /*console.log(`${new Date().toISOString()}: Disparando job agendado de atualização de tokens Bling...`);
   try {
     await runScheduledTokenRefresh();
   } catch (error) {
@@ -266,9 +266,9 @@ cron.schedule('0 */2 * * *', async () => { // A cada 2 horas
     console.error(`${new Date().toISOString()}: Erro pego pelo agendador node-cron ao executar runScheduledTokenRefresh:`, error);
   }
 });
-console.log('Job de refresh de tokens Bling agendado para rodar a cada 5 horas.');
+console.log('Job de refresh de tokens Bling agendado para rodar a cada 5 horas.');*/
 
-cron.schedule('0 0 * * *', async () => {
+/*cron.schedule('0 0 * * *', async () => {
     console.log(`[CRON Expedição] Disparando rotina de virada de dia (Pausar Notas Pendentes)...`);
     try {
         await etiquetasService.pausarNotasViradaDoDia();
@@ -278,7 +278,7 @@ cron.schedule('0 0 * * *', async () => {
 }, {
     scheduled: true,
     timezone: "America/Sao_Paulo"
-});
+});*/
 
 // Sincroniza produtos uma vez por semana (às 4h da manhã de todo domingo)
 //0 23 * * *

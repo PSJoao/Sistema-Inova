@@ -57,6 +57,8 @@ router.get('/api/expedicao/historico/relatorio/:data', etiquetasController.apiDo
 
 router.post('/api/expedicao/exportar-dinamico', etiquetasController.apiExportarDinamicoExcel);
 
+router.post('/api/expedicao/imprimir-lote', etiquetasController.apiImprimirLotePDF);
+
 router.get('/etiquetas/expedicao/bipagem', etiquetasController.renderBipagemExpedicao);
 
 // ==========================================

@@ -452,6 +452,11 @@ function initExportButtons() {
     if(btnAgrupado) {
         btnAgrupado.addEventListener('click', () => solicitarPlanilhaDinamica('grouped'));
     }
+
+    const btnImprimirPendencias = document.getElementById('btn-imprimir-pendencias');
+    if(btnImprimirPendencias) {
+        btnImprimirPendencias.addEventListener('click', imprimirPendenciasLote);
+    }
 }
 
 async function solicitarPlanilhaDinamica(type) {
@@ -512,5 +517,63 @@ async function solicitarPlanilhaDinamica(type) {
         console.error(err);
         ModalSystem.hideLoading();
         ModalSystem.alert('Não foi possível realizar o download.', 'Erro na Geração Excel');
+    }
+}
+
+async function imprimirPendenciasLote() {
+    if (!tabelaPendencias) return;
+    const dadosVisiveis = tabelaPendencias.rows({ search: 'applied' }).data().toArray();
+    
+    if(dadosVisiveis.length === 0) {
+        ModalSystem.alert('A tabela atual não possui dados aplicáveis para impressão.', 'Tabela Vazia');
+        return;
+    }
+
+    const htmlStripper = /(<([^>]+)>)/gi;
+    const nfsExtraidas = [];
+    dadosVisiveis.forEach(row => {
+        const identificador = row.nfHtml ? row.nfHtml.replace(htmlStripper, "").trim() : "";
+        if (identificador && identificador !== "-") {
+            nfsExtraidas.push(identificador);
+        }
+    });
+
+    if(nfsExtraidas.length === 0) {
+        ModalSystem.alert('Não foram encontrados NFs processáveis nos dados atuais.', 'Sem Dados');
+        return;
+    }
+
+    try {
+        ModalSystem.showLoading('Montando arquivo unificado de etiquetas...', 'Aguarde');
+        
+        const response = await fetch('/api/expedicao/imprimir-lote', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nfs: nfsExtraidas })
+        });
+
+        if (!response.ok) {
+            const errJson = await response.json().catch(() => ({}));
+            throw new Error(errJson.message || 'Falha ao compilar arquivo em lote PDF');
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `Etiquetas_Lote_${new Date().getTime()}.pdf`;
+        
+        document.body.appendChild(a);
+        a.click();
+        
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        ModalSystem.hideLoading();
+    } catch (err) {
+        console.error(err);
+        ModalSystem.hideLoading();
+        ModalSystem.alert(err.message, 'Erro na Geração PDF');
     }
 }

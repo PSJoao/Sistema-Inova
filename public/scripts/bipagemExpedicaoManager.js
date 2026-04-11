@@ -199,6 +199,13 @@ function setupEventListeners() {
             }, 'password');
         });
     });
+
+    const btnImprimirResumo = document.getElementById('btn-imprimir-resumo');
+    if (btnImprimirResumo) {
+        btnImprimirResumo.addEventListener('click', () => {
+            imprimirResumoVisual();
+        });
+    }
 }
 
 function validarDestino() {
@@ -446,4 +453,39 @@ async function carregarHierarquiaHoje() {
         console.error('Erro na hierarquia', e);
         container.innerHTML = '<div class="alert-custom"><i class="fas fa-wifi"></i> Falha de conexão ao baixar hierarquia.</div>';
     }
+}
+
+// ==========================================
+// 5. EXPORTAÇÃO VISUAL (PDF)
+// ==========================================
+function imprimirResumoVisual() {
+    const container = document.getElementById('hierarquia-container');
+    if (!container) return;
+
+    ModalSystem.showLoading('Preparando PDF Documental...');
+
+    // Força a abertura de todos os acordeões para o PDF registrar todas NFs
+    const conteudos = container.querySelectorAll('.h-coleta-content');
+    conteudos.forEach(c => c.classList.add('open'));
+
+    // Configuração do html2pdf
+    const element = document.querySelector('.hierarchy-panel');
+    const opt = {
+        margin:       10,
+        filename:     `Resumo_Expedicao_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.pdf`,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak:    { mode: 'css', inside: 'avoid' } // Garante que a quebra não corte um palete na metade se possível
+    };
+
+    setTimeout(() => {
+        html2pdf().set(opt).from(element).save().then(() => {
+            ModalSystem.hideLoading();
+        }).catch(err => {
+            console.error(err);
+            ModalSystem.hideLoading();
+            ModalSystem.alert('Erro ao gerar o PDF documental.', 'Erro');
+        });
+    }, 500); // 500ms para aguardar a renderização do CSS 'open'
 }

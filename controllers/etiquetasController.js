@@ -14,7 +14,7 @@ const { gerarZipEtiquetasCarregadores } = require('../services/carregadoresPdfSe
 cron.schedule('0 19 * * *', async () => {
     console.log('[CRON 19h] Verificando condições para reset do Contador de Paletes e Cancelamento de Etiquetas Pendentes...');
     const client = await pool.connect();
-    
+
     try {
         await client.query('BEGIN'); // Inicia a transação
         // --- 1. Reset do Contador de Paletes ---
@@ -55,7 +55,7 @@ cron.schedule('0 19 * * *', async () => {
 exports.gerarEtiquetasCarregadores = async (req, res) => {
     try {
         const { carregadores } = req.body; // Array esperado: [{ nome: "João", codigo_barras: "EMP-001", quantidade: 50 }]
-        
+
         if (!carregadores || !Array.isArray(carregadores) || carregadores.length === 0) {
             return res.status(400).json({ error: 'Nenhum carregador informado.' });
         }
@@ -105,7 +105,7 @@ exports.apiDownloadRelatorioExpedicao = async (req, res) => {
     try {
         const { data } = req.params;
         const buffer = await etiquetasService.gerarRelatorioExcelExpedicao(data);
-        
+
         res.setHeader('Content-Disposition', `attachment; filename="Relatorio_Expedicao_${data}.xlsx"`);
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.send(buffer);
@@ -123,7 +123,7 @@ exports.apiExportarDinamicoExcel = async (req, res) => {
         }
 
         const buffer = await etiquetasService.gerarExcelDinamicoDataTable(linhas, tipo);
-        
+
         res.setHeader('Content-Disposition', `attachment; filename="Base_Dinamica.xlsx"`);
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.send(buffer);
@@ -135,7 +135,7 @@ exports.apiExportarDinamicoExcel = async (req, res) => {
 exports.renderBipagemExpedicao = (req, res) => { res.render('etiquetas/bipagem-expedicao', { title: 'Bipagem Expedição' }); };
 exports.apiGetColetas = async (req, res) => { res.json(await etiquetasService.listarColetasAtivas()); };
 exports.apiPostColeta = async (req, res) => { res.json(await etiquetasService.criarColeta()); };
-exports.apiDeleteColeta = async (req, res) => { 
+exports.apiDeleteColeta = async (req, res) => {
     try {
         await etiquetasService.deletarColeta(req.params.id);
         res.json({ success: true });
@@ -145,7 +145,7 @@ exports.apiDeleteColeta = async (req, res) => {
 };
 exports.apiGetPaletes = async (req, res) => { res.json(await etiquetasService.listarPaletesPorColeta(req.params.coletaId)); };
 exports.apiPostPalete = async (req, res) => { res.json(await etiquetasService.criarPalete(req.body.coleta_id)); };
-exports.apiDeletePalete = async (req, res) => { 
+exports.apiDeletePalete = async (req, res) => {
     try {
         await etiquetasService.deletarPalete(req.params.id);
         res.json({ success: true });
@@ -160,7 +160,7 @@ exports.apiPostCarregador = async (req, res) => {
         if (!nome || !codigo_barras) return res.status(400).json({ error: 'Nome e código são obrigatórios.' });
         const novo = await etiquetasService.criarCarregador(nome, codigo_barras);
         res.json(novo);
-    } catch(e) {
+    } catch (e) {
         console.error(e);
         res.status(500).json({ error: 'Erro ao criar carregador.' });
     }
@@ -169,7 +169,7 @@ exports.apiDeleteCarregador = async (req, res) => {
     try {
         await etiquetasService.deletarCarregador(req.params.id);
         res.json({ success: true });
-    } catch(e) {
+    } catch (e) {
         console.error(e);
         res.status(500).json({ error: 'Erro ao deletar carregador.' });
     }
@@ -219,7 +219,7 @@ exports.apiAtualizarStatusPendencia = async (req, res) => {
         if (!['pendente', 'sem_estoque', 'cancelado'].includes(status)) {
             return res.status(400).json({ error: 'Status inválido.' });
         }
-        
+
         await etiquetasService.atualizarStatusPendenciaExpedicao(id, status);
         res.json({ success: true, message: 'Status atualizado com sucesso.' });
     } catch (error) {
@@ -236,13 +236,13 @@ cron.schedule('0 0 * * *', async () => {
     try {
         await client.query('BEGIN');
         await client.query('DELETE FROM senha_diaria_separacao');
-    
+
         // Gera nova senha de 3 dígitos
         const novaSenha = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
         await client.query('INSERT INTO senha_diaria_separacao (data_referencia, senha) VALUES (CURRENT_DATE, $1)', [novaSenha]);
         console.log(`[CRON 00h] Nova senha diária gerada com sucesso: ${novaSenha}`);
-        
-        
+
+
         await client.query('COMMIT');
     } catch (error) {
         await client.query('ROLLBACK');
@@ -261,7 +261,7 @@ async function ensureRecentPdfDir() {
         console.error('Erro ao criar diretório de PDFs recentes:', error);
     }
 }
-ensureRecentPdfDir(); 
+ensureRecentPdfDir();
 async function ensurePdfStorageDir() {
     try {
         await fs.mkdir(PDF_STORAGE_DIR, { recursive: true });
@@ -318,7 +318,7 @@ exports.renderEtiquetasPage = async (req, res) => {
         let recentFiles = [];
         try {
             const files = await fs.readdir(RECENT_PDF_DIR);
-            
+
             // Processa, deleta antigos e lista os recentes
             const fileStats = await Promise.all(files.map(async (file) => {
                 const filePath = path.join(RECENT_PDF_DIR, file);
@@ -330,10 +330,10 @@ exports.renderEtiquetasPage = async (req, res) => {
                     console.log(`[Limpeza Automática] Arquivo removido (expirado > 24h): ${file}`);
                     return null; // Retorna null para filtrar depois
                 }
-                return { 
-                    name: file, 
-                    date: stats.birthtime, 
-                    timestamp: stats.birthtime.getTime() 
+                return {
+                    name: file,
+                    date: stats.birthtime,
+                    timestamp: stats.birthtime.getTime()
                 };
             }));
             // Filtra os nulls e ordena do mais recente para o mais antigo
@@ -350,7 +350,7 @@ exports.renderEtiquetasPage = async (req, res) => {
             recentFiles: recentFiles,
             helpers: {
                 formatDateShort: (date) => {
-                    if(!date) return '';
+                    if (!date) return '';
                     return new Date(date).toLocaleString('pt-BR');
                 }
             }
@@ -363,7 +363,7 @@ exports.renderEtiquetasPage = async (req, res) => {
 };
 async function getEstoqueParaEtiquetas(etiquetasInfo) {
     if (!etiquetasInfo || etiquetasInfo.length === 0) return {};
-    
+
     const client = await pool.connect();
     try {
         const estoqueMapa = {};
@@ -393,14 +393,14 @@ async function getEstoqueParaEtiquetas(etiquetasInfo) {
         produtosRes.rows.forEach(p => skuToBlingId[p.sku] = p.bling_id);
         // 3. Consultar Bling API
         const blingIds = Object.values(skuToBlingId).filter(id => id != null);
-        
+
         if (blingIds.length > 0) {
             const idsQuery = blingIds.map(id => `idsProdutos[]=${id}`).join('&');
             const url = `https://www.bling.com.br/Api/v3/estoques/saldos?${idsQuery}`;
-            
+
             // Conforme sua regra, usando a conta 'lucas'
             const blingData = await blingApiGet(url, 'lucas');
-            
+
             const estoquePorBlingId = {};
             if (blingData && blingData.data) {
                 blingData.data.forEach(item => {
@@ -513,11 +513,11 @@ exports.processAndOrganizeEtiquetas = (req, res) => {
             const organizedPdfFilename = `Etiquetas-Organizadas-${timestamp}.pdf`;
             // 2. Passamos o nome do arquivo gerado (organizedPdfFilename) como segundo argumento.
             const { etiquetasPdf, relatorioPdf } = await processarEtiquetas(
-                pdfInputs, 
-                organizedPdfFilename, 
+                pdfInputs,
+                organizedPdfFilename,
                 async (dados) => await getEstoqueParaEtiquetas(dados) // <--- Injeção da lógica de estoque
             );
-            
+
             //const timestamp = Date.now();
             //const organizedPdfFilename = `Etiquetas-Organizadas-${timestamp}.pdf`;
             const organizedPdfPath = path.join(PDF_STORAGE_DIR, organizedPdfFilename);
@@ -668,7 +668,7 @@ exports.renderMlEtiquetasListPage = async (req, res) => {
                     if (isNaN(date.getTime())) return 'Inválido';
                     return date.toLocaleDateString('pt-BR', { timeZone: 'UTC' }); // Formato dd/mm/aaaa
                 },
-                 formatDateTime: function(dateString) {
+                formatDateTime: function (dateString) {
                     if (!dateString) return 'N/A';
                     const date = new Date(dateString);
                     if (isNaN(date.getTime())) return 'Data/Hora Inválida';
@@ -678,7 +678,7 @@ exports.renderMlEtiquetasListPage = async (req, res) => {
                     const hours = String(date.getHours()).padStart(2, '0');
                     const minutes = String(date.getMinutes()).padStart(2, '0');
                     return `${day}/${month}/${year} ${hours}:${minutes}`;
-                  }
+                }
             }
         });
     } catch (error) {
@@ -752,7 +752,7 @@ exports.getMlEtiquetasApi = async (req, res) => {
 };
 exports.exportMlEtiquetasExcel = async (req, res) => {
     try {
-         const { search = '', situacao = '', startDate, endDate, sortBy = 'last_processed_at', sortOrder = 'DESC' } = req.query;
+        const { search = '', situacao = '', startDate, endDate, sortBy = 'last_processed_at', sortOrder = 'DESC' } = req.query;
         // Reutiliza a lógica de filtros da API de busca
         let whereClauses = [];
         const queryParams = [];
@@ -769,7 +769,7 @@ exports.exportMlEtiquetasExcel = async (req, res) => {
             whereClauses.push(`DATE(last_processed_at AT TIME ZONE 'UTC') <= $${paramIndex++}`);
             queryParams.push(endDate);
         }
-         if (search) {
+        if (search) {
             const searchTerm = `%${search}%`;
             whereClauses.push(`(
                 nfe_numero ILIKE $${paramIndex} OR
@@ -860,12 +860,12 @@ exports.buscarNfLote = (req, res) => {
             // Se o serviço rodou, envia o PDF
             res.setHeader('Content-Type', 'application/pdf');
             res.setHeader('Content-Disposition', `attachment; filename="Etiquetas_Lote_NF_${Date.now()}.pdf"`);
-            
+
             // **IMPORTANTE**: Passa as NFs não encontradas para o frontend através de um header customizado
             if (notFoundNfs.length > 0) {
                 res.setHeader('X-Not-Found-NFs', notFoundNfs.join(','));
             }
-            
+
             res.send(pdfBuffer);
         } catch (error) {
             // Erros do Service (Nenhuma NF encontrada, etc)
@@ -874,16 +874,34 @@ exports.buscarNfLote = (req, res) => {
         }
     });
 };
+
+exports.apiImprimirLotePDF = async (req, res) => {
+    const { nfs } = req.body;
+    if (!nfs || !Array.isArray(nfs) || nfs.length === 0) {
+        return res.status(400).json({ success: false, message: 'Nenhuma NFe fornecida para impressão.' });
+    }
+
+    try {
+        const pdfBuffer = await etiquetasService.gerarPdfPendentes(nfs);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="Etiquetas_Lote_${Date.now()}.pdf"`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('[Imprimir Lote] Erro ao gerar PDF em lote:', error);
+        res.status(500).json({ success: false, message: error.message || 'Erro interno ao gerar PDF.' });
+    }
+};
 exports.saveAndRotateRecentPdf = async (pdfBuffer, filename) => {
     try {
         const filePath = path.join(RECENT_PDF_DIR, filename);
-        
+
         // 1. Salva o novo arquivo
         await fs.writeFile(filePath, pdfBuffer);
-        
+
         // 2. Lê todos os arquivos da pasta
         const files = await fs.readdir(RECENT_PDF_DIR);
-        
+
         // 3. Mapeia para obter estatísticas (data de criação)
         const fileStats = await Promise.all(files.map(async (file) => {
             const fullPath = path.join(RECENT_PDF_DIR, file);
@@ -1015,7 +1033,7 @@ exports.buscarEstruturaGondola = async (req, res) => {
             LIMIT 1;
         `;
         const structRes = await client.query(structQuery, [codigoBipado]);
-        
+
         if (structRes.rows.length === 0) {
             return res.json({ success: false, message: 'Estrutura não encontrada no sistema.' });
         }
@@ -1030,7 +1048,7 @@ exports.buscarEstruturaGondola = async (req, res) => {
 };
 exports.salvarRelatorioGondola = async (req, res) => {
     const { state_json } = req.body;
-    
+
     if (!state_json || !state_json.itens || state_json.itens.length === 0) {
         return res.status(400).json({ success: false, message: 'Nenhum item bipado para salvar.' });
     }
@@ -1045,7 +1063,7 @@ exports.salvarRelatorioGondola = async (req, res) => {
             VALUES ($1, $2, NOW())
             RETURNING id, nome, created_at;
         `;
-        
+
         const result = await client.query(query, [nomeRelatorio, state_json]);
         res.json({ success: true, relatorio: result.rows[0] });
     } catch (error) {
@@ -1127,7 +1145,7 @@ exports.preProcessarEtiquetas = (req, res) => {
             const organizedPdfFilename = `Etiquetas-Organizadas-${timestamp}.pdf`;
             // Chama o Service de verdade!
             const resultado = await preProcessarEtiquetasService(pdfInputs, organizedPdfFilename);
-            
+
             // NOVO: Verifica no banco se existe uma senha/excel gerado HOJE
             let excelDisponivel = false;
             const client = await pool.connect();
@@ -1137,15 +1155,15 @@ exports.preProcessarEtiquetas = (req, res) => {
             } finally {
                 client.release();
             }
-            
+
             // Retorna os dados calculados + a flag do Excel
-            res.json({ 
-                success: true, 
-                batchId: resultado.batchId, 
+            res.json({
+                success: true,
+                batchId: resultado.batchId,
                 resumoProdutos: resultado.resumoProdutos,
                 excelDisponivel: excelDisponivel // Manda para o frontend
             });
-            
+
         } catch (error) {
             console.error('[Pré-processamento] Erro:', error);
             res.status(500).json({ success: false, message: error.message });
@@ -1156,7 +1174,7 @@ exports.preProcessarEtiquetas = (req, res) => {
 exports.finalizarProcessamentoEtiquetas = async (req, res) => {
     try {
         const { batchId, abatimentosManuais, gondolaId } = req.body;
-        
+
         let gondolaState = null;
         let nomeGondolaFormatado = 'Relatorio-Gondola'; // Fallback de segurança
         if (gondolaId) {
@@ -1166,7 +1184,7 @@ exports.finalizarProcessamentoEtiquetas = async (req, res) => {
                 const result = await client.query('SELECT nome, state_json FROM relatorios_gondola WHERE id = $1', [gondolaId]);
                 if (result.rows.length > 0) {
                     gondolaState = result.rows[0].state_json;
-                    
+
                     // Formata o nome para ser seguro como ficheiro no Windows/Linux (troca barras e dois pontos)
                     // Ex: "Gôndola - 10/10/2023 e 15:30" vira "Gôndola - 10-10-2023 e 15h30"
                     nomeGondolaFormatado = result.rows[0].nome.replace(/\//g, '-').replace(/:/g, 'h');
@@ -1189,19 +1207,19 @@ exports.finalizarProcessamentoEtiquetas = async (req, res) => {
         res.setHeader('Content-Type', 'application/zip');
         res.setHeader('Content-Disposition', `attachment; filename="${zipName}"`);
         const archive = archiver('zip', { zlib: { level: 9 } });
-        
+
         archive.on('end', () => res.end());
         archive.on('error', (err) => { throw err; });
-        
+
         archive.pipe(res);
         archive.append(etiquetasPdf, { name: `Etiquetas-Organizadas.pdf` });
         archive.append(relatorioPdf, { name: `Relatorio-de-Produtos-Prateleiras.pdf` });
-        
+
         // NOVO: Adiciona o relatório da Gôndola ao ZIP apenas se ele tiver sido gerado (se houver produtos)
         if (relatorioGondolaPdf) {
             archive.append(relatorioGondolaPdf, { name: `${nomeGondolaFormatado}.pdf` });
         }
-        
+
         await archive.finalize();
     } catch (error) {
         console.error('[Finalizar Processamento] Erro:', error);
@@ -1247,7 +1265,7 @@ exports.uploadSeparadosExcel = async (req, res) => {
         const nomeRelatorio = `Planilha de Separação - ${dataAtual.toLocaleDateString('pt-BR')} às ${dataAtual.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
         // Insere o relatório no histórico
         await client.query(
-            'INSERT INTO historico_separados_excel (nome, state_json) VALUES ($1, $2)', 
+            'INSERT INTO historico_separados_excel (nome, state_json) VALUES ($1, $2)',
             [nomeRelatorio, JSON.stringify(dadosExcel)]
         );
         // Limpeza Automática: Mantém apenas os 5 mais recentes e apaga o resto
@@ -1262,7 +1280,7 @@ exports.uploadSeparadosExcel = async (req, res) => {
         // Gerencia a Senha Diária
         let senhaDoDia = '';
         const resSenha = await client.query('SELECT senha FROM senha_diaria_separacao WHERE data_referencia = CURRENT_DATE');
-        
+
         if (resSenha.rows.length > 0) {
             senhaDoDia = resSenha.rows[0].senha;
         } else {
@@ -1270,8 +1288,8 @@ exports.uploadSeparadosExcel = async (req, res) => {
             await client.query('INSERT INTO senha_diaria_separacao (data_referencia, senha) VALUES (CURRENT_DATE, $1)', [senhaDoDia]);
         }
         await client.query('COMMIT');
-        res.json({ 
-            success: true, 
+        res.json({
+            success: true,
             message: `${totalLidos} linhas importadas e guardadas no histórico com sucesso!`,
             senha: senhaDoDia
         });
@@ -1286,13 +1304,13 @@ exports.uploadSeparadosExcel = async (req, res) => {
 exports.validarSenhaExcel = async (req, res) => {
     // Agora recebe também o historicoId selecionado pelo usuário
     const { senhaDigitada, historicoId } = req.body;
-    
+
     if (!senhaDigitada) return res.status(400).json({ success: false, message: 'Senha não fornecida.' });
     if (!historicoId) return res.status(400).json({ success: false, message: 'Nenhum relatório selecionado.' });
     const client = await pool.connect();
     try {
         const resSenha = await client.query('SELECT senha FROM senha_diaria_separacao WHERE data_referencia = CURRENT_DATE');
-        
+
         if (resSenha.rows.length === 0) {
             return res.json({ success: false, message: 'Nenhum Excel de separados foi enviado hoje.' });
         }
@@ -1300,7 +1318,7 @@ exports.validarSenhaExcel = async (req, res) => {
         if (senhaDigitada === senhaCorreta) {
             // Busca diretamente os dados do relatório que o usuário selecionou na combobox
             const excelRes = await client.query('SELECT state_json FROM historico_separados_excel WHERE id = $1', [historicoId]);
-            
+
             if (excelRes.rows.length === 0) {
                 return res.json({ success: false, message: 'Relatório selecionado não encontrado no histórico.' });
             }
@@ -1344,7 +1362,7 @@ exports.uploadOndasExcel = async (req, res) => {
         // 2. Lê o Excel enviado
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(req.file.buffer);
-        const worksheet = workbook.worksheets[0]; 
+        const worksheet = workbook.worksheets[0];
         let totalImportados = 0;
         worksheet.eachRow((row, rowNumber) => {
             const codigo = row.getCell(1).value?.toString().trim();
@@ -1401,22 +1419,22 @@ exports.uploadRelatorioTarde = async (req, res) => {
         const dadosRelatorio = {};
         worksheet.eachRow((row, rowNumber) => {
             // Regra: Os pedidos começam a partir da linha 7
-            if (rowNumber < 7) return; 
+            if (rowNumber < 7) return;
             // Coluna G = 7, Coluna U = 21, Coluna AM = 39
-            const qtdValue = row.getCell(7).value; 
-            const skuValue = row.getCell(21).value; 
-            const cepValue = row.getCell(39).value; 
+            const qtdValue = row.getCell(7).value;
+            const skuValue = row.getCell(21).value;
+            const cepValue = row.getCell(39).value;
             if (!skuValue || !qtdValue || !cepValue) return;
             const quantidade = parseInt(qtdValue, 10) || 0;
             const sku = skuValue.toString().trim();
-            
+
             // Extrai rigorosamente os ÚLTIMOS 5 dígitos do CEP
             const cepStr = String(cepValue).replace(/\D/g, '').padStart(8, '0');
             const cepCabeca = cepStr.slice(-4);
             if (quantidade > 0 && sku) {
                 // Formata o CEP da planilha
                 const cepStr = String(cepValue).replace(/\D/g, '').padStart(8, '0');
-                
+
                 let cepCabeca;
                 if (cepStr.startsWith('0')) {
                     cepCabeca = cepStr.substring(1, 5);
@@ -1425,7 +1443,7 @@ exports.uploadRelatorioTarde = async (req, res) => {
                 }
                 // Busca a cor. Se não achar, assume INDEFINIDA.
                 const ondaCor = cepsMap.get(cepCabeca) || 'INDEFINIDA';
-                
+
                 const chave = `${sku}|${ondaCor}`;
                 if (!dadosRelatorio[chave]) {
                     dadosRelatorio[chave] = { sku: sku, onda: ondaCor, quantidade: 0 };
@@ -1500,7 +1518,7 @@ exports.downloadHistoricoRelatorioTarde = async (req, res) => {
             return res.status(404).send('Relatório não encontrado.');
         }
         const { nome, state_json } = result.rows[0];
-        
+
         // 1. Coletar os SKUs e buscar os tipo_ml agilmente no Banco
         const skusArray = [...new Set(state_json.map(s => s.sku))];
         let tipoMap = {};
@@ -1510,9 +1528,9 @@ exports.downloadHistoricoRelatorioTarde = async (req, res) => {
                 tipoMap[p.sku] = p.tipo_ml ? p.tipo_ml.trim().toUpperCase() : 'OUTROS';
             });
         }
-        
+
         // 2. Agrupar os itens do Excel pelo Tipo 
-        const grupos = {}; 
+        const grupos = {};
         state_json.forEach(item => {
             let t = tipoMap[item.sku];
             if (!t) t = 'OUTROS';
@@ -1523,7 +1541,7 @@ exports.downloadHistoricoRelatorioTarde = async (req, res) => {
         // 3. Montar as colunas dinâmicas par a par no Excel
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Relatório da Tarde');
-        
+
         const types = Object.keys(grupos).sort();
         let columns = [];
         types.forEach(t => {
@@ -1536,7 +1554,7 @@ exports.downloadHistoricoRelatorioTarde = async (req, res) => {
 
         // Estilização do Header
         worksheet.getRow(1).eachCell(cell => {
-            if(cell.value) { // Ignorar header nulo do espaçador
+            if (cell.value) { // Ignorar header nulo do espaçador
                 cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
                 cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F1F1F' } };
                 cell.alignment = { horizontal: 'center' };
@@ -1556,18 +1574,18 @@ exports.downloadHistoricoRelatorioTarde = async (req, res) => {
                 }
             });
             const excelRow = worksheet.addRow(rowObj);
-            
+
             // Centralizar Qtd e Onda
             types.forEach(t => {
                 const qtdCell = excelRow.getCell(`qtd_${t}`);
-                if(qtdCell) qtdCell.alignment = { horizontal: 'center' };
+                if (qtdCell) qtdCell.alignment = { horizontal: 'center' };
                 const ondaCell = excelRow.getCell(`onda_${t}`);
-                if(ondaCell) ondaCell.alignment = { horizontal: 'center' };
+                if (ondaCell) ondaCell.alignment = { horizontal: 'center' };
             });
         }
 
         const nomeSeguro = nome.replace(/[\/\:]/g, '-');
-        
+
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', `attachment; filename="${nomeSeguro}.xlsx"`);
         await workbook.xlsx.write(res);
