@@ -161,7 +161,7 @@ let isHubSyncRunning = false;
 
     try {
         // 3. Executa as tarefas críticas
-        await hubMlService.capturarNovosPedidos();
+        //await hubMlService.capturarNovosPedidos();
         await hubMlService.monitorarPedidosExistentes();
         console.log('[HUB Cron] Ciclo finalizado com sucesso.');
 
