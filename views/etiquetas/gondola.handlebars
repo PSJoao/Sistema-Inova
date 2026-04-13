@@ -49,8 +49,8 @@
                     <div class="gondola-card-header">
                         <i class="fas fa-history"></i> Histórico de Relatórios Gôndola
                     </div>
-                    <div class="gondola-card-body p-0">
-                        <div class="table-responsive gondola-table-wrapper" style="height: 100%; border: none;">
+                    <div class="gondola-card-body p-0 d-flex flex-column" style="height: calc(100% - 50px);">
+                        <div class="table-responsive gondola-table-wrapper" style="flex: 1; border: none;">
                             <table class="table table-hover mb-0" id="tabela-historico-gondola">
                                 <thead>
                                     <tr>
@@ -60,8 +60,14 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    </tbody>
+                                </tbody>
                             </table>
+                        </div>
+                        <div class="p-2 border-top bg-light mt-auto d-flex justify-content-center">
+                            <nav>
+                                <ul class="pagination pagination-sm mb-0" id="paginacao-historico">
+                                </ul>
+                            </nav>
                         </div>
                     </div>
                 </div>

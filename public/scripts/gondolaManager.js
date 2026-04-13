@@ -147,42 +147,97 @@ document.addEventListener('DOMContentLoaded', () => {
         );
     });
 
-    // Carregar e renderizar histórico
+    // Variáveis Globais de Paginação
+    let relatoriosHistorico = [];
+    let currentPage = 1;
+    const itensPorPagina = 10;
+    const ulPaginacao = document.getElementById('paginacao-historico');
+
+    // Carregar histórico remotamente
     async function carregarHistorico() {
         try {
             const response = await fetch('/api/gondola/listar');
             const data = await response.json();
 
-            tbodyHistorico.innerHTML = '';
             if (data.success && data.relatorios.length > 0) {
-                data.relatorios.forEach((rel, index) => {
-                    const dataCriacao = new Date(rel.created_at).toLocaleString('pt-BR');
-                    const badgeRecente = index === 0 ? '<span class="badge badge-success ml-2">Mais Recente</span>' : '';
-                    
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td class="font-weight-bold text-primary pl-4 align-middle">${rel.nome} ${badgeRecente}</td>
-                        <td class="align-middle">${dataCriacao}</td>
-                        <td class="text-center pr-4 align-middle">
-                            <button class="btn btn-sm btn-outline-success btn-exportar" data-json='${JSON.stringify(rel.state_json.itens)}' data-nome="${rel.nome}" title="Exportar Excel">
-                                <i class="fas fa-file-excel"></i>
-                            </button>
-                            <button class="btn btn-sm btn-outline-danger btn-excluir ml-1" data-id="${rel.id}" title="Excluir Relatório">
-                                <i class="fas fa-trash-alt"></i>
-                            </button>
-                        </td>
-                    `;
-                    tbodyHistorico.appendChild(tr);
-                });
-
-                document.querySelectorAll('.btn-exportar').forEach(btn => btn.addEventListener('click', exportarParaExcel));
-                document.querySelectorAll('.btn-excluir').forEach(btn => btn.addEventListener('click', excluirRelatorio));
+                relatoriosHistorico = data.relatorios;
+                renderizarPaginaHistorico();
             } else {
+                relatoriosHistorico = [];
                 tbodyHistorico.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-5">Nenhum relatório salvo no histórico.</td></tr>';
+                if(ulPaginacao) ulPaginacao.innerHTML = '';
             }
         } catch (error) {
             console.error('Erro ao carregar histórico:', error);
         }
+    }
+
+    window.mudarPaginaHistorico = function(pagina) {
+        currentPage = pagina;
+        renderizarPaginaHistorico();
+    };
+
+    function renderizarPaginaHistorico() {
+        tbodyHistorico.innerHTML = '';
+        
+        const totalPaginas = Math.ceil(relatoriosHistorico.length / itensPorPagina);
+        if (currentPage > totalPaginas && totalPaginas > 0) currentPage = totalPaginas;
+        
+        const start = (currentPage - 1) * itensPorPagina;
+        const end = start + itensPorPagina;
+        const paginatedItems = relatoriosHistorico.slice(start, end);
+
+        paginatedItems.forEach((rel, index) => {
+            const indexGeral = start + index;
+            const dataCriacao = new Date(rel.created_at).toLocaleString('pt-BR');
+            const badgeRecente = indexGeral === 0 ? '<span class="badge badge-success ml-2">Mais Recente</span>' : '';
+            
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="font-weight-bold text-primary pl-4 align-middle">${rel.nome} ${badgeRecente}</td>
+                <td class="align-middle">${dataCriacao}</td>
+                <td class="text-center pr-4 align-middle">
+                    <button class="btn btn-sm btn-outline-success btn-exportar" data-json='${JSON.stringify(rel.state_json.itens)}' data-nome="${rel.nome}" title="Exportar Excel">
+                        <i class="fas fa-file-excel"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger btn-excluir ml-1" data-id="${rel.id}" title="Excluir Relatório">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </td>
+            `;
+            tbodyHistorico.appendChild(tr);
+        });
+
+        document.querySelectorAll('.btn-exportar').forEach(btn => btn.addEventListener('click', exportarParaExcel));
+        document.querySelectorAll('.btn-excluir').forEach(btn => btn.addEventListener('click', excluirRelatorio));
+
+        renderizarPaginadores(totalPaginas);
+    }
+
+    function renderizarPaginadores(totalPaginas) {
+        if(!ulPaginacao) return;
+        ulPaginacao.innerHTML = '';
+        if(totalPaginas <= 1) return;
+
+        // Botão Anterior
+        const liPrev = document.createElement('li');
+        liPrev.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+        liPrev.innerHTML = `<a class="page-link" href="javascript:void(0)" onclick="mudarPaginaHistorico(${currentPage - 1})">Anterior</a>`;
+        ulPaginacao.appendChild(liPrev);
+
+        // Numeros
+        for (let i = 1; i <= totalPaginas; i++) {
+            const liNum = document.createElement('li');
+            liNum.className = `page-item ${currentPage === i ? 'active' : ''}`;
+            liNum.innerHTML = `<a class="page-link" href="javascript:void(0)" onclick="mudarPaginaHistorico(${i})">${i}</a>`;
+            ulPaginacao.appendChild(liNum);
+        }
+
+        // Botão Próximo
+        const liNext = document.createElement('li');
+        liNext.className = `page-item ${currentPage === totalPaginas ? 'disabled' : ''}`;
+        liNext.innerHTML = `<a class="page-link" href="javascript:void(0)" onclick="mudarPaginaHistorico(${currentPage + 1})">Próxima</a>`;
+        ulPaginacao.appendChild(liNext);
     }
 
     // Excluir com ModalSystem
