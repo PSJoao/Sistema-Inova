@@ -526,8 +526,8 @@ async function buscarInformacoesCruciais(etiquetasExtraidas, nomeArquivoGerado, 
                             INSERT INTO cached_etiquetas_ml (
                                 nfe_numero, numero_loja, pack_id, chave_acesso, skus,
                                 quantidade_total, locations, pdf_pagina, pdf_arquivo_origem,
-                                situacao, last_processed_at
-                            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, timestamp_virtual_expedicao())
+                                situacao, last_processed_at, created_at
+                            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, timestamp_virtual_expedicao(), timestamp_virtual_expedicao())
                             ON CONFLICT (chave_acesso) DO UPDATE SET
                                 nfe_numero = EXCLUDED.nfe_numero,
                                 numero_loja = EXCLUDED.numero_loja,
