@@ -173,7 +173,13 @@
         <div class="tab-pane fade show active" id="ml" role="tabpanel" aria-labelledby="ml-tab">
             
             <div class="panel-dark" style="border-left: 4px solid #FFE600;">
-                <h4 class="panel-title" style="color: #FFE600;">Mercado Livre</h4>
+                <div class="d-flex justify-content-between align-items-center mb-3" style="display: flex; flex-direction: row; justify-content: space-between;">
+                    <h4 class="panel-title m-0" style="color: #FFE600;">Mercado Livre</h4>
+                    <button id="btn-avancar-dia" class="btn btn-accent" title="Avançar Dia do Sistema">
+                        <i class="fas fa-calendar-plus"></i> Passar o dia <span id="lbl-data-virtual" class="font-weight-bold text-white ml-1">(Dia Atual: ...)</span>
+                    </button>
+                </div>
+                <br>
                 <p class="description-text">
                     Faça o upload dos arquivos PDF de etiquetas (até 500 por vez) para organizá-los por SKU e gerar um novo PDF pronto para impressão.
                 </p>
@@ -396,5 +402,47 @@
               btn.disabled = false;
           }
       });
+
+      // Lógica do Dia Virtual (Skip Day) Expedição
+      async function carregaDiaVirtual() {
+          try {
+              const resp = await fetch('/api/expedicao/data-virtual');
+              const data = await resp.json();
+              if(data.success && data.virtualDate) {
+                  const btn = document.getElementById('btn-avancar-dia');
+                  const lbl = document.getElementById('lbl-data-virtual');
+                  lbl.innerText = `(Dia Atual: ${data.virtualDate})`;
+                  btn.style.display = 'inline-block';
+              }
+          } catch(e) {
+              console.error('Falha ao carregar Virtual Date', e);
+          }
+      }
+
+      document.getElementById('btn-avancar-dia').addEventListener('click', () => {
+          ModalSystem.confirm(
+              'Atenção! Você está prestes a forçar a virada do dia de todo o módulo de Expedição. Isso congelará (Pausará) notas não bipadas de hoje e limpará as listas. Esta ação é IRREVERSÍVEL. Tem certeza?',
+              'Confirmar Salto no Tempo',
+              async () => {
+                  ModalSystem.showLoading('Aplicando o Avanço do Dia e Rotina de Limpeza...', 'Aguarde...');
+                  try {
+                      const res = await fetch('/api/expedicao/avancar-dia', { method: 'POST' });
+                      const json = await res.json();
+                      ModalSystem.hideLoading();
+                      if(json.success) {
+                          ModalSystem.alert(`Sucesso! O sistema agora operará no dia: ${json.newDate}`, 'Relógio Atualizado', 'success', () => window.location.reload());
+                      } else {
+                          ModalSystem.alert(json.message, 'Erro Crítico');
+                      }
+                  } catch(err) {
+                      ModalSystem.hideLoading();
+                      ModalSystem.alert('Erro interno de conexão com o painel temporal.', 'Falha de Sincronia');
+                  }
+              }
+          );
+      });
+
+      // Ao abrir
+      carregaDiaVirtual();
   </script>
 {{/section}}

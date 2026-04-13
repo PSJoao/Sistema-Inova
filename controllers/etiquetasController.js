@@ -198,7 +198,7 @@ exports.apiValidarPinExpedicao = async (req, res) => {
     if (!senhaDigitada) return res.status(400).json({ success: false, message: 'Senha não fornecida.' });
     const client = await pool.connect();
     try {
-        const resSenha = await client.query('SELECT senha FROM senha_diaria_separacao WHERE data_referencia = CURRENT_DATE');
+        const resSenha = await client.query('SELECT senha FROM senha_diaria_separacao WHERE data_referencia = data_virtual_expedicao()');
         if (resSenha.rows.length === 0) return res.json({ success: false, message: 'Nenhuma senha (PIN) diária configurada ainda.' });
         if (senhaDigitada === resSenha.rows[0].senha) {
             return res.json({ success: true, message: 'PIN correto.' });
@@ -239,7 +239,7 @@ cron.schedule('0 0 * * *', async () => {
 
         // Gera nova senha de 3 dígitos
         const novaSenha = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-        await client.query('INSERT INTO senha_diaria_separacao (data_referencia, senha) VALUES (CURRENT_DATE, $1)', [novaSenha]);
+        await client.query('INSERT INTO senha_diaria_separacao (data_referencia, senha) VALUES (data_virtual_expedicao(), $1)', [novaSenha]);
         console.log(`[CRON 00h] Nova senha diária gerada com sucesso: ${novaSenha}`);
 
 
@@ -427,6 +427,26 @@ async function getEstoqueParaEtiquetas(etiquetasInfo) {
         client.release();
     }
 }
+exports.apiGetVirtualDate = async (req, res) => {
+    try {
+        const data = await etiquetasService.obterDataVirtualAtiva();
+        res.json({ success: true, virtualDate: data });
+    } catch(err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Erro ao resgatar data virtual' });
+    }
+};
+
+exports.apiAvancarDiaVirtual = async (req, res) => {
+    try {
+        const newVirtualDate = await etiquetasService.avancarDiaVirtual();
+        res.json({ success: true, message: 'Dia avançado e reset da expedição efetuado com sucesso!', newDate: newVirtualDate });
+    } catch(err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Erro ao avançar dia: ' + err.message });
+    }
+};
+
 exports.renderBipagemPage = (req, res) => {
     try {
         res.render('etiquetas/bipagem', {
@@ -614,7 +634,7 @@ exports.saveMlBipagemState = async (req, res) => {
             INSERT INTO ml_bipagem_state (state_key, state_json)
             VALUES ($1, $2)
             ON CONFLICT (state_key)
-            DO UPDATE SET state_json = EXCLUDED.state_json, updated_at = NOW();
+            DO UPDATE SET state_json = EXCLUDED.state_json, updated_at = timestamp_virtual_expedicao();
         `;
         await client.query(query, [stateKey, stateData]);
         res.status(200).json({ success: true, message: "Estado da bipagem salvo com sucesso." });
@@ -998,14 +1018,14 @@ exports.renderGondolaPage = async (req, res) => {
     const client = await pool.connect();
     try {
         // Tenta buscar a senha de hoje
-        let resSenha = await client.query('SELECT senha FROM senha_diaria_separacao WHERE data_referencia = CURRENT_DATE');
+        let resSenha = await client.query('SELECT senha FROM senha_diaria_separacao WHERE data_referencia = data_virtual_expedicao()');
         let senhaDoDia = '';
         // Se por algum motivo (ex: servidor foi reiniciado e perdeu o cron) não tiver, gera agora (Fallback)
         if (resSenha.rows.length > 0) {
             senhaDoDia = resSenha.rows[0].senha;
         } else {
             senhaDoDia = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-            await client.query('INSERT INTO senha_diaria_separacao (data_referencia, senha) VALUES (CURRENT_DATE, $1)', [senhaDoDia]);
+            await client.query('INSERT INTO senha_diaria_separacao (data_referencia, senha) VALUES (data_virtual_expedicao(), $1)', [senhaDoDia]);
         }
         res.render('etiquetas/gondola', {
             title: 'Gerenciamento de Gôndola',
@@ -1060,7 +1080,7 @@ exports.salvarRelatorioGondola = async (req, res) => {
         const nomeRelatorio = `Gôndola - ${dataStr} e ${horaStr}`;
         const query = `
             INSERT INTO relatorios_gondola (nome, state_json, created_at)
-            VALUES ($1, $2, NOW())
+            VALUES ($1, $2, timestamp_virtual_expedicao())
             RETURNING id, nome, created_at;
         `;
 
@@ -1087,7 +1107,7 @@ exports.salvarRelatorioGondola = async (req, res) => {
         const nomeRelatorio = `Gôndola - ${dataStr} e ${horaStr}`;
         const query = `
             INSERT INTO relatorios_gondola (nome, state_json, created_at)
-            VALUES ($1, $2, NOW())
+            VALUES ($1, $2, timestamp_virtual_expedicao())
             RETURNING id, nome, created_at;
         `;
         
@@ -1150,7 +1170,7 @@ exports.preProcessarEtiquetas = (req, res) => {
             let excelDisponivel = false;
             const client = await pool.connect();
             try {
-                const resSenha = await client.query('SELECT id FROM senha_diaria_separacao WHERE data_referencia = CURRENT_DATE');
+                const resSenha = await client.query('SELECT id FROM senha_diaria_separacao WHERE data_referencia = data_virtual_expedicao()');
                 if (resSenha.rows.length > 0) excelDisponivel = true;
             } finally {
                 client.release();
@@ -1279,13 +1299,13 @@ exports.uploadSeparadosExcel = async (req, res) => {
         `);
         // Gerencia a Senha Diária
         let senhaDoDia = '';
-        const resSenha = await client.query('SELECT senha FROM senha_diaria_separacao WHERE data_referencia = CURRENT_DATE');
+        const resSenha = await client.query('SELECT senha FROM senha_diaria_separacao WHERE data_referencia = data_virtual_expedicao()');
 
         if (resSenha.rows.length > 0) {
             senhaDoDia = resSenha.rows[0].senha;
         } else {
             senhaDoDia = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-            await client.query('INSERT INTO senha_diaria_separacao (data_referencia, senha) VALUES (CURRENT_DATE, $1)', [senhaDoDia]);
+            await client.query('INSERT INTO senha_diaria_separacao (data_referencia, senha) VALUES (data_virtual_expedicao(), $1)', [senhaDoDia]);
         }
         await client.query('COMMIT');
         res.json({
@@ -1309,7 +1329,7 @@ exports.validarSenhaExcel = async (req, res) => {
     if (!historicoId) return res.status(400).json({ success: false, message: 'Nenhum relatório selecionado.' });
     const client = await pool.connect();
     try {
-        const resSenha = await client.query('SELECT senha FROM senha_diaria_separacao WHERE data_referencia = CURRENT_DATE');
+        const resSenha = await client.query('SELECT senha FROM senha_diaria_separacao WHERE data_referencia = data_virtual_expedicao()');
 
         if (resSenha.rows.length === 0) {
             return res.json({ success: false, message: 'Nenhum Excel de separados foi enviado hoje.' });

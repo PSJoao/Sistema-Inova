@@ -55,6 +55,10 @@ router.post('/api/expedicao/atualizar-status', etiquetasController.apiAtualizarS
 router.get('/api/expedicao/historico', etiquetasController.apiGetHistoricoExpedicoes);
 router.get('/api/expedicao/historico/relatorio/:data', etiquetasController.apiDownloadRelatorioExpedicao);
 
+// Controle do Dia Virtual
+router.get('/api/expedicao/data-virtual', etiquetasController.apiGetVirtualDate);
+router.post('/api/expedicao/avancar-dia', etiquetasController.apiAvancarDiaVirtual);
+
 router.post('/api/expedicao/exportar-dinamico', etiquetasController.apiExportarDinamicoExcel);
 
 router.post('/api/expedicao/imprimir-lote', etiquetasController.apiImprimirLotePDF);

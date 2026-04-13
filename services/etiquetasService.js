@@ -527,7 +527,7 @@ async function buscarInformacoesCruciais(etiquetasExtraidas, nomeArquivoGerado, 
                                 nfe_numero, numero_loja, pack_id, chave_acesso, skus,
                                 quantidade_total, locations, pdf_pagina, pdf_arquivo_origem,
                                 situacao, last_processed_at
-                            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+                            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, timestamp_virtual_expedicao())
                             ON CONFLICT (chave_acesso) DO UPDATE SET
                                 nfe_numero = EXCLUDED.nfe_numero,
                                 numero_loja = EXCLUDED.numero_loja,
@@ -538,7 +538,7 @@ async function buscarInformacoesCruciais(etiquetasExtraidas, nomeArquivoGerado, 
                                 pdf_pagina = EXCLUDED.pdf_pagina,
                                 pdf_arquivo_origem = EXCLUDED.pdf_arquivo_origem, -- Salva o nome do arquivo gerado
                                 situacao = 'pendente',
-                                last_processed_at = NOW();
+                                last_processed_at = timestamp_virtual_expedicao();
                         `;
 
                         const skusOriginais = info.skus.map(s => s.original).join(',');
@@ -1098,18 +1098,22 @@ async function buscarEtiquetaPorNF(nfNumero) {
 
         // 2. Localiza o arquivo PDF original (ou o gerado anteriormente)
         // A lógica assume que pdf_arquivo_origem é o nome do PDF *gerado e salvo*
-        const filePath = path.join(PDF_STORAGE_DIR, pdf_arquivo_origem);
+        let arquivoOrigem = pdf_arquivo_origem;
+        if (!arquivoOrigem.toLowerCase().endsWith('.pdf')) {
+            arquivoOrigem += '.pdf';
+        }
+        const filePath = path.join(PDF_STORAGE_DIR, arquivoOrigem);
 
         // 3. Verifica se o arquivo existe
         try {
             await fs.access(filePath); // Checa se o arquivo existe e é acessível
         } catch (accessError) {
-            console.error(`[Service - Busca NF DB] Erro: O arquivo ${pdf_arquivo_origem} referenciado para a NF ${nfNumero} não foi encontrado em ${PDF_STORAGE_DIR}.`);
+            console.error(`[Service - Busca NF DB] Erro: O arquivo ${arquivoOrigem} referenciado para a NF ${nfNumero} não foi encontrado em ${PDF_STORAGE_DIR}.`);
             return { success: false, message: 'Arquivo PDF associado não encontrado no servidor.' };
         }
 
         // 4. Extrai a página específica do arquivo encontrado
-        console.log(`[Service - Busca NF DB] Lendo arquivo ${pdf_arquivo_origem} para extrair a página ${pdf_pagina + 1}...`);
+        console.log(`[Service - Busca NF DB] Lendo arquivo ${arquivoOrigem} para extrair a página ${pdf_pagina + 1}...`);
         const pdfBytes = await fs.readFile(filePath);
         const pdfDoc = await PDFDocument.load(pdfBytes);
 
@@ -1936,8 +1940,8 @@ async function obterDadosDashboardExpedicao() {
     try {
         const statsQuery = `
             SELECT 
-                COUNT(*) FILTER (WHERE DATE(created_at) < CURRENT_DATE AND status = 'pendente') as heranca,
-                COUNT(*) FILTER (WHERE DATE(created_at) = CURRENT_DATE AND status = 'pendente') as novos_hoje,
+                COUNT(*) FILTER (WHERE DATE(created_at) < data_virtual_expedicao() AND status = 'pendente') as heranca,
+                COUNT(*) FILTER (WHERE DATE(created_at) = data_virtual_expedicao() AND status = 'pendente') as novos_hoje,
                 COUNT(*) FILTER (WHERE status IN ('sem_estoque', 'cancelado')) as subtracoes,
                 COUNT(*) FILTER (WHERE status = 'pendente') as saldo_real
             FROM cached_etiquetas_ml
@@ -1949,9 +1953,9 @@ async function obterDadosDashboardExpedicao() {
         const expedidosQuery = `
             SELECT COUNT(DISTINCT m.nfe_numero) as expedidos_hoje 
             FROM cached_etiquetas_ml m
-            LEFT JOIN expedicao_registros r ON r.nf = m.nfe_numero AND DATE(r.created_at) = CURRENT_DATE
+            LEFT JOIN expedicao_registros r ON r.nf = m.nfe_numero AND DATE(r.created_at) = data_virtual_expedicao()
             WHERE m.status = 'impresso' 
-              AND (DATE(m.last_processed_at) = CURRENT_DATE OR r.id IS NOT NULL)
+              AND (DATE(m.last_processed_at) = data_virtual_expedicao() OR r.id IS NOT NULL)
         `;
         const expedidosRes = await client.query(expedidosQuery);
         statsRes.rows[0].expedidos_hoje = parseInt(expedidosRes.rows[0].expedidos_hoje) || 0;
@@ -1960,12 +1964,12 @@ async function obterDadosDashboardExpedicao() {
         const filaQuery = `
             SELECT DISTINCT
                 m.id, m.nfe_numero, m.skus, m.status, m.created_at, 
-                (DATE(m.created_at) < CURRENT_DATE AND m.status NOT IN ('cancelado', 'sem_estoque', 'impresso')) as heranca_ontem,
+                (DATE(m.created_at) < data_virtual_expedicao() AND m.status NOT IN ('cancelado', 'sem_estoque', 'impresso')) as heranca_ontem,
                 CASE WHEN m.status = 'impresso' THEN 1 ELSE 0 END as order_status
             FROM cached_etiquetas_ml m
-            LEFT JOIN expedicao_registros r ON r.nf = m.nfe_numero AND DATE(r.created_at) = CURRENT_DATE
+            LEFT JOIN expedicao_registros r ON r.nf = m.nfe_numero AND DATE(r.created_at) = data_virtual_expedicao()
             WHERE m.status != 'impresso'
-               OR (m.status = 'impresso' AND (DATE(m.last_processed_at) = CURRENT_DATE OR r.id IS NOT NULL))
+               OR (m.status = 'impresso' AND (DATE(m.last_processed_at) = data_virtual_expedicao() OR r.id IS NOT NULL))
             ORDER BY 
                order_status ASC,
                m.created_at DESC
@@ -2026,7 +2030,7 @@ async function obterDadosDashboardExpedicao() {
                 ROUND(COALESCE(SUM(rc.pontos) FILTER (WHERE r.is_kit = FALSE), 0), 2) as itens_unitarios
             FROM carregadores c
             LEFT JOIN expedicao_registro_carregadores rc ON c.id = rc.carregador_id
-            LEFT JOIN expedicao_registros r ON rc.registro_id = r.id AND DATE(r.created_at) = CURRENT_DATE
+            LEFT JOIN expedicao_registros r ON rc.registro_id = r.id AND DATE(r.created_at) = data_virtual_expedicao()
             WHERE c.ativo = TRUE
             GROUP BY c.id, c.nome
             ORDER BY itens_unitarios DESC NULLS LAST, kits_separados DESC NULLS LAST
@@ -2063,7 +2067,7 @@ async function listarColetasAtivas() {
         const res = await client.query(`
             SELECT * FROM expedicao_coletas 
             WHERE status = 'aberta' 
-            AND DATE(created_at) = CURRENT_DATE 
+            AND DATE(created_at) = data_virtual_expedicao() 
             ORDER BY created_at DESC
         `);
         return res.rows;
@@ -2073,11 +2077,11 @@ async function listarColetasAtivas() {
 async function criarColeta() {
     const client = await pool.connect();
     try {
-        const resCount = await client.query(`SELECT COUNT(*) FROM expedicao_coletas WHERE DATE(created_at) = CURRENT_DATE`);
+        const resCount = await client.query(`SELECT COUNT(*) FROM expedicao_coletas WHERE DATE(created_at) = data_virtual_expedicao()`);
         const nextId = parseInt(resCount.rows[0].count) + 1;
         const ident = `Coleta ${String(nextId).padStart(2, '0')}`;
         
-        const res = await client.query(`INSERT INTO expedicao_coletas (identificacao) VALUES ($1) RETURNING *`, [ident]);
+        const res = await client.query(`INSERT INTO expedicao_coletas (identificacao, created_at) VALUES ($1, timestamp_virtual_expedicao()) RETURNING *`, [ident]);
         return res.rows[0];
     } finally { client.release(); }
 }
@@ -2122,7 +2126,7 @@ async function criarPalete(coletaId) {
         const nextId = parseInt(resCount.rows[0].count) + 1;
         const ident = `Palete ${String(nextId).padStart(2, '0')}`;
         
-        const res = await client.query(`INSERT INTO expedicao_paletes (coleta_id, identificacao) VALUES ($1, $2) RETURNING *`, [coletaId, ident]);
+        const res = await client.query(`INSERT INTO expedicao_paletes (coleta_id, identificacao, created_at) VALUES ($1, $2, timestamp_virtual_expedicao()) RETURNING *`, [coletaId, ident]);
         return res.rows[0];
     } finally { client.release(); }
 }
@@ -2198,7 +2202,7 @@ async function registrarBipagemExpedicaoFinal(paleteId, nfLida, carregadoresIds)
 
         // 2. Registra na tabela de expedição
         const regRes = await client.query(
-            `INSERT INTO expedicao_registros (palete_id, nf, is_kit) VALUES ($1, $2, $3) RETURNING id`,
+            `INSERT INTO expedicao_registros (palete_id, nf, is_kit, created_at) VALUES ($1, $2, $3, timestamp_virtual_expedicao()) RETURNING id`,
             [paleteId, nfLida, isKit]
         );
         const registroId = regRes.rows[0].id;
@@ -2313,7 +2317,7 @@ async function atualizarStatusEmLote(nfList, novoStatus) {
         
         await client.query(`
             UPDATE cached_etiquetas_ml
-            SET status = $1, last_processed_at = CURRENT_TIMESTAMP
+            SET status = $1, last_processed_at = timestamp_virtual_expedicao()
             WHERE nfe_numero = ANY($2::text[])
             AND status != 'impresso' AND status != 'cancelado'
         `, queryParams);
@@ -2339,7 +2343,7 @@ async function obterHierarquiaExpedicaoHoje() {
             FROM expedicao_coletas c
             LEFT JOIN expedicao_paletes p ON c.id = p.coleta_id
             LEFT JOIN expedicao_registros r ON p.id = r.palete_id
-            WHERE DATE(c.created_at) = CURRENT_DATE
+            WHERE DATE(c.created_at) = data_virtual_expedicao()
             ORDER BY c.created_at ASC, p.id ASC, r.created_at DESC
         `;
         const { rows } = await client.query(query);
@@ -2394,7 +2398,7 @@ async function obterHistoricoExpedicoes() {
         const query = `
             SELECT DISTINCT TO_CHAR(created_at, 'YYYY-MM-DD') as datastr 
             FROM expedicao_coletas 
-            WHERE DATE(created_at) < CURRENT_DATE 
+            WHERE DATE(created_at) < data_virtual_expedicao() 
             ORDER BY datastr DESC
         `;
         const res = await client.query(query);
@@ -2544,13 +2548,71 @@ async function pausarNotasViradaDoDia() {
         const query = `
             UPDATE cached_etiquetas_ml 
             SET status = 'sem_estoque', 
-                last_processed_at = CURRENT_TIMESTAMP
+                last_processed_at = timestamp_virtual_expedicao()
             WHERE status = 'pendente'
         `;
         const res = await client.query(query);
-        console.log(`[CRON Exp] ${res.rowCount} Notas Fiscais pendentes foram pausadas (sem_estoque) na virada do dia.`);
+        console.log(`[Virada de Dia] ${res.rowCount} Notas Fiscais pendentes foram pausadas (sem_estoque) manualmente ou no avançar do dia.`);
+        
+        // Reset Coletas (Fecha as ativas do dia anterior)
+        await client.query(`UPDATE expedicao_coletas SET status = 'concluida' WHERE status = 'ativa'`);
+        
     } catch (e) {
-        console.error('[CRON Exp] Erro ao tentar pausar Notas na virada do dia:', e);
+        console.error('[Virada de Dia] Erro ao tentar pausar Notas:', e);
+    } finally {
+        client.release();
+    }
+}
+
+async function obterDataVirtualAtiva() {
+    const client = await pool.connect();
+    try {
+        const res = await client.query('SELECT data_virtual_expedicao()::TEXT as dt');
+        const dtStr = res.rows[0].dt; // Retorna string pura 'YYYY-MM-DD'
+        
+        // Formatar para o frontend BR
+        const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(dtStr);
+        if(match) {
+             return `${match[3]}/${match[2]}/${match[1]}`;
+        }
+        return dtStr;
+    } finally {
+        client.release();
+    }
+}
+
+async function avancarDiaVirtual() {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        
+        // 1. Resgata qual é a próxima data da data_virtual_expedicao() atual
+        const resStr = await client.query(`SELECT (data_virtual_expedicao() + INTERVAL '1 day')::DATE as next_date`);
+        const nextDate = resStr.rows[0].next_date; // Formato string YYYY-MM-DD ou Date
+        
+        let dateStr = nextDate instanceof Date ? nextDate.toISOString().split('T')[0] : nextDate;
+        if(typeof dateStr === 'string' && dateStr.includes('T')) dateStr = dateStr.split('T')[0];
+        
+        // 2. Roda a "Virada do Dia" ANTES de mudar a data
+        await pausarNotasViradaDoDia();
+        
+        // 3. Atualiza a tabela com a nova data real/futura
+        await client.query(`
+            INSERT INTO configuracoes_expedicao (chave, valor)
+            VALUES ('data_virtual', $1)
+            ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = timestamp_virtual_expedicao()
+        `, [dateStr]);
+        
+        await client.query('COMMIT');
+        
+        // Retorna formatada
+        const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr);
+        if(match) return `${match[3]}/${match[2]}/${match[1]}`;
+        return dateStr;
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error('Erro no avancarDiaVirtual:', e);
+        throw e;
     } finally {
         client.release();
     }
@@ -2611,5 +2673,7 @@ module.exports = {
     gerarRelatorioExcelExpedicao,
     gerarExcelDinamicoDataTable,
     pausarNotasViradaDoDia,
-    gerarPdfPendentes
+    gerarPdfPendentes,
+    obterDataVirtualAtiva,
+    avancarDiaVirtual
 };

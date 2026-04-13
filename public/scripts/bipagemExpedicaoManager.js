@@ -474,7 +474,14 @@ function imprimirResumoVisual() {
         margin:       10,
         filename:     `Resumo_Expedicao_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.pdf`,
         image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true },
+        html2canvas:  { 
+            scale: 2, 
+            useCORS: true,
+            scrollY: 0,
+            scrollX: 0,
+            windowWidth: document.documentElement.scrollWidth,
+            windowHeight: element.scrollHeight
+        },
         jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
         pagebreak:    { mode: 'css', inside: 'avoid' } // Garante que a quebra não corte um palete na metade se possível
     };
