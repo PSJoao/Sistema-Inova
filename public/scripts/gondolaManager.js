@@ -219,25 +219,11 @@ document.addEventListener('DOMContentLoaded', () => {
         ulPaginacao.innerHTML = '';
         if(totalPaginas <= 1) return;
 
-        // Botão Anterior
-        const liPrev = document.createElement('li');
-        liPrev.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
-        liPrev.innerHTML = `<a class="page-link" href="javascript:void(0)" onclick="mudarPaginaHistorico(${currentPage - 1})">Anterior</a>`;
-        ulPaginacao.appendChild(liPrev);
-
-        // Numeros
-        for (let i = 1; i <= totalPaginas; i++) {
-            const liNum = document.createElement('li');
-            liNum.className = `page-item ${currentPage === i ? 'active' : ''}`;
-            liNum.innerHTML = `<a class="page-link" href="javascript:void(0)" onclick="mudarPaginaHistorico(${i})">${i}</a>`;
-            ulPaginacao.appendChild(liNum);
-        }
-
-        // Botão Próximo
-        const liNext = document.createElement('li');
-        liNext.className = `page-item ${currentPage === totalPaginas ? 'disabled' : ''}`;
-        liNext.innerHTML = `<a class="page-link" href="javascript:void(0)" onclick="mudarPaginaHistorico(${currentPage + 1})">Próxima</a>`;
-        ulPaginacao.appendChild(liNext);
+        ulPaginacao.innerHTML = `
+            <button type="button" class="btn btn-sm btn-outline-warning" onclick="mudarPaginaHistorico(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>Anterior</button>
+            <span style="color: #aaa; align-self: center; font-size: 0.9rem;">Página ${currentPage} de ${totalPaginas}</span>
+            <button type="button" class="btn btn-sm btn-outline-warning" onclick="mudarPaginaHistorico(${currentPage + 1})" ${currentPage === totalPaginas ? 'disabled' : ''}>Próxima</button>
+        `;
     }
 
     // Excluir com ModalSystem
