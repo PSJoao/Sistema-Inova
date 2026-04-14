@@ -1942,7 +1942,7 @@ async function obterDadosDashboardExpedicao() {
             SELECT 
                 COUNT(*) FILTER (WHERE DATE(created_at) < data_virtual_expedicao() AND status = 'pendente') as heranca,
                 COUNT(*) FILTER (WHERE DATE(created_at) = data_virtual_expedicao() AND status = 'pendente') as novos_hoje,
-                COUNT(*) FILTER (WHERE status IN ('sem_estoque', 'cancelado')) as subtracoes,
+                COUNT(*) FILTER (WHERE status IN ('sem_estoque')) as subtracoes,
                 COUNT(*) FILTER (WHERE status = 'pendente') as saldo_real
             FROM cached_etiquetas_ml
             WHERE status != 'impresso'

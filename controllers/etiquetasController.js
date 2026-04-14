@@ -11,7 +11,7 @@ const cron = require('node-cron');
 const { blingApiGet } = require('../services/blingApiService');
 const { gerarZipEtiquetasCarregadores } = require('../services/carregadoresPdfService');
 //0 19 * * *
-cron.schedule('0 19 * * *', async () => {
+/*cron.schedule('0 19 * * *', async () => {
     console.log('[CRON 19h] Verificando condições para reset do Contador de Paletes e Cancelamento de Etiquetas Pendentes...');
     const client = await pool.connect();
 
@@ -50,7 +50,7 @@ cron.schedule('0 19 * * *', async () => {
     }
 }, {
     timezone: "America/Sao_Paulo"
-});
+});*/
 // --- Geração de Etiquetas de Carregadores ---
 exports.gerarEtiquetasCarregadores = async (req, res) => {
     try {
