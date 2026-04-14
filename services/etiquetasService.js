@@ -2200,7 +2200,17 @@ async function registrarBipagemExpedicaoFinal(paleteId, nfLida, carregadoresIds)
             await client.query(`UPDATE cached_etiquetas_ml SET status = 'impresso' WHERE nfe_numero = $1`, [nfLida]);
         }
 
-        // 2. Registra na tabela de expedição
+        // 2. Verifica duplicata antes de registrar
+        const dupCheck = await client.query(
+            `SELECT id FROM expedicao_registros WHERE nf = $1 LIMIT 1`,
+            [nfLida]
+        );
+        if (dupCheck.rows.length > 0) {
+            await client.query('ROLLBACK');
+            throw new Error(`A NF ${nfLida} já foi expedida anteriormente.`);
+        }
+
+        // 3. Registra na tabela de expedição
         const regRes = await client.query(
             `INSERT INTO expedicao_registros (palete_id, nf, is_kit, created_at) VALUES ($1, $2, $3, timestamp_virtual_expedicao()) RETURNING id`,
             [paleteId, nfLida, isKit]

@@ -247,7 +247,7 @@ async function processarBipagem(codigoLido) {
 
         if (!apiData.success) {
             tocarErro();
-            ModalSystem.alert(apiData.message, 'Não reconhecido');
+            ToastSystem.warning(apiData.message, 3500);
             return;
         }
 
@@ -255,7 +255,7 @@ async function processarBipagem(codigoLido) {
             const carregadorEncontrado = apiData.data;
             if (!estadoAtual.nf) {
                 tocarErro();
-                ModalSystem.alert('Você precisa bipar uma NF antes de bipar os carregadores.', 'Aviso');
+                ToastSystem.warning('Você precisa bipar uma NF antes de bipar os carregadores.', 3500);
                 return;
             }
 
@@ -284,7 +284,7 @@ async function processarBipagem(codigoLido) {
     } catch (err) {
         console.error(err);
         tocarErro();
-        ModalSystem.alert('Erro de conexão ao identificar código.', 'Erro de Rede');
+        ToastSystem.error('Erro de conexão ao identificar código.', 3500);
     }
 }
 
@@ -294,10 +294,7 @@ async function encerrarESalvarNfAtual(explicit = false) {
     if (estadoAtual.carregadoresBipados.length === 0) {
         // Agora o erro e o modal disparam sempre, seja clicando no botão ou bipando uma nova NF
         tocarErro();
-        ModalSystem.alert(
-            `A NF ${estadoAtual.nf} não foi dada como expedida, pois nenhum carregador foi bipado.`,
-            'Aviso: NF Não Expedida'
-        );
+        ToastSystem.warning(`A NF ${estadoAtual.nf} não foi dada como expedida, pois nenhum carregador foi bipado.`, 4000);
 
         // Descarta localmente e aborta o salvamento
         estadoAtual.nf = null;
@@ -330,7 +327,7 @@ async function encerrarESalvarNfAtual(explicit = false) {
     } catch (e) {
         console.error(e);
         tocarErro();
-        ModalSystem.alert('Erro ao salvar a NF no banco de dados.', 'Falha na Gravação');
+        ToastSystem.error('Falha na Gravação: Erro ao salvar a NF no banco.', 4000);
     }
 }
 
@@ -401,7 +398,6 @@ async function carregarHierarquiaHoje() {
         let totalNfsGeral = 0;
 
         coletas.forEach((coleta, i) => {
-            const isFirst = i === 0;
             let nfsColetaCount = 0;
             let htmlPaletes = '';
 
@@ -419,13 +415,15 @@ async function carregarHierarquiaHoje() {
                     badgesNfs = '<div style="color: var(--text-muted); font-size: 0.85rem;">Palete vazio</div>';
                 }
 
+                const paleteId = `palete-content-${coleta.id}-${palete.id}`;
+
                 htmlPaletes += `
-                    <div class="h-palete-box">
-                        <div class="h-palete-title">
-                            <span><i class="fas fa-pallet" style="margin-right: 6px; color: var(--text-muted);"></i> ${palete.nome}</span>
+                    <div class="h-palete-box" data-palete-id="${palete.id}">
+                        <div class="h-palete-title" style="cursor: pointer; user-select: none;" onclick="document.getElementById('${paleteId}').classList.toggle('open'); this.querySelector('.palete-chevron').classList.toggle('rotated');">
+                            <span><i class="fas fa-pallet" style="margin-right: 6px; color: var(--text-muted);"></i> ${palete.nome} <i class="fas fa-chevron-down palete-chevron" style="font-size: 0.7rem; margin-left: 6px; transition: transform 0.2s ease; color: var(--text-muted);"></i></span>
                             <span style="color: var(--accent-orange);">${totalNfPalete} vol</span>
                         </div>
-                        <div class="h-nf-tags">
+                        <div class="h-nf-tags h-palete-collapsible" id="${paleteId}" data-palete-id="${palete.id}">
                             ${badgesNfs}
                         </div>
                     </div>
@@ -435,12 +433,12 @@ async function carregarHierarquiaHoje() {
             totalNfsGeral += nfsColetaCount;
 
             html += `
-                <div class="h-coleta-card">
+                <div class="h-coleta-card" data-coleta-id="${coleta.id}">
                     <div class="h-coleta-header" onclick="this.nextElementSibling.classList.toggle('open')">
                         <div class="h-coleta-title"><i class="fas fa-truck"></i> ${coleta.nome}</div>
                         <div class="h-coleta-stats">${nfsColetaCount} Expedições</div>
                     </div>
-                    <div class="h-coleta-content ${isFirst ? 'open' : ''}">
+                    <div class="h-coleta-content" data-coleta-id="${coleta.id}">
                         ${htmlPaletes || '<div style="text-align: center; color: var(--text-muted); padding: 1rem;">Nesta coleta os paletes estão vazios.</div>'}
                     </div>
                 </div>
@@ -449,9 +447,58 @@ async function carregarHierarquiaHoje() {
 
         container.innerHTML = html;
         badgeTotal.innerText = `${totalNfsGeral} NFs expedidas`;
+
+        // Focaliza a coleta/palete ativo automaticamente
+        focalizarHierarquia();
     } catch (e) {
         console.error('Erro na hierarquia', e);
         container.innerHTML = '<div class="alert-custom"><i class="fas fa-wifi"></i> Falha de conexão ao baixar hierarquia.</div>';
+    }
+}
+
+/**
+ * Colapsa todas as coletas/paletes e expande SOMENTE a coleta e palete
+ * que o operador está usando no momento (baseado em estadoAtual).
+ */
+function focalizarHierarquia() {
+    const container = document.getElementById('hierarquia-container');
+    if (!container) return;
+
+    const activeColetaId = estadoAtual.coletaId;
+    const activePaleteId = estadoAtual.paleteId;
+
+    // 1. Colapsa TODAS as coletas
+    container.querySelectorAll('.h-coleta-content').forEach(el => {
+        el.classList.remove('open');
+    });
+
+    // 2. Colapsa TODOS os paletes e reseta setas
+    container.querySelectorAll('.h-palete-collapsible').forEach(el => {
+        el.classList.remove('open');
+    });
+    container.querySelectorAll('.palete-chevron').forEach(el => {
+        el.classList.remove('rotated');
+    });
+
+    // 3. Abre SOMENTE a coleta ativa
+    if (activeColetaId) {
+        const coletaContent = container.querySelector(`.h-coleta-content[data-coleta-id="${activeColetaId}"]`);
+        if (coletaContent) {
+            coletaContent.classList.add('open');
+        }
+    }
+
+    // 4. Abre SOMENTE o palete ativo e rotaciona sua seta
+    if (activePaleteId) {
+        const paleteContent = container.querySelector(`.h-palete-collapsible[data-palete-id="${activePaleteId}"]`);
+        if (paleteContent) {
+            paleteContent.classList.add('open');
+            const title = paleteContent.previousElementSibling;
+            if (title) {
+                const chevron = title.querySelector('.palete-chevron');
+                if (chevron) chevron.classList.add('rotated');
+            }
+        }
     }
 }
 
@@ -466,7 +513,10 @@ function imprimirResumoVisual() {
 
     // Força a abertura de todos os acordeões para o PDF registrar todas NFs
     const conteudos = container.querySelectorAll('.h-coleta-content');
+    const paleteConteudos = container.querySelectorAll('.h-palete-collapsible');
+    
     conteudos.forEach(c => c.classList.add('open'));
+    paleteConteudos.forEach(p => p.classList.add('open'));
 
     // Configuração do html2pdf
     const element = document.querySelector('.hierarchy-panel');
