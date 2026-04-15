@@ -1,4 +1,5 @@
-{{#section "head" }} <link href="/public/styles/bipagemExpedicao.css" rel="stylesheet" />
+{{#section "head" }}
+<link href="/public/styles/bipagemExpedicao.css" rel="stylesheet" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 {{/section}}
 
@@ -17,8 +18,18 @@
                 <i class="fas fa-qrcode"></i> Leitura de Volumes
             </div>
 
+            <div class="palete-indicator" id="palete-indicator">
+                <div class="palete-indicator-info">
+                    <i class="fas fa-pallet" style="color: var(--accent-orange); margin-right: 8px;"></i>
+                    <span id="palete-indicator-label" style="color: var(--text-secondary); font-size: 0.85rem;">Nenhum palete selecionado</span>
+                    <span id="palete-vol-count" class="palete-vol-badge" style="display: none;">0 vol</span>
+                </div>
+                <button id="btn-novo-palete-quick" class="btn-bip" title="Criar Novo Palete" disabled style="padding: 0.3rem 0.7rem; font-size: 0.8rem;">
+                    <i class="fas fa-plus" style="margin-right: 4px;"></i> Novo Palete
+                </button>
+            </div>
+
             <div class="scanner-area">
-                <label class="scanner-label">Aguardando Leitura...</label>
                 <input type="text" id="input-bipagem" class="scanner-input" placeholder="BIPAR CÓDIGO AQUI"
                     autocomplete="off">
             </div>
@@ -85,7 +96,8 @@
         <div class="hierarchy-header">
             <h2>Resumo de Expedição (Hoje)</h2>
             <div style="display: flex; gap: 10px; align-items: center;">
-                <button id="btn-imprimir-resumo" class="btn-premium orange" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px;">
+                <button id="btn-imprimir-resumo" class="btn-premium orange"
+                    style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px;">
                     <i class="fas fa-file-pdf"></i> Imprimir Resumo
                 </button>
                 <div class="hierarchy-badge" id="badge-total-nfs">0 NFs expedidas</div>

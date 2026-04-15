@@ -1963,11 +1963,18 @@ async function obterDadosDashboardExpedicao() {
         // Fila Reactiva: Pendentes, Pausadas, ou Impressas (se acabaram de ser impressas hoje)
         const filaQuery = `
             SELECT DISTINCT
-                m.id, m.nfe_numero, m.skus, m.status, m.created_at, 
+                m.id, 
+                m.nfe_numero, 
+                COALESCE(m.pack_id, m.numero_loja) AS numero_loja_calc, 
+                cpv.numero AS pedido_numero, 
+                m.skus, 
+                m.status, 
+                m.created_at, 
                 (DATE(m.created_at) < data_virtual_expedicao() AND m.status NOT IN ('cancelado', 'sem_estoque', 'impresso')) as heranca_ontem,
                 CASE WHEN m.status = 'impresso' THEN 1 ELSE 0 END as order_status
             FROM cached_etiquetas_ml m
             LEFT JOIN expedicao_registros r ON r.nf = m.nfe_numero AND DATE(r.created_at) = data_virtual_expedicao()
+            LEFT JOIN cached_pedido_venda cpv ON cpv.nfe_parent_numero = m.nfe_numero
             WHERE m.status != 'impresso'
                OR (m.status = 'impresso' AND (DATE(m.last_processed_at) = data_virtual_expedicao() OR r.id IS NOT NULL))
             ORDER BY 
@@ -2402,6 +2409,73 @@ async function obterHierarquiaExpedicaoHoje() {
     }
 }
 
+async function movimentarNfHierarquia(dados) {
+    const { action, nf, coletaId, targetPaleteId } = dados;
+    const client = await pool.connect();
+    
+    try {
+        await client.query('BEGIN');
+
+        // Pega ID do registro
+        const regCheck = await client.query(`SELECT id, palete_id FROM expedicao_registros WHERE nf = $1 LIMIT 1`, [nf]);
+        if (regCheck.rows.length === 0) {
+            throw new Error(`A NF ${nf} não está expedida ou não existe.`);
+        }
+        const registroId = regCheck.rows[0].id;
+        const currentPaleteId = regCheck.rows[0].palete_id;
+
+        if (action === 'retirar') {
+            // Remove pontuações de carregadores (cascade não está garantido então faremos explícito)
+            await client.query(`DELETE FROM expedicao_registro_carregadores WHERE registro_id = $1`, [registroId]);
+            // Remove o registro da expedição
+            await client.query(`DELETE FROM expedicao_registros WHERE id = $1`, [registroId]);
+            // Volta o status para pendente
+            await client.query(`UPDATE cached_etiquetas_ml SET status = 'pendente' WHERE nfe_numero = $1`, [nf]);
+            
+        } else if (action === 'mover_existente') {
+            if (!targetPaleteId) throw new Error('Palete de destino não informado.');
+            if (currentPaleteId == targetPaleteId) throw new Error('A nota já está neste palete.');
+            
+            // Verifica se o palete destino pertence à coleta certa
+            const pCheck = await client.query(`SELECT coleta_id FROM expedicao_paletes WHERE id = $1`, [targetPaleteId]);
+            if (pCheck.rows.length === 0 || pCheck.rows[0].coleta_id != coletaId) {
+                throw new Error('Palete destino inválido ou não pertence a esta coleta.');
+            }
+
+            await client.query(`UPDATE expedicao_registros SET palete_id = $1 WHERE id = $2`, [targetPaleteId, registroId]);
+
+        } else if (action === 'mover_novo') {
+            if (!coletaId) throw new Error('Coleta ID não informado para a criação do palete.');
+            
+            // Conta os paletes atuais para o novo sequencial
+            const countRes = await client.query(`SELECT COUNT(*) as total FROM expedicao_paletes WHERE coleta_id = $1`, [coletaId]);
+            const nextIdx = parseInt(countRes.rows[0].total) + 1;
+            const novoPaleteNome = `Palete ${String(nextIdx).padStart(2, '0')}`;
+
+            // Cria o palete
+            const insertPal = await client.query(
+                `INSERT INTO expedicao_paletes (coleta_id, identificacao, created_at) VALUES ($1, $2, timestamp_virtual_expedicao()) RETURNING id`,
+                [coletaId, novoPaleteNome]
+            );
+            const newPaleteId = insertPal.rows[0].id;
+
+            // Move a nf para o novo palete
+            await client.query(`UPDATE expedicao_registros SET palete_id = $1 WHERE id = $2`, [newPaleteId, registroId]);
+        } else {
+            throw new Error(`Ação '${action}' desconhecida.`);
+        }
+
+        await client.query('COMMIT');
+        return { success: true, message: 'Operação concluída com sucesso!' };
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error('[Movimentar NF Error]', e);
+        throw e;
+    } finally {
+        client.release();
+    }
+}
+
 async function obterHistoricoExpedicoes() {
     const client = await pool.connect();
     try {
@@ -2497,7 +2571,9 @@ async function gerarExcelDinamicoDataTable(linhas, tipo) {
     if (tipo === 'full') {
         sheet.columns = [
             { header: 'Data Entrada', key: 'dataEntrada', width: 20 },
-            { header: 'Identificador', key: 'identificador', width: 25 },
+            { header: 'Nota Fiscal', key: 'nota_fiscal', width: 20 },
+            { header: 'Pedido', key: 'pedido', width: 20 },
+            { header: 'Núm. Loja', key: 'numero_loja', width: 25 },
             { header: 'SKU / Produto', key: 'sku', width: 60 },
             { header: 'Status', key: 'status', width: 20 }
         ];
@@ -2511,7 +2587,9 @@ async function gerarExcelDinamicoDataTable(linhas, tipo) {
         linhas.forEach(row => {
             const tr = sheet.addRow(row);
             tr.getCell('dataEntrada').alignment = { horizontal: 'center' };
-            tr.getCell('identificador').alignment = { horizontal: 'center' };
+            tr.getCell('nota_fiscal').alignment = { horizontal: 'center' };
+            tr.getCell('pedido').alignment = { horizontal: 'center' };
+            tr.getCell('numero_loja').alignment = { horizontal: 'center' };
             tr.getCell('status').alignment = { horizontal: 'center' };
         });
 
@@ -2679,6 +2757,7 @@ module.exports = {
     validarNftBipagemMassa,
     atualizarStatusEmLote,
     obterHierarquiaExpedicaoHoje,
+    movimentarNfHierarquia,
     obterHistoricoExpedicoes,
     gerarRelatorioExcelExpedicao,
     gerarExcelDinamicoDataTable,

@@ -3,11 +3,11 @@ const bcrypt = require('bcrypt');
 const session = require('express-session');
 
 const pool = new Pool({
-    user: process.env.DB_MON_USER,
-    host: process.env.DB_MON_HOST,
-    database: process.env.DB_MON_DATABASE,
-    password: process.env.DB_MON_PASSWORD,
-    port: process.env.DB_MON_PORT,
+  user: process.env.DB_MON_USER,
+  host: process.env.DB_MON_HOST,
+  database: process.env.DB_MON_DATABASE,
+  password: process.env.DB_MON_PASSWORD,
+  port: process.env.DB_MON_PORT,
 });
 
 // Configuração da sessão
@@ -15,10 +15,10 @@ const sessionMiddleware = session({
   secret: 'chave-secreta-segura', // Mude para uma chave longa e aleatória em produção
   resave: false,
   saveUninitialized: false, // True se quiser salvar sessões anônimas, false se só após login
-  cookie: { 
+  cookie: {
     secure: false, // Em produção, com HTTPS, mude para true
     httpOnly: true,
-    maxAge: 480 * 60 * 1000 // 8 horas
+    maxAge: 24 * 60 * 60 * 1000 // 24 horas
   }
 });
 
@@ -39,8 +39,8 @@ exports.login = async (req, res) => {
   // Verifica se o usuário está bloqueado
   if (req.session.lockUntil && Date.now() < req.session.lockUntil) {
     // const remainingTime = Math.ceil((req.session.lockUntil - Date.now()) / 1000); // Para mostrar tempo restante
-    return res.render('login', { 
-      title: 'Login', 
+    return res.render('login', {
+      title: 'Login',
       errorMessage: `Muitas tentativas! Conta bloqueada temporariamente. Tente novamente mais tarde.`,
       layout: false // <--- ADICIONADO
     });
@@ -90,17 +90,17 @@ exports.login = async (req, res) => {
     } else { // Última tentativa antes do bloqueio efetivo
       errorMessage = 'Usuário ou senha inválidos! Esta é sua última tentativa antes do bloqueio.';
     }
-    
-    res.render('login', { 
-      title: 'Login', 
+
+    res.render('login', {
+      title: 'Login',
       errorMessage: errorMessage,
       layout: false // <--- ADICIONADO
     });
 
   } catch (error) {
     console.error('Erro interno durante o processo de login:', error);
-    res.render('login', { 
-      title: 'Login', 
+    res.render('login', {
+      title: 'Login',
       errorMessage: 'Erro interno do servidor. Por favor, tente novamente mais tarde!',
       layout: false // <--- ADICIONADO
     });
@@ -127,9 +127,9 @@ exports.logout = (req, res) => {
       // mas sim redirecionaria e deixaria a rota GET /login lidar com a renderização.
       // Ou, se for mostrar um erro, também use layout: false
       return res.status(500).render('login', {
-          title: 'Login',
-          errorMessage: 'Não foi possível fazer logout. Tente novamente.',
-          layout: false // <--- ADICIONADO (para consistência, embora o redirect seja mais comum)
+        title: 'Login',
+        errorMessage: 'Não foi possível fazer logout. Tente novamente.',
+        layout: false // <--- ADICIONADO (para consistência, embora o redirect seja mais comum)
       });
     }
     res.clearCookie('connect.sid'); // Limpa o cookie da sessão (o nome do cookie pode variar)

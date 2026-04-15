@@ -64,7 +64,7 @@
     margin-bottom: 1.5rem;
     display: flex;
     align-items: center;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     padding-bottom: 1rem;
 }
 
@@ -97,7 +97,7 @@
     flex: 1;
     background-color: var(--bg-tertiary);
     color: var(--text-primary);
-    border: 1px solid rgba(255,255,255,0.1);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: var(--border-radius-md);
     padding: 0.75rem 1rem;
     font-size: 1rem;
@@ -118,7 +118,7 @@
 /* Botões de Ação Menores */
 .btn-bip {
     background: var(--bg-tertiary);
-    border: 1px solid rgba(255,255,255,0.1);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     color: var(--text-primary);
     border-radius: var(--border-radius-md);
     padding: 0 1rem;
@@ -161,9 +161,18 @@
 }
 
 @keyframes pulse {
-    0% { opacity: 0.8; }
-    50% { opacity: 1; text-shadow: 0 0 10px rgba(240,124,0,0.5); }
-    100% { opacity: 0.8; }
+    0% {
+        opacity: 0.8;
+    }
+
+    50% {
+        opacity: 1;
+        text-shadow: 0 0 10px rgba(240, 124, 0, 0.5);
+    }
+
+    100% {
+        opacity: 0.8;
+    }
 }
 
 .scanner-input {
@@ -172,8 +181,8 @@
     color: var(--text-primary);
     border: 2px dashed var(--accent-orange);
     border-radius: var(--border-radius-lg);
-    padding: 1.5rem;
-    font-size: 2rem;
+    padding: 0.5rem;
+    font-size: 1rem;
     text-align: center;
     font-family: monospace;
     letter-spacing: 2px;
@@ -208,7 +217,7 @@
     background: var(--bg-tertiary);
     border-radius: var(--border-radius-md);
     padding: 1.25rem;
-    border: 1px solid rgba(255,255,255,0.02);
+    border: 1px solid rgba(255, 255, 255, 0.02);
     display: flex;
     flex-direction: column;
 }
@@ -281,7 +290,7 @@
 .hierarchy-panel {
     background: var(--bg-secondary);
     border-radius: var(--border-radius-lg);
-    border: 1px solid rgba(255,255,255,0.05);
+    border: 1px solid rgba(255, 255, 255, 0.05);
     margin-top: 2rem;
     overflow: hidden;
 }
@@ -323,7 +332,7 @@
 /* Árvore de Coleta (Sanfona customizada) */
 .h-coleta-card {
     background: var(--bg-tertiary);
-    border: 1px solid rgba(255,255,255,0.05);
+    border: 1px solid rgba(255, 255, 255, 0.05);
     border-radius: var(--border-radius-md);
     margin-bottom: 1rem;
     overflow: hidden;
@@ -335,12 +344,12 @@
     align-items: center;
     justify-content: space-between;
     cursor: pointer;
-    background: rgba(255,255,255,0.02);
+    background: rgba(255, 255, 255, 0.02);
     transition: background var(--transition-fast);
 }
 
 .h-coleta-header:hover {
-    background: rgba(255,255,255,0.05);
+    background: rgba(255, 255, 255, 0.05);
 }
 
 .h-coleta-title {
@@ -365,8 +374,9 @@
 
 .h-coleta-content {
     padding: 1rem;
-    border-top: 1px solid rgba(255,255,255,0.05);
-    display: none; /* Controle via JS */
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    display: none;
+    /* Controle via JS */
 }
 
 .h-coleta-content.open {
@@ -375,7 +385,7 @@
 
 /* Árvore de Palete */
 .h-palete-box {
-    background: rgba(0,0,0,0.2);
+    background: rgba(0, 0, 0, 0.2);
     border-left: 3px solid var(--text-muted);
     padding: 1rem;
     border-radius: 0 var(--border-radius-md) var(--border-radius-md) 0;
@@ -403,7 +413,7 @@
 
 .h-nf-tag {
     background: var(--bg-primary);
-    border: 1px solid rgba(255,255,255,0.1);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     color: var(--text-secondary);
     padding: 4px 10px;
     border-radius: 4px;

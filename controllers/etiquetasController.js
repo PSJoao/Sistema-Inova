@@ -431,7 +431,7 @@ exports.apiGetVirtualDate = async (req, res) => {
     try {
         const data = await etiquetasService.obterDataVirtualAtiva();
         res.json({ success: true, virtualDate: data });
-    } catch(err) {
+    } catch (err) {
         console.error(err);
         res.status(500).json({ success: false, message: 'Erro ao resgatar data virtual' });
     }
@@ -441,7 +441,7 @@ exports.apiAvancarDiaVirtual = async (req, res) => {
     try {
         const newVirtualDate = await etiquetasService.avancarDiaVirtual();
         res.json({ success: true, message: 'Dia avançado e reset da expedição efetuado com sucesso!', newDate: newVirtualDate });
-    } catch(err) {
+    } catch (err) {
         console.error(err);
         res.status(500).json({ success: false, message: 'Erro ao avançar dia: ' + err.message });
     }
@@ -1657,5 +1657,20 @@ exports.apiGetHierarquiaHoje = async (req, res) => {
     } catch (error) {
         console.error('[Expedição] Erro ao buscar hierarquia de hoje:', error);
         res.status(500).json({ success: false, message: 'Erro ao buscar hierarquia.' });
+    }
+};
+
+exports.apiMovimentarNfHierarquia = async (req, res) => {
+    try {
+        const { action, nf, coletaId, targetPaleteId } = req.body;
+        if (!action || !nf || !coletaId) {
+            return res.status(400).json({ success: false, message: 'Parâmetros insuficientes para realizar a ação.' });
+        }
+
+        const result = await etiquetasService.movimentarNfHierarquia({ action, nf, coletaId, targetPaleteId });
+        res.json(result);
+    } catch (error) {
+        console.error('[Expedição] Erro ao movimentar NF:', error);
+        res.status(500).json({ success: false, message: error.message || 'Erro do servidor ao movimentar NF.' });
     }
 };

@@ -168,6 +168,11 @@ function setupEventListeners() {
         }
     });
 
+    // Botão rápido (duplicata de conveniência na área de bipagem)
+    document.getElementById('btn-novo-palete-quick').addEventListener('click', () => {
+        document.getElementById('btn-novo-palete').click();
+    });
+
     document.getElementById('btn-delete-palete').addEventListener('click', () => {
         if (!estadoAtual.paleteId) return;
         ModalSystem.confirm("Tem certeza que deseja deletar este palete?", "Excluir Palete", () => {
@@ -214,8 +219,26 @@ function validarDestino() {
     const input = document.getElementById('input-bipagem');
     const btnDelColeta = document.getElementById('btn-delete-coleta');
     const btnDelPalete = document.getElementById('btn-delete-palete');
+    const btnNovoPaleteQuick = document.getElementById('btn-novo-palete-quick');
+    const paleteLabel = document.getElementById('palete-indicator-label');
 
     if (btnDelColeta) btnDelColeta.disabled = !estadoAtual.coletaId;
+
+    // Atualizar indicador de palete
+    if (btnNovoPaleteQuick) btnNovoPaleteQuick.disabled = !estadoAtual.coletaId;
+    if (paleteLabel) {
+        const selectPalete = document.getElementById('select-palete');
+        if (estadoAtual.paleteId && selectPalete) {
+            const selectedOption = selectPalete.options[selectPalete.selectedIndex];
+            paleteLabel.textContent = selectedOption ? selectedOption.text : 'Palete selecionado';
+            paleteLabel.style.color = 'var(--accent-orange)';
+            paleteLabel.style.fontWeight = '700';
+        } else {
+            paleteLabel.textContent = 'Nenhum palete selecionado';
+            paleteLabel.style.color = 'var(--text-secondary)';
+            paleteLabel.style.fontWeight = '400';
+        }
+    }
 
     if (estadoAtual.coletaId && estadoAtual.paleteId) {
         area.style.opacity = '1';
@@ -229,6 +252,9 @@ function validarDestino() {
         status.style.display = 'block';
         if (btnDelPalete) btnDelPalete.disabled = true;
     }
+
+    // Atualiza badge de volumes do palete ativo
+    atualizarContadorVolumes(null, estadoAtual.paleteId);
 }
 
 // ==========================================
@@ -401,6 +427,8 @@ async function carregarHierarquiaHoje() {
             let nfsColetaCount = 0;
             let htmlPaletes = '';
 
+            const jsonOutrosPaletes = JSON.stringify(coleta.paletes.map(p => ({ id: p.id, nome: p.nome }))).replace(/"/g, '&quot;');
+
             coleta.paletes.forEach(palete => {
                 const totalNfPalete = palete.registros.length;
                 nfsColetaCount += totalNfPalete;
@@ -408,7 +436,7 @@ async function carregarHierarquiaHoje() {
                 let badgesNfs = palete.registros.map(r => {
                     const extraClass = r.is_kit ? ' kit' : '';
                     const icon = r.is_kit ? '<i class="fas fa-boxes" style="margin-right: 4px;"></i>' : '<i class="fas fa-box" style="margin-right: 4px;"></i>';
-                    return `<div class="h-nf-tag${extraClass}">${icon} ${r.nf}</div>`;
+                    return `<div class="h-nf-tag${extraClass}" style="cursor: pointer;" onclick="window.abrirAcoesNf('${r.nf}', ${coleta.id}, ${palete.id}, '${jsonOutrosPaletes}')">${icon} ${r.nf}</div>`;
                 }).join('');
 
                 if (palete.registros.length === 0) {
@@ -500,6 +528,32 @@ function focalizarHierarquia() {
             }
         }
     }
+
+    // 5. Atualiza contador de volumes do palete ativo
+    atualizarContadorVolumes(container, activePaleteId);
+}
+
+function atualizarContadorVolumes(container, activePaleteId) {
+    const badge = document.getElementById('palete-vol-count');
+    if (!badge) return;
+
+    if (!activePaleteId) {
+        badge.style.display = 'none';
+        return;
+    }
+
+    if (!container) container = document.getElementById('hierarquia-container');
+
+    let count = 0;
+    if (container) {
+        const paleteContent = container.querySelector(`.h-palete-collapsible[data-palete-id="${activePaleteId}"]`);
+        if (paleteContent) {
+            count = paleteContent.querySelectorAll('.h-nf-tag').length;
+        }
+    }
+
+    badge.textContent = `${count} vol`;
+    badge.style.display = 'inline-block';
 }
 
 // ==========================================
@@ -546,3 +600,149 @@ function imprimirResumoVisual() {
         });
     }, 500); // 500ms para aguardar a renderização do CSS 'open'
 }
+
+// ==========================================
+// 6. AÇÕES GLOBAIS NA HIERARQUIA DA NOTA FISCAL
+// ==========================================
+window.abrirAcoesNf = function(nf, coletaId, paleteIdAtual, jsonPaletes) {
+    const paletesAll = JSON.parse(jsonPaletes);
+    const paletesDiferentes = paletesAll.filter(p => p.id !== paleteIdAtual);
+
+    let selectorHtml = '';
+    if (paletesDiferentes.length > 0) {
+        let options = paletesDiferentes.map(p => `<option value="${p.id}">${p.nome}</option>`).join('');
+        selectorHtml = `
+            <div style="background: rgba(255,255,255,0.02); border-radius: 8px; padding: 12px; margin: 15px 0; border: 1px solid rgba(255,255,255,0.05);">
+                <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 8px; font-weight: 600;"><i class="fas fa-pallet"></i> Mover para Palete Existente:</label>
+                <div style="display: flex; gap: 8px;">
+                    <select id="select-acao-palete" class="form-control" style="background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid rgba(255,255,255,0.1); flex: 1; border-radius: 6px; outline: none;">
+                        ${options}
+                    </select>
+                    <button type="button" class="btn-premium orange" style="padding: 0 15px; border-radius: 6px;" onclick="window.executarAcaoNf('mover_existente', '${nf}', ${coletaId})">
+                        <i class="fas fa-check"></i> Mover
+                    </button>
+                </div>
+            </div>
+        `;
+    } else {
+        selectorHtml = `
+            <div style="background: rgba(255,255,255,0.02); border-radius: 8px; padding: 12px; margin: 15px 0; border: 1px solid rgba(255,255,255,0.05); opacity: 0.5;">
+                <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 8px; font-weight: 600;"><i class="fas fa-pallet"></i> Mover para Palete Existente:</label>
+                <div style="display: flex; gap: 8px;">
+                    <select id="select-acao-palete" class="form-control" disabled style="background: var(--bg-tertiary); color: var(--text-muted); border: 1px solid rgba(255,255,255,0.1); flex: 1; border-radius: 6px; outline: none;">
+                        <option value="">Não há outros paletes nesta coleta</option>
+                    </select>
+                    <button type="button" disabled class="btn-premium orange" style="padding: 0 15px; border-radius: 6px; opacity: 0.5; cursor: not-allowed;">
+                        <i class="fas fa-check"></i> Mover
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    const modalHtml = `
+        <div style="text-align: left; padding: 5px 10px;">
+            <div style="text-align: center; margin-bottom: 20px; background: rgba(240, 124, 0, 0.05); padding: 10px; border-radius: 8px; border: 1px dashed rgba(240, 124, 0, 0.3);">
+                <span style="color: var(--accent-orange); font-size: 0.85rem; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 5px;">Nota Fiscal Selecionada</span>
+                <strong style="color:var(--text-primary); font-size: 1.4rem; letter-spacing: 1px;">${nf}</strong>
+            </div>
+
+            <button type="button" style="width: 100%; cursor: pointer; margin-bottom: 15px; padding: 12px; font-size: 1rem; border-radius: 8px; display: flex; justify-content: center; align-items: center; gap: 10px; background: rgba(220, 53, 69, 0.1); color: #ff6b6b; border: 1px solid rgba(220, 53, 69, 0.3); transition: 0.2s;" onmouseover="this.style.background='rgba(220, 53, 69, 0.2)'" onmouseout="this.style.background='rgba(220, 53, 69, 0.1)'" onclick="window.executarAcaoNf('retirar', '${nf}', ${coletaId})">
+                <i class="fas fa-trash-alt"></i> Remover da Expedição
+            </button>
+
+            ${selectorHtml}
+
+            <button type="button" style="width: 100%; cursor: pointer; margin-top: 10px; padding: 12px; font-size: 1rem; border-radius: 8px; display: flex; justify-content: center; align-items: center; gap: 10px; background: transparent; border: 1px dashed var(--accent-orange); color: var(--accent-orange); transition: 0.2s;" onmouseover="this.style.background='rgba(240, 124, 0, 0.1)'" onmouseout="this.style.background='transparent'" onclick="window.executarAcaoNf('mover_novo', '${nf}', ${coletaId})">
+                <i class="fas fa-plus-circle"></i> Enviar para Novo Palete
+            </button>
+
+            <button type="button" style="width: 100%; cursor: pointer; margin-top: 20px; padding: 10px; font-size: 0.95rem; border-radius: 8px; background: rgba(255,255,255,0.05); color: var(--text-muted); border: 1px solid rgba(255,255,255,0.1); transition: 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'" onclick="document.getElementById('customModalBtnCancel').click()">
+                Fechar Menu
+            </button>
+        </div>
+    `;
+
+    // Usaremos ModalSystem.confirm para suportar os cliques, mas com controles nativos ocultos
+    ModalSystem.confirm(
+        modalHtml,
+        `Ações Disponíveis`,
+        () => {}, 
+        () => {} 
+    );
+    
+    // Escondemos os controles nativos para usar apenas o nosso modal customizado
+    setTimeout(() => {
+        const btnConfirm = document.getElementById('customModalBtnConfirm');
+        if (btnConfirm) btnConfirm.style.display = 'none';
+        const btnCancel = document.getElementById('customModalBtnCancel');
+        if (btnCancel) btnCancel.style.display = 'none';
+        // Garantindo limpeza de inline styles velhos se existiam:
+        if (btnCancel) {
+            btnCancel.style.width = '';
+            btnCancel.innerText = 'Cancelar'; 
+        }
+    }, 10);
+};
+
+window.executarAcaoNf = function(action, nf, coletaId) {
+    let targetPaleteId = null;
+
+    if (action === 'mover_existente') {
+        const sel = document.getElementById('select-acao-palete');
+        targetPaleteId = sel ? sel.value : null;
+        if (!targetPaleteId) return;
+    }
+
+    // Função que efetua o fetch em si
+    const triggerMovimentacaoFetch = async () => {
+        try {
+            ModalSystem.showLoading('Processando movimentação...');
+            const res = await fetch('/api/expedicao/nf/movimentar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, nf, coletaId, targetPaleteId })
+            });
+            const data = await res.json();
+            
+            ModalSystem.hideLoading();
+
+            if (data.success) {
+                if (typeof ToastSystem !== 'undefined') {
+                    ToastSystem.success(data.message, 3000);
+                } else {
+                    alert(data.message);
+                }
+                await carregarHierarquiaHoje();
+                
+                if (action === 'mover_novo') {
+                     await carregarPaletes(coletaId);
+                }
+            } else {
+                ModalSystem.alert(data.message, 'Falha na Operação');
+            }
+        } catch (e) {
+            console.error(e);
+            ModalSystem.hideLoading();
+            ModalSystem.alert('Erro ao se conectar ao servidor.', 'Erro');
+        }
+    };
+
+    // Fecha o popup do menu de opções principal primeiro
+    const cancelBtn = document.getElementById('customModalBtnCancel');
+    if (cancelBtn) cancelBtn.click();
+
+    // Se for 'retirar', pedimos confirmação extra DEPOIS que o primeiro modal se ocultar
+    if (action === 'retirar') {
+        setTimeout(() => {
+            ModalSystem.confirm(
+                `Remover esta nota anulará a expedição dela e removerá os pontos rateados dos carregadores.<br>Tem certeza que deseja remover a NF <strong>${nf}</strong>?`,
+                'Remover NF',
+                () => { triggerMovimentacaoFetch(); },
+                () => {} // Cancel, do nothing
+            );
+        }, 300); // 300ms de delay para evitar colisão entre fechar um modal e abrir o outro imediatamente
+    } else {
+        triggerMovimentacaoFetch();
+    }
+};

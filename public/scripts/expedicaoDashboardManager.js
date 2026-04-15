@@ -241,6 +241,8 @@ function initTabelas() {
         columns: [
             { data: 'dataEntrada' },
             { data: 'nfHtml' },
+            { data: 'pedidoId' },
+            { data: 'numeroLoja' },
             { data: 'sku' },
             { data: 'statusBadge' },
             { data: 'acoes' }
@@ -323,6 +325,8 @@ async function carregarDadosDashboard() {
             return {
                 dataEntrada: `${dataFmt} ${herancaIcon}`,
                 nfHtml: `<strong>${item.nfe_numero || item.nf || '-'}</strong>`,
+                pedidoId: item.pedido_numero || item.pack_id || '-',
+                numeroLoja: item.numero_loja_calc || item.numero_loja || '-',
                 sku: skuFormatted,
                 statusBadge: statusBadge,
                 acoes: acoes
@@ -476,7 +480,9 @@ async function solicitarPlanilhaDinamica(type) {
     const payloadExtraido = dadosVisiveis.map(row => {
         return {
             dataEntrada: row.dataEntrada ? row.dataEntrada.replace(htmlStripper, "").trim() : "",
-            identificador: row.nfHtml ? row.nfHtml.replace(htmlStripper, "").trim() : "",
+            nota_fiscal: row.nfHtml ? row.nfHtml.replace(htmlStripper, "").trim() : "",
+            pedido: row.pedidoId ? row.pedidoId.replace(htmlStripper, "").trim() : "",
+            numero_loja: row.numeroLoja ? row.numeroLoja.replace(htmlStripper, "").trim() : "",
             sku: row.sku ? row.sku.replace(htmlStripper, "").trim() : "",
             status: row.statusBadge ? row.statusBadge.replace(htmlStripper, "").trim() : ""
         };

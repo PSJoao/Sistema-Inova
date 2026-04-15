@@ -74,6 +74,7 @@ router.post('/api/expedicao/bipagem-massa/atualizar', etiquetasController.apiAtu
 
 // API RESTful para a Tela de Bipagem
 router.get('/api/expedicao/hierarquia-hoje', etiquetasController.apiGetHierarquiaHoje);
+router.post('/api/expedicao/nf/movimentar', etiquetasController.apiMovimentarNfHierarquia);
 router.get('/api/expedicao/coletas', etiquetasController.apiGetColetas);
 router.post('/api/expedicao/coletas', etiquetasController.apiPostColeta);
 router.delete('/api/expedicao/coletas/:id', etiquetasController.apiDeleteColeta);
