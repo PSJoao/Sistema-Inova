@@ -4,7 +4,6 @@ const statusSelect = document.getElementById('massa-status-select');
 const listContainer = document.getElementById('massa-list-container');
 const emptyState = document.getElementById('massa-empty-state');
 const totalCountElement = document.getElementById('massa-total-count');
-const btnFinalizar = document.getElementById('btn-massa-finalizar');
 
 const audioSuccess = document.getElementById('audio-success');
 const audioError = document.getElementById('audio-error');
@@ -29,160 +28,110 @@ function focusInput() {
 
 function updateUI() {
     totalCountElement.textContent = nfsBipadas.length;
-    
     if (nfsBipadas.length > 0) {
         emptyState.style.display = 'none';
-        btnFinalizar.disabled = false;
     } else {
         emptyState.style.display = 'block';
-        btnFinalizar.disabled = true;
     }
 }
 
-function renderList() {
-    // Limpa a lista mantendo o emptyState
-    Array.from(listContainer.children).forEach(child => {
-        if (child.id !== 'massa-empty-state') {
-            listContainer.removeChild(child);
-        }
-    });
+function appendToLog(nfCode, statusNome, success, message) {
+    const itemDiv = document.createElement('div');
+    itemDiv.className = 'massa-item';
+    itemDiv.style.borderLeft = success ? '4px solid #4CAF50' : '4px solid var(--color-danger)';
+    
+    const timeNow = new Date().toLocaleTimeString('pt-BR');
 
-    nfsBipadas.forEach((nfInfo, index) => {
-        const itemDiv = document.createElement('div');
-        itemDiv.className = 'massa-item';
-        itemDiv.innerHTML = `
-            <div class="massa-item-info">
-                <span class="massa-item-nf">${nfInfo.nfe}</span>
-                <span class="massa-item-status">Status Atual: <b>${nfInfo.status_atual || 'Pendente'}</b></span>
-            </div>
-            <button class="massa-item-action" onclick="removerNF(${index})" title="Remover da lista">
-                <i class="fas fa-trash"></i>
-            </button>
-        `;
-        listContainer.appendChild(itemDiv);
-    });
-
+    itemDiv.innerHTML = `
+        <div class="massa-item-info">
+            <span class="massa-item-nf">${nfCode}</span>
+            <span class="massa-item-status" style="color: ${success ? '#4CAF50' : 'var(--color-danger)'};">
+                <b>${success ? `Atualizado para ${statusNome}` : 'Falha ao atualizar'}</b> - ${timeNow}
+            </span>
+            ${!success ? `<span style="display:block; font-size: 0.8rem; opacity: 0.8; margin-top: 5px;">${message}</span>` : ''}
+        </div>
+        <div style="font-size: 1.5rem; color: ${success ? '#4CAF50' : 'var(--color-danger)'}; margin-right: 10px;">
+            <i class="fas ${success ? 'fa-check-circle' : 'fa-times-circle'}"></i>
+        </div>
+    `;
+    
+    // Add inside list but keep emptyState untouched
+    listContainer.appendChild(itemDiv);
     updateUI();
-    // Faz o scroll ir para o final onde o novo item foi inserido
     listContainer.scrollTop = listContainer.scrollHeight;
-}
-
-window.removerNF = function(index) {
-    const nfInfo = nfsBipadas[index];
-    ModalSystem.confirm(
-        `Tem certeza que deseja de fato remover a <b>NF ${nfInfo.nfe}</b> e ignorar a mudança de status dessa nota?`,
-        'Remover da Lista',
-        () => {
-            nfsBipadas.splice(index, 1);
-            renderList();
-            focusInput();
-        },
-        () => {
-            focusInput();
-        }
-    );
 }
 
 barcodeInput.addEventListener('keydown', async function(e) {
     if (e.key === 'Enter') {
-        const codigo = this.value.trim();
-        this.value = ''; // Limpa rápido para o próximo bip
+        let codigo = this.value.trim();
+        this.value = ''; // Limpa rápido
         
         if (!codigo) return;
 
-        // Se já foi bipada nesta sessão (pra não mandar req à toa)
-        if (nfsBipadas.some(nf => nf.nfe === codigo || (codigo.length >= 44 && codigo.includes(nf.nfe)))) {
+        const novoStatus = statusSelect.value;
+        const nomesStatus = {
+            'checado': 'Checado',
+            'sem_estoque': 'Sem Estoque (Pausado)',
+            'cancelado': 'Cancelado',
+            'pendente': 'Pendente (Retomar)'
+        };
+        const statusNome = nomesStatus[novoStatus];
+
+        if (nfsBipadas.includes(codigo)) {
             playError();
-            Swal.fire({ toast: true, position: 'top-end', icon: 'warning', title: 'Nota já está na lista atual.', showConfirmButton: false, timer: 2000 });
+            Swal.fire({ toast: true, position: 'top-end', icon: 'warning', title: 'Código já bipado nesta sessão.', showConfirmButton: false, timer: 1500 });
             return;
         }
 
         try {
-            const tempToast = Swal.fire({ toast: true, position: 'top-end', title: 'Validando...', showConfirmButton: false });
-            
-            const req = await fetch('/api/expedicao/bipagem-massa/validar', {
+            // 1. Validar e formatar NF
+            const reqVal = await fetch('/api/expedicao/bipagem-massa/validar', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ codigo })
             });
-            const res = await req.json();
+            const resVal = await reqVal.json();
 
-            if (res.success) {
-                // Previne re-adicionar caso API traga o nfe_numero formatado limpo e já o tenhamos
-                if (nfsBipadas.some(nf => nf.nfe === res.nfe)) {
-                     playError();
-                     Swal.fire({ toast: true, position: 'top-end', icon: 'warning', title: 'Nota já lista.', showConfirmButton: false, timer: 1500 });
-                     return;
-                }
+            if (!resVal.success) {
+                playError();
+                Swal.fire({ toast: true, position: 'top-end', icon: 'error', title: resVal.message, showConfirmButton: false, timer: 3000 });
+                focusInput();
+                return;
+            }
+
+            const nfeFinal = resVal.nfe;
+
+            // 2. Imediatamente Atualizar Status
+            const reqUpd = await fetch('/api/expedicao/bipagem-massa/atualizar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nfList: [nfeFinal], novoStatus })
+            });
+            const resUpd = await reqUpd.json();
+
+            if (resUpd.success) {
                 playSuccess();
-                nfsBipadas.push({ nfe: res.nfe, status_atual: res.status_atual });
-                renderList();
-                Swal.close();
+                nfsBipadas.push(codigo); // Trava re-bipagem
+                if (nfeFinal !== codigo && !nfsBipadas.includes(nfeFinal)) {
+                    nfsBipadas.push(nfeFinal); 
+                }
+                appendToLog(nfeFinal, statusNome, true, '');
             } else {
                 playError();
-                Swal.fire({ toast: true, position: 'top-end', icon: 'error', title: res.message, showConfirmButton: false, timer: 3000 });
+                Swal.fire({ toast: true, position: 'top-end', icon: 'error', title: resUpd.message, showConfirmButton: false, timer: 3000 });
             }
         } catch (error) {
             playError();
-            Swal.fire({ toast: true, position: 'top-end', icon: 'error', title: 'Erro de conexão.', showConfirmButton: false, timer: 2000 });
-            console.error('Erro na validação da NF', error);
+            Swal.fire({ toast: true, position: 'top-end', icon: 'error', title: 'Erro de conexão HTTP.', showConfirmButton: false, timer: 3000 });
         }
         
         focusInput();
     }
 });
 
-btnFinalizar.addEventListener('click', function() {
-    if (nfsBipadas.length === 0) return;
-
-    const novoStatus = statusSelect.value;
-    const nomesStatus = {
-        'sem_estoque': 'Sem Estoque (Pausado)',
-        'cancelado': 'Cancelado',
-        'pendente': 'Pendente (Retomar)'
-    };
-
-    ModalSystem.confirm(
-        `Deseja realmente alterar ${nfsBipadas.length} notas para <b>${nomesStatus[novoStatus]}</b>?`,
-        'Confirmar Atualização Lote',
-        async () => {
-            // Callback: Confirmado
-            try {
-                ModalSystem.showLoading('Aguarde enquanto os status são salvos.', 'Aplicando...');
-
-                const nfeList = nfsBipadas.map(n => n.nfe);
-
-                const req = await fetch('/api/expedicao/bipagem-massa/atualizar', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ nfList: nfeList, novoStatus })
-                });
-                const res = await req.json();
-                
-                ModalSystem.hideLoading();
-
-                if (res.success) {
-                    ModalSystem.alert(res.message, 'Sucesso!', () => {
-                        nfsBipadas = []; // Limpa
-                        renderList();
-                        focusInput();
-                    });
-                } else {
-                    ModalSystem.alert(res.message, 'Falha', focusInput);
-                }
-            } catch (error) {
-                ModalSystem.hideLoading();
-                ModalSystem.alert('Não foi possível conectar ao servidor.', 'Erro', focusInput);
-                console.error(error);
-            }
-        },
-        () => {
-            // Callback: Cancelado
-            focusInput();
-        }
-    );
-});
-
-// Força foco ao carregar a página e clicar na área vazia das listas
+// Força foco
 document.addEventListener('DOMContentLoaded', focusInput);
-listContainer.addEventListener('click', focusInput);
+listContainer.addEventListener('click', () => {
+    // If not clicking inner child texts, focus inputs
+    focusInput();
+});

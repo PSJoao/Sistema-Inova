@@ -12,6 +12,10 @@
         <div class="dashboard-panel">
             <h4 class="panel-title"><i class="fas fa-chart-pie"></i> Balanço do Dia</h4>
             <div class="stat-grid">
+                <div class="stat-card" style="background: rgba(13, 202, 240, 0.1); border-color: rgba(13, 202, 240, 0.3);">
+                    <h4 style="color: #0dcaf0;">Checados</h4>
+                    <div class="stat-value" id="dash-checados" style="color: #0dcaf0;">0</div>
+                </div>
                 <div class="stat-card heranca">
                     <h4>Herança</h4>
                     <div class="stat-value" id="dash-heranca">0</div>
@@ -99,6 +103,7 @@
                         <select id="filtro-status-tabela" class="form-control-dark">
                             <option value="">Todos os Status</option>
                             <option value="Pendente">Pendentes</option>
+                            <option value="Checado">Checados</option>
                             <option value="Sem Estoque">Sem Estoque</option>
                             <option value="Cancelado">Cancelados</option>
                             <option value="Expedido">Expedidos</option>

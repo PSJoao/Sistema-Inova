@@ -1940,10 +1940,11 @@ async function obterDadosDashboardExpedicao() {
     try {
         const statsQuery = `
             SELECT 
+                COUNT(*) FILTER (WHERE status = 'checado') as checados,
                 COUNT(*) FILTER (WHERE DATE(created_at) < data_virtual_expedicao() AND status = 'pendente') as heranca,
                 COUNT(*) FILTER (WHERE DATE(created_at) = data_virtual_expedicao() AND status = 'pendente') as novos_hoje,
                 COUNT(*) FILTER (WHERE status IN ('sem_estoque')) as subtracoes,
-                COUNT(*) FILTER (WHERE status = 'pendente') as saldo_real
+                COUNT(*) FILTER (WHERE status IN ('pendente', 'checado')) as saldo_real
             FROM cached_etiquetas_ml
             WHERE status != 'impresso'
         `;
@@ -2708,10 +2709,66 @@ async function avancarDiaVirtual() {
 
 async function gerarPdfPendentes(nfList) {
     if (!nfList || nfList.length === 0) throw new Error('Nenhuma NF fornecida.');
+
+    const cepsMap = await getCepsOndaMap();
+    const client = await pool.connect();
+    let orderedNfList = [];
+    
+    try {
+        const query = `
+            SELECT m.nfe_numero, m.skus, cpv.cep
+            FROM cached_etiquetas_ml m
+            LEFT JOIN cached_pedido_venda cpv ON cpv.nfe_parent_numero = m.nfe_numero
+            WHERE m.nfe_numero = ANY($1)
+        `;
+        const res = await client.query(query, [nfList]);
+        
+        const etiquetasFake = res.rows.map(row => {
+            let parsedSkus = [];
+            try {
+                if (typeof row.skus === 'string') {
+                    if (row.skus.startsWith('[')) {
+                        parsedSkus = JSON.parse(row.skus).map(s => ({ display: s.display || s.original || s }));
+                    } else {
+                        parsedSkus = row.skus.split(',').map(s => ({ display: s.trim() }));
+                    }
+                } else if (Array.isArray(row.skus)) {
+                    parsedSkus = row.skus.map(s => ({ display: s.display || s.original || s }));
+                }
+            } catch(e) { parsedSkus = [{ display: row.skus }]; }
+
+            const cepStr = String(row.cep || '').replace(/\D/g, '').padStart(8, '0');
+            let cepCabeca = cepStr.startsWith('0') ? cepStr.substring(1, 5) : cepStr.substring(0, 5);
+            const onda = cepsMap.get(cepCabeca);
+
+            return {
+                nfeNumero: row.nfe_numero,
+                skus: parsedSkus,
+                onda: onda ? { prioridade: getCorPrioridade(onda), cor: onda } : null
+            };
+        });
+
+        // Aplica a mesmíssima fórmula do processo inicial de upload de NFs
+        const etiquetasOrdenadas = ordenarEtiquetas(etiquetasFake);
+        orderedNfList = etiquetasOrdenadas.map(e => e.nfeNumero);
+
+        // Fallback de segurança: insere eventuais NFs não retornadas na DB pro final
+        const dbFoundNfs = new Set(orderedNfList);
+        for (const orig of nfList) {
+            if (!dbFoundNfs.has(orig)) orderedNfList.push(orig);
+        }
+
+    } catch (err) {
+        console.error('Erro na ordenação de impressão em lote, prosseguindo com a ordem original:', err);
+        orderedNfList = nfList;
+    } finally {
+        client.release();
+    }
+
     const mergedPdf = await PDFDocument.create();
     let foundCount = 0;
     
-    for (const nf of nfList) {
+    for (const nf of orderedNfList) {
         try {
             const resultado = await buscarEtiquetaPorNF(nf);
             if (resultado.success && resultado.pdfBuffer) {

@@ -251,7 +251,7 @@ function initTabelas() {
 
     // Evento de Filtro via Combobox
     $('#filtro-status-tabela').on('change', function () {
-        tabelaPendencias.column(3).search(this.value, false, false).draw();
+        tabelaPendencias.column(5).search(this.value, false, false).draw();
     });
 }
 
@@ -272,6 +272,9 @@ async function carregarDadosDashboard() {
         if (!response.ok) throw new Error('Erro na rede ao buscar dados do dashboard.');
         const data = await response.json();
 
+        if (document.getElementById('dash-checados')) {
+            document.getElementById('dash-checados').innerText = data.stats.checados || 0;
+        }
         document.getElementById('dash-heranca').innerText = data.stats.heranca || 0;
         document.getElementById('dash-novos').innerText = data.stats.novos_hoje || 0;
         document.getElementById('dash-subtracoes').innerText = data.stats.subtracoes || 0;
@@ -287,6 +290,7 @@ async function carregarDadosDashboard() {
 
             let statusBadge = '';
             if (item.status === 'pendente') statusBadge = '<span class="badge badge-orange">Pendente</span>';
+            else if (item.status === 'checado') statusBadge = '<span class="badge" style="background-color: #0dcaf0; color: #1e1e2f;">Checado</span>';
             else if (item.status === 'sem_estoque') statusBadge = '<span class="badge" style="background-color: var(--color-warning); color: #1e1e2f;">Sem Estoque</span>';
             else if (item.status === 'cancelado') statusBadge = '<span class="badge" style="background-color: var(--color-danger); color: #fff;">Cancelado</span>';
             else if (item.status === 'impresso') statusBadge = '<span class="badge" style="background-color: #4CAF50; color: #fff;">Expedido</span>';
