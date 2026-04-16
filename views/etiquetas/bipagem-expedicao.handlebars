@@ -14,17 +14,20 @@
         <!-- ÁREA DO SCANNER -->
         <div class="bipagem-panel" id="area-bipagem"
             style="opacity: 0.3; pointer-events: none; transition: opacity 0.3s;">
-            <div class="bipagem-panel-title">
-                <i class="fas fa-qrcode"></i> Leitura de Volumes
+            <div class="bipagem-panel-title"
+                style="display: flex; justify-content: space-between; align-items: center;">
+                <span><i class="fas fa-qrcode"></i> Leitura de Volumes</span>
             </div>
 
             <div class="palete-indicator" id="palete-indicator">
                 <div class="palete-indicator-info">
                     <i class="fas fa-pallet" style="color: var(--accent-orange); margin-right: 8px;"></i>
-                    <span id="palete-indicator-label" style="color: var(--text-secondary); font-size: 0.85rem;">Nenhum palete selecionado</span>
+                    <span id="palete-indicator-label" style="color: var(--text-secondary); font-size: 0.85rem;">Nenhum
+                        palete selecionado</span>
                     <span id="palete-vol-count" class="palete-vol-badge" style="display: none;">0 vol</span>
                 </div>
-                <button id="btn-novo-palete-quick" class="btn-bip" title="Criar Novo Palete" disabled style="padding: 0.3rem 0.7rem; font-size: 0.8rem;">
+                <button id="btn-novo-palete-quick" class="btn-bip" title="Criar Novo Palete" disabled
+                    style="padding: 0.3rem 0.7rem; font-size: 0.8rem;">
                     <i class="fas fa-plus" style="margin-right: 4px;"></i> Novo Palete
                 </button>
             </div>
@@ -50,6 +53,33 @@
                         <li style="background: transparent; padding: 0;"><span class="text-muted"
                                 style="font-size: 0.9rem;">Nenhum bipado.</span></li>
                     </ul>
+                </div>
+                <div style="grid-column: 1 / -1; display: flex; justify-content: center; margin-top: 5px;">
+                    <label style="cursor: pointer; display: flex; align-items: center; gap: 10px; margin-bottom: 0;">
+                        <span id="label-modo-carregador" style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); transition: color 0.3s;">Com Carregador</span>
+                        <div style="position: relative; display: inline-block; width: 44px; height: 24px;">
+                            <input type="checkbox" id="chk-sem-carregador" style="opacity: 0; width: 0; height: 0;" onchange="
+                                const lbl = document.getElementById('label-modo-carregador');
+                                if(this.checked) {
+                                    lbl.innerText = 'Sem Carregador';
+                                    lbl.style.color = 'var(--accent-orange)';
+                                    this.nextElementSibling.style.backgroundColor = 'var(--accent-orange)';
+                                    this.nextElementSibling.style.borderColor = 'var(--accent-orange)';
+                                    this.nextElementSibling.nextElementSibling.style.transform = 'translateX(20px)';
+                                    this.nextElementSibling.nextElementSibling.style.backgroundColor = '#1e1e2f';
+                                } else {
+                                    lbl.innerText = 'Com Carregador';
+                                    lbl.style.color = 'var(--text-secondary)';
+                                    this.nextElementSibling.style.backgroundColor = 'rgba(255,255,255,0.05)';
+                                    this.nextElementSibling.style.borderColor = 'rgba(255,255,255,0.1)';
+                                    this.nextElementSibling.nextElementSibling.style.transform = 'translateX(0)';
+                                    this.nextElementSibling.nextElementSibling.style.backgroundColor = '#888';
+                                }
+                            ">
+                            <span style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(255,255,255,0.05); transition: 0.3s; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1);"></span>
+                            <span style="position: absolute; height: 14px; width: 14px; left: 4px; bottom: 4px; background-color: #888; transition: 0.3s; border-radius: 50%; pointer-events: none;"></span>
+                        </div>
+                    </label>
                 </div>
             </div>
         </div>

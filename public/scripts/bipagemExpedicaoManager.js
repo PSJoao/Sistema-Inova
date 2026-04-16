@@ -317,7 +317,23 @@ async function processarBipagem(codigoLido) {
 async function encerrarESalvarNfAtual(explicit = false) {
     if (!estadoAtual.nf) return;
 
-    if (estadoAtual.carregadoresBipados.length === 0) {
+    const checkboxCarregador = document.getElementById('chk-sem-carregador');
+    let useSemCarregador = checkboxCarregador ? checkboxCarregador.checked : false;
+
+    let carregadoresParaSalvar = [...estadoAtual.carregadoresBipados];
+
+    if (useSemCarregador && carregadoresParaSalvar.length === 0) {
+        // Encontra o carregador genérico 'NINGUÉM' no dicionário
+        const objNinguem = carregadoresAtivos["300"];
+        if (objNinguem) {
+            carregadoresParaSalvar.push(objNinguem.id);
+            console.log("Pontuando para expedidor genérico NINGUEM (300).");
+        } else {
+            console.warn("ALERTA: Carregador 'NINGUÉM' (Cód 300) não localizado na memória. O rateio irá vazio.");
+        }
+    }
+
+    if (carregadoresParaSalvar.length === 0) {
         // Agora o erro e o modal disparam sempre, seja clicando no botão ou bipando uma nova NF
         tocarErro();
         ToastSystem.warning(`A NF ${estadoAtual.nf} não foi dada como expedida, pois nenhum carregador foi bipado.`, 4000);
@@ -333,7 +349,7 @@ async function encerrarESalvarNfAtual(explicit = false) {
         const bodyData = {
             palete_id: estadoAtual.paleteId,
             nf: estadoAtual.nf,
-            carregadores: estadoAtual.carregadoresBipados // Array de IDs
+            carregadores: carregadoresParaSalvar // Array de IDs processado
         };
 
         const response = await fetch('/api/expedicao/registrar-bipagem', {
