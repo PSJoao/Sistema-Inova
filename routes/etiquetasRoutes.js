@@ -121,5 +121,6 @@ router.post('/api/relatorio-tarde/upload', uploadExcel.single('excelVendas'), et
 router.get('/api/relatorio-tarde/historico', etiquetasController.listarHistoricoRelatorioTarde);
 router.delete('/api/relatorio-tarde/:id', etiquetasController.excluirHistoricoRelatorioTarde);
 router.get('/api/relatorio-tarde/download/:id', etiquetasController.downloadHistoricoRelatorioTarde);
+router.post('/api/expedicao/dashboard-massa-update', etiquetasController.atualizarGlobalDashboardEmLote);
 
 module.exports = router;

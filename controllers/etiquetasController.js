@@ -1674,3 +1674,17 @@ exports.apiMovimentarNfHierarquia = async (req, res) => {
         res.status(500).json({ success: false, message: error.message || 'Erro do servidor ao movimentar NF.' });
     }
 };
+
+exports.atualizarGlobalDashboardEmLote = async (req, res) => {
+    try {
+        const { nfList, novoStatus } = req.body;
+        if (!nfList || !Array.isArray(nfList) || nfList.length === 0 || !novoStatus) {
+            return res.status(400).json({ success: false, message: 'Dados inválidos inseridos para a operação de massa.' });
+        }
+        const resultado = await etiquetasService.atualizarGlobalDashboardEmLote(nfList, novoStatus);
+        res.json(resultado);
+    } catch (e) {
+        console.error('[Dashboard Update Massa]', e);
+        res.status(500).json({ success: false, message: e.message || 'Ocorreu um erro ao atualizar os status das etiquetas.' });
+    }
+};

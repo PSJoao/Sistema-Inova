@@ -2350,6 +2350,68 @@ async function atualizarStatusEmLote(nfList, novoStatus) {
     }
 }
 
+async function atualizarGlobalDashboardEmLote(nfList, novoStatus) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        for (const nf of nfList) {
+            const mlCheck = await client.query(`SELECT id, status FROM cached_etiquetas_ml WHERE nfe_numero = $1 FOR UPDATE`, [nf]);
+            if (mlCheck.rows.length === 0) continue;
+
+            const estadoAnterior = mlCheck.rows[0].status;
+
+            // Retirou expedido: Destroi registro e pontos amarrados a este registro na hierarquia logística
+            if (estadoAnterior === 'impresso' && novoStatus !== 'impresso') {
+                const regCheck = await client.query(`SELECT id FROM expedicao_registros WHERE nf = $1 LIMIT 1`, [nf]);
+                if (regCheck.rows.length > 0) {
+                    const registroId = regCheck.rows[0].id;
+                    await client.query(`DELETE FROM expedicao_registro_carregadores WHERE registro_id = $1`, [registroId]);
+                    await client.query(`DELETE FROM expedicao_registros WHERE id = $1`, [registroId]);
+                }
+            }
+
+            // Inserção forçada manual: Insere uma Coleta Virtual caso n haja, e injeta pontuação pro 300 (Ninguém)
+            if (estadoAnterior !== 'impresso' && novoStatus === 'impresso') {
+                const rColeta = await client.query(`SELECT id FROM expedicao_coletas WHERE DATE(created_at) = data_virtual_expedicao() LIMIT 1`);
+                let coletaId = rColeta.rows.length > 0 ? rColeta.rows[0].id : null;
+                
+                if (!coletaId) {
+                    const insertC = await client.query(`INSERT INTO expedicao_coletas (identificacao, data_criacao, created_at) VALUES ('Coleta Forçada Sistema', data_virtual_expedicao(), timestamp_virtual_expedicao()) RETURNING id`);
+                    coletaId = insertC.rows[0].id;
+                }
+
+                const rPalete = await client.query(`SELECT id FROM expedicao_paletes WHERE coleta_id = $1 LIMIT 1`, [coletaId]);
+                let paleteId = rPalete.rows.length > 0 ? rPalete.rows[0].id : null;
+
+                if (!paleteId) {
+                    const insertP = await client.query(`INSERT INTO expedicao_paletes (coleta_id, identificacao, created_at) VALUES ($1, 'Palete Forçado', timestamp_virtual_expedicao()) RETURNING id`, [coletaId]);
+                    paleteId = insertP.rows[0].id;
+                }
+
+                const insReg = await client.query(`INSERT INTO expedicao_registros (palete_id, nf, is_kit, created_at) VALUES ($1, $2, false, timestamp_virtual_expedicao()) RETURNING id`, [paleteId, nf]);
+                const newRegistroId = insReg.rows[0].id;
+
+                const rNinguem = await client.query(`SELECT id FROM carregadores WHERE codigo_barras = '300' AND ativo = true LIMIT 1`);
+                if (rNinguem.rows.length > 0) {
+                    await client.query(`INSERT INTO expedicao_registro_carregadores (registro_id, carregador_id, pontos) VALUES ($1, $2, 0)`, [newRegistroId, rNinguem.rows[0].id]);
+                }
+            }
+
+            await client.query(`UPDATE cached_etiquetas_ml SET status = $1, last_processed_at = timestamp_virtual_expedicao() WHERE nfe_numero = $2`, [novoStatus, nf]);
+        }
+
+        await client.query('COMMIT');
+        return { success: true, message: `${nfList.length} notas tiveram status de logística reescrito forçadamente com sucesso para '${novoStatus.toUpperCase()}'.` };
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error("Erro no Dashboard em massa:", error);
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
 async function obterHierarquiaExpedicaoHoje() {
     const client = await pool.connect();
     try {
@@ -2821,5 +2883,6 @@ module.exports = {
     pausarNotasViradaDoDia,
     gerarPdfPendentes,
     obterDataVirtualAtiva,
-    avancarDiaVirtual
+    avancarDiaVirtual,
+    atualizarGlobalDashboardEmLote
 };

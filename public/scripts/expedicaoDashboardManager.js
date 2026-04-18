@@ -2,12 +2,16 @@
 
 let tabelaPendencias; // Variável global para armazenar a instância do DataTables
 
+let selectedNFs = new Set();
+let isMassaMode = false;
+
 document.addEventListener('DOMContentLoaded', () => {
     initCarregadoresForm();
     initTabelas();
     initDashboardRealTime();
     carregarHistoricoExpedicoes();
     initExportButtons();
+    setupMassaModeListeners(); // Novo painel
 });
 
 /**
@@ -239,6 +243,17 @@ function initTabelas() {
         pageLength: 10,
         ordering: false, // Mantém a ordem decrescente do banco de dados (created_at DESC)
         columns: [
+            {
+                data: null,
+                visible: false, // escondido por padrão
+                orderable: false,
+                className: 'col-massa-check text-center',
+                render: function (data, type, row) {
+                    const nfBase = String(row.nf_numero);
+                    const checked = selectedNFs.has(nfBase) ? 'checked' : '';
+                    return `<input type="checkbox" class="chk-massa-row" value="${nfBase}" style="cursor: pointer; width: 16px; height: 16px; margin-top: 5px;" ${checked}>`;
+                }
+            },
             { data: 'dataEntrada' },
             { data: 'nfHtml' },
             { data: 'pedidoId' },
@@ -249,10 +264,136 @@ function initTabelas() {
         ]
     });
 
+    // Listener para o clique na checkbox da linha (DELEGAÇÃO DE EVENTO)
+    $('#tabela-pendencias tbody').on('change', '.chk-massa-row', function () {
+        const val = $(this).val();
+        if (this.checked) {
+            selectedNFs.add(val);
+        } else {
+            selectedNFs.delete(val);
+        }
+        updateMassaPanelCount();
+    });
+
+    // Listener Master Checkbox (DELEGAÇÃO DO CABEÇALHO)
+    $(document).on('change', '#chk-master-massa', function () {
+        const isChecked = this.checked;
+        const dadosBuscaAplicada = tabelaPendencias.rows({ search: 'applied' }).data().toArray();
+
+        dadosBuscaAplicada.forEach(row => {
+            const nfBase = String(row.nf_numero);
+            if (isChecked) {
+                selectedNFs.add(nfBase);
+            } else {
+                selectedNFs.delete(nfBase);
+            }
+        });
+
+        // Atualiza nativamente as caixas das instâncias DOM do DataTables (mesmo em paginas ocultas)
+        $('input.chk-massa-row', tabelaPendencias.rows({ search: 'applied' }).nodes()).prop('checked', isChecked);
+        
+        updateMassaPanelCount();
+    });
+
     // Evento de Filtro via Combobox
     $('#filtro-status-tabela').on('change', function () {
-        tabelaPendencias.column(5).search(this.value, false, false).draw();
+        // A coluna 6 agora é 'statusBadge' devido à injeção nativa da col 0 (Checkbox Massa)
+        tabelaPendencias.column(6).search(this.value, false, false).draw();
     });
+}
+
+// ===============================================
+// MODAL DE AÇÃO EM MASSA
+// ===============================================
+function setupMassaModeListeners() {
+    const btnToggle = document.getElementById('btn-massa-modo');
+    const panel = document.getElementById('massa-action-panel');
+    const btnClear = document.getElementById('btn-massa-clear');
+    const btnApply = document.getElementById('btn-massa-aplicar');
+
+    // Liga/Desliga o modo
+    btnToggle.addEventListener('click', () => {
+        isMassaMode = !isMassaMode;
+        if (isMassaMode) {
+            btnToggle.classList.replace('outline', 'solid');
+            btnToggle.innerHTML = '<i class="fas fa-times"></i> Fechar Seleção';
+            panel.style.display = 'flex';
+            tabelaPendencias.column(0).visible(true); // Mostra checkboxes
+            $('#th-massa').show();
+        } else {
+            btnToggle.classList.replace('solid', 'outline');
+            btnToggle.innerHTML = '<i class="fas fa-check-square"></i> Seleção em Massa';
+            panel.style.display = 'none';
+            tabelaPendencias.column(0).visible(false); // Esconde
+            $('#th-massa').hide();
+        }
+    });
+
+    // Limpar tudo
+    btnClear.addEventListener('click', () => {
+        selectedNFs.clear();
+        $('#chk-master-massa').prop('checked', false);
+        $('input.chk-massa-row', tabelaPendencias.rows().nodes()).prop('checked', false);
+        updateMassaPanelCount();
+    });
+
+    // Aplicar aos selecionados
+    btnApply.addEventListener('click', async () => {
+        if (selectedNFs.size === 0) {
+            return ModalSystem.alert('Nenhuma nota selecionada.', 'Aviso');
+        }
+
+        const targetStatus = document.getElementById('massa-acao-status').value;
+        const nfsArray = Array.from(selectedNFs);
+
+        ModalSystem.confirm(`Tem certeza que deseja forçar o status de ${nfsArray.length} pedidos para '${targetStatus.toUpperCase()}'?`, 'Confirmação', async () => {
+            try {
+                ModalSystem.showLoading('Aplicando status em lote...');
+                const response = await fetch('/api/expedicao/dashboard-massa-update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        nfList: nfsArray,
+                        novoStatus: targetStatus
+                    })
+                });
+
+                const data = await response.json();
+                ModalSystem.hideLoading();
+
+                if (!data.success) throw new Error(data.message);
+
+                // Sucesso: Limpa e recarrega
+                selectedNFs.clear();
+                updateMassaPanelCount();
+                $('#chk-master-massa').prop('checked', false);
+                // Sai do modo? Ou continua pra ver as recarregadas? Vamos só recarregar.
+                carregarDadosDashboard();
+
+                ModalSystem.alert(data.message, 'Operação Concluída');
+
+            } catch (e) {
+                ModalSystem.hideLoading();
+                ModalSystem.alert(e.message || 'Erro ao comunicar com o servidor da base.', 'Erro de Múltipla Ação');
+            }
+        });
+    });
+}
+
+function updateMassaPanelCount() {
+    const display = document.getElementById('massa-count-display');
+    if (display) {
+        display.innerText = `${selectedNFs.size} selecionadas`;
+        if (selectedNFs.size > 0) {
+            display.style.color = '#fff';
+            display.style.background = 'var(--accent-orange)';
+            display.style.padding = '2px 8px';
+            display.style.borderRadius = '5px';
+        } else {
+            display.style.color = 'var(--accent-orange)';
+            display.style.background = 'transparent';
+        }
+    }
 }
 
 /**
@@ -327,6 +468,7 @@ async function carregarDadosDashboard() {
             }
 
             return {
+                nf_numero: item.nfe_numero || item.nf || '-',
                 dataEntrada: `${dataFmt} ${herancaIcon}`,
                 nfHtml: `<strong>${item.nfe_numero || item.nf || '-'}</strong>`,
                 pedidoId: item.pedido_numero || item.pack_id || '-',
@@ -453,16 +595,16 @@ function initExportButtons() {
     const btnFull = document.getElementById('btn-exportar-tabela-full');
     const btnAgrupado = document.getElementById('btn-exportar-tabela-agrupada');
 
-    if(btnFull) {
+    if (btnFull) {
         btnFull.addEventListener('click', () => solicitarPlanilhaDinamica('full'));
     }
-    
-    if(btnAgrupado) {
+
+    if (btnAgrupado) {
         btnAgrupado.addEventListener('click', () => solicitarPlanilhaDinamica('grouped'));
     }
 
     const btnImprimirPendencias = document.getElementById('btn-imprimir-pendencias');
-    if(btnImprimirPendencias) {
+    if (btnImprimirPendencias) {
         btnImprimirPendencias.addEventListener('click', imprimirPendenciasLote);
     }
 }
@@ -472,8 +614,8 @@ async function solicitarPlanilhaDinamica(type) {
 
     // Obtém as linhas visíveis da tabela, já filtradas pela pesquisa e select!
     const dadosVisiveis = tabelaPendencias.rows({ search: 'applied' }).data().toArray();
-    
-    if(dadosVisiveis.length === 0) {
+
+    if (dadosVisiveis.length === 0) {
         ModalSystem.alert('A tabela atual não possui dados com os filtros aplicados para poder exportar.', 'Tabela Vazia');
         return;
     }
@@ -492,14 +634,14 @@ async function solicitarPlanilhaDinamica(type) {
         };
     });
 
-    const bodyData = { 
-        tipo: type, 
-        linhas: payloadExtraido 
+    const bodyData = {
+        tipo: type,
+        linhas: payloadExtraido
     };
 
     try {
         ModalSystem.showLoading('Construindo relatório inteligente...', 'Gerando Planilha');
-        
+
         const response = await fetch('/api/expedicao/exportar-dinamico', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -515,13 +657,13 @@ async function solicitarPlanilhaDinamica(type) {
         a.style.display = 'none';
         a.href = url;
         a.download = type === 'full' ? 'Relatorio_Completo_Expedicao.xlsx' : 'Contagem_SKU_Agrupada.xlsx';
-        
+
         document.body.appendChild(a);
         a.click();
-        
+
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
-        
+
         ModalSystem.hideLoading();
     } catch (err) {
         console.error(err);
@@ -533,8 +675,8 @@ async function solicitarPlanilhaDinamica(type) {
 async function imprimirPendenciasLote() {
     if (!tabelaPendencias) return;
     const dadosVisiveis = tabelaPendencias.rows({ search: 'applied' }).data().toArray();
-    
-    if(dadosVisiveis.length === 0) {
+
+    if (dadosVisiveis.length === 0) {
         ModalSystem.alert('A tabela atual não possui dados aplicáveis para impressão.', 'Tabela Vazia');
         return;
     }
@@ -548,14 +690,14 @@ async function imprimirPendenciasLote() {
         }
     });
 
-    if(nfsExtraidas.length === 0) {
+    if (nfsExtraidas.length === 0) {
         ModalSystem.alert('Não foram encontrados NFs processáveis nos dados atuais.', 'Sem Dados');
         return;
     }
 
     try {
         ModalSystem.showLoading('Montando arquivo unificado de etiquetas...', 'Aguarde');
-        
+
         const response = await fetch('/api/expedicao/imprimir-lote', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -573,13 +715,13 @@ async function imprimirPendenciasLote() {
         a.style.display = 'none';
         a.href = url;
         a.download = `Etiquetas_Lote_${new Date().getTime()}.pdf`;
-        
+
         document.body.appendChild(a);
         a.click();
-        
+
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
-        
+
         ModalSystem.hideLoading();
     } catch (err) {
         console.error(err);
