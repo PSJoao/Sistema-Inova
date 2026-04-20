@@ -2696,13 +2696,13 @@ async function gerarExcelDinamicoDataTable(linhas, tipo) {
 async function pausarNotasViradaDoDia() {
     const client = await pool.connect();
     try {
-        const query = `
+        /*const query = `
             UPDATE cached_etiquetas_ml 
             SET status = 'sem_estoque', 
                 last_processed_at = timestamp_virtual_expedicao()
             WHERE status = 'pendente'
         `;
-        const res = await client.query(query);
+        const res = await client.query(query);*/
         console.log(`[Virada de Dia] ${res.rowCount} Notas Fiscais pendentes foram pausadas (sem_estoque) manualmente ou no avançar do dia.`);
         
         // Reset Coletas (Fecha as ativas do dia anterior)
