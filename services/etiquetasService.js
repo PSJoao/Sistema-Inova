@@ -263,9 +263,9 @@ async function processarEtiquetas(pdfInputs, organizedPdfFilename, estoqueCallba
     console.log('[ETAPA 3] Etiquetas ordenadas com sucesso.');
     console.log('==================================================');
 
-    console.log('[ETAPA 3.1] Atualizando índices de página corretos no banco de dados...');
-    await atualizarPaginasCorretasNoDB(etiquetasOrdenadas, organizedPdfFilename);
-    console.log('[ETAPA 3.1] Índices de página atualizados.');
+    // NOTA: A atualização de pdf_arquivo_origem e pdf_pagina no DB foi movida
+    // para APÓS o writeFile no controller, garantindo consistência DB <-> filesystem.
+    console.log('[ETAPA 3.1] Atualização de páginas será feita após gravação do PDF no disco.');
     console.log('==================================================');
 
     // --- ETAPA 3.5 ---
@@ -297,7 +297,7 @@ async function processarEtiquetas(pdfInputs, organizedPdfFilename, estoqueCallba
     console.log('[ETAPA 5] PDF de Relatório gerado com sucesso!');
     console.log('==================================================');
 
-    return { etiquetasPdf, relatorioPdf, dadosParaEstoque };
+    return { etiquetasPdf, relatorioPdf, dadosParaEstoque, etiquetasOrdenadas };
 }
 
 // --- ETAPA 1: EXTRAÇÃO DE DADOS DOS PDFs ---
@@ -535,8 +535,8 @@ async function buscarInformacoesCruciais(etiquetasExtraidas, nomeArquivoGerado, 
                                 skus = EXCLUDED.skus,
                                 quantidade_total = EXCLUDED.quantidade_total,
                                 locations = EXCLUDED.locations,
-                                pdf_pagina = EXCLUDED.pdf_pagina,
-                                pdf_arquivo_origem = EXCLUDED.pdf_arquivo_origem, -- Salva o nome do arquivo gerado
+                                -- pdf_pagina e pdf_arquivo_origem NÃO são atualizados aqui.
+                                -- Serão atualizados SOMENTE após o PDF ser gravado no disco (atualizarPaginasCorretasNoDB).
                                 situacao = 'pendente',
                                 last_processed_at = timestamp_virtual_expedicao();
                         `;
@@ -1147,7 +1147,7 @@ async function atualizarPaginasCorretasNoDB(etiquetasOrdenadas, nomeArquivoGerad
 
     const client = await pool.connect();
     try {
-        console.log(`[DB Page Update] Iniciando atualização de ${etiquetasOrdenadas.length} páginas para o arquivo: ${nomeArquivoGerado}`);
+        console.log(`[DB Page Update] Iniciando atualização de ${etiquetasOrdenadas.length} páginas e arquivo de origem para: ${nomeArquivoGerado}`);
 
         // Prepara todas as queries de atualização
         const updatePromises = etiquetasOrdenadas.map((etiqueta, index) => {
@@ -1160,20 +1160,22 @@ async function atualizarPaginasCorretasNoDB(etiquetasOrdenadas, nomeArquivoGerad
                 return Promise.resolve(); // Pula esta promessa
             }
 
+            // Atualiza pdf_pagina E pdf_arquivo_origem juntos.
+            // Esta função SÓ deve ser chamada APÓS o PDF ter sido gravado no disco com sucesso,
+            // garantindo que o DB nunca aponte para um arquivo que não existe.
             const query = `
                 UPDATE cached_etiquetas_ml
-                SET pdf_pagina = $1
-                WHERE chave_acesso = $2 AND pdf_arquivo_origem = $3;
+                SET pdf_pagina = $1, pdf_arquivo_origem = $2
+                WHERE chave_acesso = $3;
             `;
 
-            // Atualiza a linha baseado na Chave de Acesso E no nome do arquivo que geramos
-            return client.query(query, [novaPaginaIndex, chaveAcesso, nomeArquivoGerado]);
+            return client.query(query, [novaPaginaIndex, nomeArquivoGerado, chaveAcesso]);
         });
 
         // Executa todas as atualizações em paralelo
         await Promise.all(updatePromises);
 
-        console.log(`[DB Page Update] Atualização de páginas concluída para ${nomeArquivoGerado}.`);
+        console.log(`[DB Page Update] Atualização de páginas e arquivo de origem concluída para ${nomeArquivoGerado}.`);
 
     } catch (error) {
         console.error('[DB Page Update] Erro catastrófico ao atualizar índices de página:', error);
@@ -1618,7 +1620,9 @@ async function preProcessarEtiquetasService(pdfInputs, organizedPdfFilename) {
     const etiquetasCompletas = await buscarInformacoesCruciais(etiquetasExtraidas, organizedPdfFilename, cepsMap); // ATUALIZADO
     const etiquetasOrdenadas = ordenarEtiquetas(etiquetasCompletas);
 
-    await atualizarPaginasCorretasNoDB(etiquetasOrdenadas, organizedPdfFilename);
+    // NOTA: atualizarPaginasCorretasNoDB foi removido daqui.
+    // Agora é chamado APÓS o writeFile no controller (finalizarProcessamentoEtiquetas),
+    // garantindo que o DB só aponte para PDFs que existem no disco.
     atribuirSequenciaPorSku(etiquetasOrdenadas);
 
     // Agrupa para gerar o resumo pro Modal considerando a ONDA
@@ -1693,7 +1697,8 @@ async function finalizarEtiquetasService(batchId, abatimentosManuais, gondolaSta
         etiquetasPdf,
         relatorioPdf: relatorios.principal,
         relatorioGondolaPdf: relatorios.gondola, // Será nulo se não houver itens de gôndola
-        organizedPdfFilename: lote.organizedPdfFilename
+        organizedPdfFilename: lote.organizedPdfFilename,
+        etiquetasOrdenadas: lote.etiquetasOrdenadas // Necessário para atualizarPaginasCorretasNoDB após writeFile
     };
 }
 
@@ -2884,5 +2889,6 @@ module.exports = {
     gerarPdfPendentes,
     obterDataVirtualAtiva,
     avancarDiaVirtual,
-    atualizarGlobalDashboardEmLote
+    atualizarGlobalDashboardEmLote,
+    atualizarPaginasCorretasNoDB
 };

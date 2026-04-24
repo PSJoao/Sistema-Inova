@@ -1,6 +1,6 @@
 // controllers/etiquetasController.js
 const multer = require('multer');
-const { processarEtiquetas, buscarEtiquetaPorNF, validarProdutoPorEstruturas, finalizarBipagem, processarLoteNf, preProcessarEtiquetasService, finalizarEtiquetasService } = require('../services/etiquetasService');
+const { processarEtiquetas, buscarEtiquetaPorNF, validarProdutoPorEstruturas, finalizarBipagem, processarLoteNf, preProcessarEtiquetasService, finalizarEtiquetasService, atualizarPaginasCorretasNoDB } = require('../services/etiquetasService');
 const etiquetasService = require('../services/etiquetasService');
 const archiver = require('archiver');
 const fs = require('fs').promises;
@@ -532,7 +532,7 @@ exports.processAndOrganizeEtiquetas = (req, res) => {
             const timestamp = Date.now();
             const organizedPdfFilename = `Etiquetas-Organizadas-${timestamp}.pdf`;
             // 2. Passamos o nome do arquivo gerado (organizedPdfFilename) como segundo argumento.
-            const { etiquetasPdf, relatorioPdf } = await processarEtiquetas(
+            const { etiquetasPdf, relatorioPdf, etiquetasOrdenadas } = await processarEtiquetas(
                 pdfInputs,
                 organizedPdfFilename,
                 async (dados) => await getEstoqueParaEtiquetas(dados) // <--- Injeção da lógica de estoque
@@ -544,9 +544,14 @@ exports.processAndOrganizeEtiquetas = (req, res) => {
             try {
                 await fs.writeFile(organizedPdfPath, etiquetasPdf);
                 console.log(`PDF de etiquetas organizado salvo em: ${organizedPdfPath}`);
+                // CORREÇÃO: Só atualiza pdf_arquivo_origem e pdf_pagina no DB APÓS
+                // confirmar que o PDF foi gravado no disco com sucesso.
+                await atualizarPaginasCorretasNoDB(etiquetasOrdenadas, organizedPdfFilename);
             } catch (saveError) {
                 console.error('Erro ao salvar o PDF de etiquetas organizado:', saveError);
                 // Continua mesmo se não salvar, mas loga o erro
+                // NOTA: Se o writeFile falhou, o DB NÃO será atualizado com a nova referência,
+                // preservando a referência anterior (que ainda aponta para um PDF válido).
             }
             // Configura a resposta para enviar um arquivo ZIP
             const zipName = `Etiquetas_e_Relatorio_${Date.now()}.zip`;
@@ -1214,13 +1219,17 @@ exports.finalizarProcessamentoEtiquetas = async (req, res) => {
             }
         }
         // Chama o Service para gerar os PDFs (agora extraindo relatorioGondolaPdf)
-        const { etiquetasPdf, relatorioPdf, relatorioGondolaPdf, organizedPdfFilename } = await finalizarEtiquetasService(batchId, abatimentosManuais, gondolaState);
+        const { etiquetasPdf, relatorioPdf, relatorioGondolaPdf, organizedPdfFilename, etiquetasOrdenadas } = await finalizarEtiquetasService(batchId, abatimentosManuais, gondolaState);
         // Salva o PDF de etiquetas na pasta do servidor
         const organizedPdfPath = path.join(PDF_STORAGE_DIR, organizedPdfFilename);
         try {
             await fs.writeFile(organizedPdfPath, etiquetasPdf);
+            // CORREÇÃO: Só atualiza pdf_arquivo_origem e pdf_pagina no DB APÓS
+            // confirmar que o PDF foi gravado no disco com sucesso.
+            await atualizarPaginasCorretasNoDB(etiquetasOrdenadas, organizedPdfFilename);
         } catch (saveError) {
             console.error('Erro ao salvar o PDF de etiquetas organizado:', saveError);
+            // Se falhou, o DB mantém a referência anterior (que aponta para um PDF válido).
         }
         // Configura a resposta para baixar um arquivo ZIP contendo os PDFs
         const zipName = `Etiquetas_e_Relatorios_${Date.now()}.zip`;
