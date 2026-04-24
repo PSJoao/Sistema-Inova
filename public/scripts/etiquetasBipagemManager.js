@@ -35,9 +35,9 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
     let isPalletCounterActive = false;
     const palletCounterCheckbox = document.getElementById('palletCounterCheckbox');
 
-    // Sons (opcional, mas melhora a usabilidade)
-    const successSound = new Audio('/public/sounds/notification.mp3'); // Assumindo que existe
-    const errorSound = new Audio(); // Crie um som de erro se desejar
+    // Sons de feedback (mesmos da bipagem-expedicao)
+    const successSound = new Audio('/public/sounds/notification.mp3');
+    const errorSound = new Audio('/public/sounds/error.mp3');
 
     /**
      * Serializa o estado para o localStorage (convertendo Sets para Arrays)
@@ -349,8 +349,8 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
 
         // Verifica duplicata no grupo atual
         if (currentBips.includes(componentSku)) {
-            // errorSound.play();
-            ModalSystem.alert(`A estrutura ${componentSku} já foi bipada neste grupo.`, 'Duplicado', () => bipagemInput.focus());
+            errorSound.play();
+            ToastSystem.warning(`A estrutura ${componentSku} já foi bipada neste grupo.`);
             bipagemInput.value = '';
             bipagemInput.focus();
             return;
@@ -390,7 +390,7 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
             console.log("Data:", JSON.stringify(data, null, 2)); // Indenta com 2 espaços
 
             if (!data.success) {
-                // errorSound.play();
+                errorSound.play();
                 // No modo NÃO-Kit, se a validação falhar, limpamos a bipagem atual
                 if (!isKitMode) {
                     currentBips = []; // Limpa o bip inválido
@@ -398,7 +398,9 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
                     await saveStateToBackend();
                 }
                 // Mostra o erro (seja kit ou não)
-                return ModalSystem.alert(data.message, 'Falha na Validação', () => bipagemInput.focus());
+                ToastSystem.error(data.message, 4000);
+                bipagemInput.focus();
+                return;
             }
 
             // Sucesso! O backend validou.
@@ -414,14 +416,14 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
 
         } catch (error) {
             ModalSystem.hideLoading();
-            // errorSound.play();
+            errorSound.play();
              // No modo NÃO-Kit, limpamos em caso de erro de rede também
             if (!isKitMode) {
                  currentBips = [];
                  renderUI();
                  await saveStateToBackend();
             }
-            ModalSystem.alert(`Erro de comunicação com o servidor: ${error.message}`, 'Erro de Rede');
+            ToastSystem.error(`Erro de comunicação: ${error.message}`, 4000);
         } finally {
             bipagemInput.focus();
         }
@@ -454,7 +456,8 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
         if (!isKitMode) {
             // Tentando ENTRAR no modo Kit
             if (currentBips.length > 0) {
-                ModalSystem.alert('Limpe a bipagem atual antes de montar um kit.', 'Aviso', () => bipagemInput.focus());
+                ToastSystem.warning('Limpe a bipagem atual antes de montar um kit.');
+                bipagemInput.focus();
                 return;
             }
             isKitMode = true;
@@ -463,7 +466,8 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
         } else {
             // Tentando FECHAR o kit (botão agora diz "Fechar Kit")
             if (currentBips.length === 0) {
-                 ModalSystem.alert('Bipe pelo menos uma estrutura para fechar o kit.', 'Aviso', () => bipagemInput.focus());
+                 ToastSystem.warning('Bipe pelo menos uma estrutura para fechar o kit.');
+                 bipagemInput.focus();
                  return;
             }
             // Chama a mesma função de validação usada pelo scan único
@@ -544,12 +548,9 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
         console.log(agg.totalPendente);
 
         if (agg.timesCompleted >= productData.totalPendente) {
-            ModalSystem.alert(
-                // Mostra o totalPendente ATUALIZADO (vindo do productData)
-                `Quantidade máxima (${productData.totalPendente}) para o produto ${parentSku} já foi atingida.`,
-                'Limite Excedido',
-                function() { handleClearCurrent(); } // Limpa no OK
-            );
+            errorSound.play();
+            ToastSystem.error(`Limite atingido (${productData.totalPendente}) para o produto ${parentSku}.`, 4000);
+            handleClearCurrent();
             return;
         }
 
@@ -583,11 +584,15 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
      */
     async function handleAddPallet() {
         if (scanList.length === 0) {
-            return ModalSystem.alert('Feche pelo menos um produto antes de adicionar um novo palete.', 'Aviso', () => bipagemInput.focus());
+            ToastSystem.warning('Feche pelo menos um produto antes de adicionar um novo palete.');
+            bipagemInput.focus();
+            return;
         }
 
         if (scanList.length > 0 && scanList[scanList.length - 1].type === 'pallet') {
-            return ModalSystem.alert('Você já adicionou um palete. Bipe um produto.', 'Aviso', () => bipagemInput.focus());
+            ToastSystem.warning('Você já adicionou um palete. Bipe um produto.');
+            bipagemInput.focus();
+            return;
         }
         
         // Usa o palletCount atual e DEPOIS incrementa
@@ -607,7 +612,9 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
      */
     async function handleFinalize() {
         if (scanList.length === 0) {
-            return ModalSystem.alert('Nenhum item foi bipado.', 'Aviso', () => bipagemInput.focus());
+            ToastSystem.warning('Nenhum item foi bipado.');
+            bipagemInput.focus();
+            return;
         }
         
         let produtosCompletos = 0;
@@ -616,7 +623,9 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
         }
         
         if (produtosCompletos === 0) {
-            return ModalSystem.alert('Nenhum produto foi fechado.', 'Aviso', () => bipagemInput.focus());
+            ToastSystem.warning('Nenhum produto foi fechado.');
+            bipagemInput.focus();
+            return;
         }
 
         // Prepara o scanList para o backend ("achata" a lista)
@@ -638,7 +647,9 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
         
         // Verifica se a lista achatada tem itens (pode não ter se só tiver paletes vazios)
         if (flatScanList.filter(i => i.type === 'item').length === 0) {
-             return ModalSystem.alert('Nenhum produto foi fechado.', 'Aviso', () => bipagemInput.focus());
+             ToastSystem.warning('Nenhum produto foi fechado.');
+             bipagemInput.focus();
+             return;
         }
 
         ModalSystem.confirm(
@@ -714,7 +725,8 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
 
                 } catch (error) {
                     ModalSystem.hideLoading();
-                    ModalSystem.alert(`Ocorreu um erro ao finalizar: ${error.message}`, 'Erro de Processamento');
+                    errorSound.play();
+                    ToastSystem.error(`Erro ao finalizar: ${error.message}`, 5000);
                 }
             },
             null, // onCancel
@@ -727,31 +739,45 @@ document.addEventListener('DOMContentLoaded', async function() { // Tornar async
      * Funciona independente se o modo persistente está ativo ou não.
      */
     async function handleResetListing() {
+        const passInputId = 'resetPass_' + Date.now();
+        const modalHtml = `
+            <div class="text-left">
+                <p class="mb-2">Isso <strong>apagará todos os itens</strong> bipados e <strong>voltará o Palete para o número 1</strong>.</p>
+                <p class="mb-3 small text-muted">Esta ação não pode ser desfeita. Para continuar, insira a senha de administrador:</p>
+                <input type="password" id="${passInputId}" class="form-control" placeholder="Senha de Acesso" autocomplete="off">
+            </div>
+        `;
+
         ModalSystem.confirm(
-            'Tem certeza? Isso <strong>apagará todos os itens</strong> bipados e <strong>voltará o Palete para o número 1</strong>.<br>Esta ação não pode ser desfeita.',
+            modalHtml,
             'Confirmar Reset Total',
             async function() {
-                // 1. Limpa todas as listas e estados temporários
-                scanList = [];
-                productAggregates = {};
-                currentBips = [];
-                isKitMode = false;
-                
-                // 2. FORÇA o contador para 1 (Regra solicitada)
-                // Nota: O 'isPalletCounterActive' permanece como estava (ligado ou desligado).
-                // Apenas reiniciamos a contagem numérica.
-                palletCount = 1;
-                
-                // 3. Atualiza UI e Salva no Banco
-                updateStats();
-                renderUI();
-                await saveStateToBackend();
-                
-                ModalSystem.showToast('Listagem resetada. Iniciando do Palete 1.', 'success');
-                bipagemInput.focus();
+                const inputEl = document.getElementById(passInputId);
+                const typedPass = inputEl ? inputEl.value : '';
+
+                if (typedPass === '332211') {
+                    // 1. Limpa todas as listas e estados temporários
+                    scanList = [];
+                    productAggregates = {};
+                    currentBips = [];
+                    isKitMode = false;
+                    
+                    // 2. FORÇA o contador para 1
+                    palletCount = 1;
+                    
+                    // 3. Atualiza UI e Salva no Banco
+                    updateStats();
+                    renderUI();
+                    await saveStateToBackend();
+                    
+                    ToastSystem.success('Listagem resetada. Iniciando do Palete 1.');
+                    bipagemInput.focus();
+                } else {
+                    ToastSystem.error('Senha incorreta. Ação negada.');
+                }
             },
             null,
-            { isHtml: true, confirmText: 'Sim, Resetar', cancelText: 'Cancelar' }
+            { isHtml: true, confirmText: 'Confirmar', cancelText: 'Cancelar' }
         );
     }
     

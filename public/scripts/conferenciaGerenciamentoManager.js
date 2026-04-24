@@ -182,7 +182,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ModalSystem.showLoading("Salvando alterações...", "Processando");
 
         try {
-            const response = await fetch('/conferencia/api/structure/update', {
+            const response = await fetch('/conferencia/api/produtos-sem-ean/update', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -243,7 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            const response = await fetch('/conferencia/api/structure/update', {
+            const response = await fetch('/conferencia/api/produtos-sem-ean/update', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

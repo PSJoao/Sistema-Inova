@@ -291,7 +291,7 @@ function initTabelas() {
 
         // Atualiza nativamente as caixas das instâncias DOM do DataTables (mesmo em paginas ocultas)
         $('input.chk-massa-row', tabelaPendencias.rows({ search: 'applied' }).nodes()).prop('checked', isChecked);
-        
+
         updateMassaPanelCount();
     });
 
@@ -435,6 +435,11 @@ async function carregarDadosDashboard() {
             else if (item.status === 'sem_estoque') statusBadge = '<span class="badge" style="background-color: var(--color-warning); color: #1e1e2f;">Sem Estoque</span>';
             else if (item.status === 'cancelado') statusBadge = '<span class="badge" style="background-color: var(--color-danger); color: #fff;">Cancelado</span>';
             else if (item.status === 'impresso') statusBadge = '<span class="badge" style="background-color: #4CAF50; color: #fff;">Expedido</span>';
+
+            // Flag visual: etiqueta impressa pela bipagem de produtos (situacao=impresso mas status NÃO é impresso/expedido)
+            if (item.situacao === 'impresso' && item.status !== 'impresso') {
+                statusBadge += ' <span title="Etiqueta impressa pela Bipagem de Produtos" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#9C27B0;margin-left:4px;vertical-align:middle;"><i class="fas fa-print" style="color:#fff;font-size:0.6rem;"></i></span><span style="display:none;">Etiq. Impressa</span>';
+            }
 
             const acoes = `
                 ${item.status !== 'impresso' ? `

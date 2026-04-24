@@ -1269,6 +1269,7 @@ async function validarProdutoPorEstruturas(scannedCodes) { // 1. Parâmetro reno
                 FROM cached_etiquetas_ml e
                 LEFT JOIN cached_nfe n ON e.nfe_numero = n.nfe_numero
                 WHERE e.situacao = 'pendente'
+                  AND e.status IN ('pendente', 'sem_estoque')
                 AND (
                     $1 = ANY(string_to_array(e.skus, ','))
                     OR 
@@ -1356,6 +1357,7 @@ async function finalizarBipagem(scanList) {
                         FROM cached_etiquetas_ml e
                         LEFT JOIN cached_nfe n ON e.nfe_numero = n.nfe_numero
                         WHERE e.situacao = 'pendente'
+                          AND e.status IN ('pendente', 'sem_estoque')
                         AND (
                             $1 = ANY(string_to_array(e.skus, ','))
                             OR 
@@ -1390,7 +1392,8 @@ async function finalizarBipagem(scanList) {
                         SELECT e.chave_acesso, e.pdf_arquivo_origem, e.pdf_pagina
                         FROM cached_etiquetas_ml e
                         LEFT JOIN cached_nfe n ON e.nfe_numero = n.nfe_numero
-                        WHERE e.situacao = 'pendente' 
+                        WHERE e.situacao = 'pendente'
+                          AND e.status IN ('pendente', 'sem_estoque')
                           AND (
                               $1 = ANY(string_to_array(e.skus, ',')) -- Lógica 1 (SKU)
                               OR 
@@ -1489,6 +1492,36 @@ async function gerarPdfBipagem(labelsToPrint, palletMarkers) {
         }
     }
 
+    // Detecta o tamanho da página das etiquetas a partir da primeira etiqueta disponível
+    let labelPageWidth = 283.46;  // Fallback: ~100mm (etiqueta ML padrão)
+    let labelPageHeight = 283.46; // Fallback: ~100mm
+    if (labelsToPrint.length > 0) {
+        const firstLabel = labelsToPrint[0];
+        const firstSource = sourceFileMap.get(firstLabel.pdf_arquivo_origem);
+        if (firstSource && firstSource.doc) {
+            const srcPage = firstSource.doc.getPage(firstLabel.pdf_pagina);
+            const { width, height } = srcPage.getSize();
+            labelPageWidth = width;
+            labelPageHeight = height;
+            console.log(`[Bipagem PDF] Tamanho da etiqueta detectado: ${width.toFixed(1)} x ${height.toFixed(1)} pt`);
+        }
+    }
+
+    // Helper: cria uma página de palete com o mesmo tamanho das etiquetas e texto centralizado
+    function addPalletPage(palletNumber) {
+        const page = finalPdfDoc.addPage([labelPageWidth, labelPageHeight]);
+        const text = `Palete ${palletNumber}`;
+        const fontSize = Math.min(40, labelPageWidth / 5); // Adapta o tamanho da fonte à largura
+        const textWidth = font.widthOfTextAtSize(text, fontSize);
+        const textHeight = font.heightAtSize(fontSize);
+        page.drawText(text, {
+            x: (labelPageWidth - textWidth) / 2,
+            y: (labelPageHeight + textHeight) / 2 - textHeight,
+            size: fontSize,
+            font: font
+        });
+    }
+
     let labelCounter = 0;
 
     // Fazemos uma cópia da fila de paletes para manipular com segurança
@@ -1497,8 +1530,7 @@ async function gerarPdfBipagem(labelsToPrint, palletMarkers) {
 
     // 1. Verifica se há paletes ANTES da primeira etiqueta (índice 0)
     while (currentPallet && currentPallet.index === labelCounter) {
-        const page = finalPdfDoc.addPage();
-        page.drawText(`Palete ${currentPallet.number}`, { x: 50, y: page.getHeight() / 2, size: 50, font: font });
+        addPalletPage(currentPallet.number);
         currentPallet = palletsQueue.shift();
     }
 
@@ -1516,8 +1548,7 @@ async function gerarPdfBipagem(labelsToPrint, palletMarkers) {
 
         // 3. Verifica se há paletes logo APÓS esta etiqueta
         while (currentPallet && currentPallet.index === labelCounter) {
-            const page = finalPdfDoc.addPage();
-            page.drawText(`Palete ${currentPallet.number}`, { x: 50, y: page.getHeight() / 2, size: 50, font: font });
+            addPalletPage(currentPallet.number);
             currentPallet = palletsQueue.shift();
         }
     }
@@ -1525,8 +1556,7 @@ async function gerarPdfBipagem(labelsToPrint, palletMarkers) {
     // 4. CORREÇÃO PRINCIPAL: "Trailing Pallets"
     // Se sobraram paletes que foram adicionados APÓS o último produto (no final da lista), eles são processados aqui.
     while (currentPallet) {
-        const page = finalPdfDoc.addPage();
-        page.drawText(`Palete ${currentPallet.number}`, { x: 50, y: page.getHeight() / 2, size: 50, font: font });
+        addPalletPage(currentPallet.number);
         currentPallet = palletsQueue.shift();
     }
 
@@ -1971,6 +2001,7 @@ async function obterDadosDashboardExpedicao() {
             SELECT DISTINCT
                 m.id, 
                 m.nfe_numero, 
+                m.situacao,
                 COALESCE(m.pack_id, m.numero_loja) AS numero_loja_calc, 
                 cpv.numero AS pedido_numero, 
                 m.skus, 
