@@ -358,35 +358,82 @@ table.dataTable tbody tr:hover {
 }
 
 /* ==========================================================================
-   AÇÕES DA TABELA (Botões das linhas)
+   AÇÕES DA TABELA (Botões Modernos)
    ========================================================================== */
-.table-actions {
-    display: flex;
-    gap: 0.5rem;
-    justify-content: center;
-}
-
-.btn-icon {
-    width: 35px;
-    height: 35px;
-    border-radius: 50%;
+.btn-action {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: var(--bg-tertiary, #2a2a2a);
-    color: var(--text-primary, #fff);
+    border: none;
     cursor: pointer;
-    transition: all 0.2s ease;
+    font-size: 0.75rem;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
 }
 
-.btn-icon:hover:not(.disabled) {
-    transform: scale(1.1);
+.btn-action:hover:not(.btn-action-disabled) {
+    transform: translateY(-2px);
 }
 
-.btn-outline-accent:hover { background: rgba(240, 124, 0, 0.1); border-color: var(--accent-orange, #f07c00); color: var(--accent-orange, #f07c00); }
-.btn-outline-warning:hover { background: rgba(255, 193, 7, 0.1); border-color: #ffc107; color: #ffc107; }
-.btn-outline-danger:hover { background: rgba(220, 53, 69, 0.1); border-color: #dc3545; color: #dc3545; }
+.btn-action:active:not(.btn-action-disabled) {
+    transform: translateY(0) scale(0.95);
+}
+
+/* Variante: Accent (Play / Retomar) */
+.btn-action-accent {
+    background: rgba(240, 124, 0, 0.15);
+    color: var(--accent-orange, #f07c00);
+}
+.btn-action-accent:hover {
+    background: var(--accent-orange, #f07c00);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(240, 124, 0, 0.35);
+}
+
+/* Variante: Warning (Pausar) */
+.btn-action-warning {
+    background: rgba(255, 193, 7, 0.15);
+    color: #ffc107;
+}
+.btn-action-warning:hover {
+    background: #ffc107;
+    color: #1e1e2f;
+    box-shadow: 0 4px 12px rgba(255, 193, 7, 0.35);
+}
+
+/* Variante: Danger (Cancelar) */
+.btn-action-danger {
+    background: rgba(220, 53, 69, 0.15);
+    color: #dc3545;
+}
+.btn-action-danger:hover {
+    background: #dc3545;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.35);
+}
+
+/* Variante: Print (Imprimir) */
+.btn-action-print {
+    background: rgba(156, 39, 176, 0.15);
+    color: #9C27B0;
+}
+.btn-action-print:hover {
+    background: #9C27B0;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(156, 39, 176, 0.35);
+}
+
+/* Variante: Disabled (Expedido) */
+.btn-action-disabled {
+    background: rgba(255, 255, 255, 0.03);
+    color: rgba(255, 255, 255, 0.15);
+    cursor: not-allowed;
+    pointer-events: none;
+}
 
 /* ==========================================================================
    RESPONSIVIDADE (Ajustes finos para Mobile)

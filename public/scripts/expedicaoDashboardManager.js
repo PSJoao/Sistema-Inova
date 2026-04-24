@@ -441,17 +441,21 @@ async function carregarDadosDashboard() {
                 statusBadge += ' <span title="Etiqueta impressa pela Bipagem de Produtos" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#9C27B0;margin-left:4px;vertical-align:middle;"><i class="fas fa-print" style="color:#fff;font-size:0.6rem;"></i></span><span style="display:none;">Etiq. Impressa</span>';
             }
 
+            const nfNumero = item.nfe_numero || '';
             const acoes = `
+                <div style="display:flex;gap:4px;align-items:center;justify-content:center;">
                 ${item.status !== 'impresso' ? `
                     ${item.status !== 'pendente'
-                        ? `<button class="btn btn-icon btn-outline-accent" onclick="alterarStatusEtiqueta(${item.id}, 'pendente')" title="Retomar / Despausar"><i class="fas fa-play"></i></button>`
-                        : `<button class="btn btn-icon btn-outline-warning" onclick="alterarStatusEtiqueta(${item.id}, 'sem_estoque')" title="Pausar (Sem Estoque)"><i class="fas fa-pause"></i></button>`
+                        ? `<button class="btn-action btn-action-accent" onclick="alterarStatusEtiqueta(${item.id}, 'pendente')" title="Retomar / Despausar"><i class="fas fa-play"></i></button>`
+                        : `<button class="btn-action btn-action-warning" onclick="alterarStatusEtiqueta(${item.id}, 'sem_estoque')" title="Pausar (Sem Estoque)"><i class="fas fa-pause"></i></button>`
                     }
-                    <button class="btn btn-icon btn-outline-danger" onclick="confirmarCancelamento(${item.id})" title="Cancelar"><i class="fas fa-times"></i></button>
+                    <button class="btn-action btn-action-danger" onclick="confirmarCancelamento(${item.id})" title="Cancelar"><i class="fas fa-times"></i></button>
                 ` : `
-                    <button class="btn btn-icon disabled" style="color:#555; border-color:#333; cursor:not-allowed;" title="Ação boqueada (Expedido)"><i class="fas fa-play"></i></button>
-                    <button class="btn btn-icon disabled" style="color:#555; border-color:#333; cursor:not-allowed;" title="Ação boqueada (Expedido)"><i class="fas fa-times"></i></button>
+                    <button class="btn-action btn-action-disabled" title="Expedido"><i class="fas fa-play"></i></button>
+                    <button class="btn-action btn-action-disabled" title="Expedido"><i class="fas fa-times"></i></button>
                 `}
+                    <button class="btn-action btn-action-print" onclick="imprimirEtiquetaIndividual('${nfNumero}')" title="Imprimir Etiqueta"><i class="fas fa-print"></i></button>
+                </div>
             `;
 
             let skuFormatted = '-';
@@ -526,6 +530,33 @@ window.confirmarCancelamento = function (id) {
         'Cancelar Etiqueta',
         () => alterarStatusEtiqueta(id, 'cancelado')
     );
+}
+
+window.imprimirEtiquetaIndividual = async function (nfNumero) {
+    if (!nfNumero || nfNumero === '-') {
+        return ModalSystem.alert('NF não identificada para impressão.', 'Erro');
+    }
+    try {
+        ModalSystem.showLoading('Buscando etiqueta...');
+        const response = await fetch(`/etiquetas/download-individual/${nfNumero}`);
+        ModalSystem.hideLoading();
+        if (!response.ok) {
+            throw new Error(response.status === 404 ? 'Etiqueta não encontrada nos arquivos armazenados.' : `Erro ${response.status}`);
+        }
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `Etiqueta-NF-${nfNumero}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        a.remove();
+    } catch (err) {
+        ModalSystem.hideLoading();
+        ModalSystem.alert(err.message, 'Erro ao Imprimir');
+    }
 }
 
 // ==========================================
