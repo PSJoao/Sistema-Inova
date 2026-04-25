@@ -74,7 +74,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 ModalSystem.hideLoading();
 
                 // INICIA O FLUXO DE FORMA INTELIGENTE
-                if (preData.excelDisponivel) {
+                const semPersonalizar = document.getElementById('mlSemPersonalizar')?.checked;
+
+                if (semPersonalizar) {
+                    // Modo direto: pula TODOS os modais de personalização
+                    finalizarProcessamento(preData.batchId, {}, null);
+                } else if (preData.excelDisponivel) {
                     setTimeout(() => perguntarSobreExcel(), 300);
                 } else {
                     setTimeout(() => abrirModalTabela(), 300);

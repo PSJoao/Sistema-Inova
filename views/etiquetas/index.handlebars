@@ -8,12 +8,13 @@
         color: #f1f1f1;
         padding: 30px;
         border-radius: 12px;
-        box-shadow: 0 8px 25px rgba(0,0,0,0.5);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5);
         border: 1px solid #333;
     }
 
     .page-title-dark {
-        color: #ff9800; /* Laranja Inova */
+        color: #ff9800;
+        /* Laranja Inova */
         font-weight: 800;
         text-transform: uppercase;
         letter-spacing: 1px;
@@ -27,6 +28,7 @@
         border-bottom: 2px solid #333;
         margin-bottom: 25px;
     }
+
     .custom-tabs .nav-link {
         color: #888 !important;
         background-color: transparent !important;
@@ -39,17 +41,19 @@
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
-    
+
     /* Cores das Abas Ativas por Plataforma */
     .custom-tabs .nav-link#ml-tab:hover,
     .custom-tabs .nav-link#ml-tab.active {
-        color: #FFE600 !important; /* Amarelo Mercado Livre */
+        color: #FFE600 !important;
+        /* Amarelo Mercado Livre */
         border-bottom: 3px solid #FFE600;
     }
-    
+
     .custom-tabs .nav-link#shopee-tab:hover,
     .custom-tabs .nav-link#shopee-tab.active {
-        color: #ee4d2d !important; /* Laranja Shopee */
+        color: #ee4d2d !important;
+        /* Laranja Shopee */
         border-bottom: 3px solid #ee4d2d;
     }
 
@@ -62,6 +66,7 @@
         margin-bottom: 25px;
         transition: transform 0.2s;
     }
+
     .panel-dark:hover {
         border-color: #555;
     }
@@ -73,6 +78,7 @@
         display: flex;
         align-items: center;
     }
+
     .panel-title i {
         margin-right: 10px;
     }
@@ -90,12 +96,14 @@
         font-weight: 600;
         letter-spacing: 0.5px;
     }
+
     .form-control-dark {
         background-color: #1a1a1d;
         border: 1px solid #444;
         color: #fff;
         border-radius: 6px;
     }
+
     .form-control-dark:focus {
         background-color: #1a1a1d;
         border-color: #ff9800;
@@ -110,17 +118,19 @@
         color: white;
         font-weight: bold;
     }
+
     .btn-ml:hover {
         background-color: #1f235b;
         color: white;
     }
-    
+
     .btn-shopee {
         background-color: #ee4d2d;
         border-color: #ee4d2d;
         color: white;
         font-weight: bold;
     }
+
     .btn-shopee:hover {
         background-color: #d73a1c;
         color: white;
@@ -132,6 +142,7 @@
         border-color: #3a3a3a;
         color: #e0e0e0;
     }
+
     hr.dark-hr {
         border-top: 1px solid #3a3a3a;
         margin: 30px 0;
@@ -166,83 +177,105 @@
 
     {{!-- Conteúdo das Abas --}}
     <div class="tab-content" id="etiquetasTabsContent">
-        
+
         {{!-- ========================================== --}}
         {{!-- ABA MERCADO LIVRE --}}
         {{!-- ========================================== --}}
         <div class="tab-pane fade show active" id="ml" role="tabpanel" aria-labelledby="ml-tab">
-            
+
             <div class="panel-dark" style="border-left: 4px solid #FFE600;">
-                <div class="d-flex justify-content-between align-items-center mb-3" style="display: flex; flex-direction: row; justify-content: space-between;">
+                <div class="d-flex justify-content-between align-items-center mb-3"
+                    style="display: flex; flex-direction: row; justify-content: space-between;">
                     <h4 class="panel-title m-0" style="color: #FFE600;">Mercado Livre</h4>
                     <button id="btn-avancar-dia" class="btn btn-accent" title="Avançar Dia do Sistema">
-                        <i class="fas fa-calendar-plus"></i> Passar o dia <span id="lbl-data-virtual" class="font-weight-bold text-white ml-1">(Dia Atual: ...)</span>
+                        <i class="fas fa-calendar-plus"></i> Passar o dia <span id="lbl-data-virtual"
+                            class="font-weight-bold text-white ml-1">(Dia Atual: ...)</span>
                     </button>
                 </div>
                 <br>
                 <p class="description-text">
-                    Faça o upload dos arquivos PDF de etiquetas (até 500 por vez) para organizá-los por SKU e gerar um novo PDF pronto para impressão.
+                    Faça o upload dos arquivos PDF de etiquetas (até 500 por vez) para organizá-los por SKU e gerar um
+                    novo PDF pronto para impressão.
                 </p>
 
-                <form id="etiquetasUploadForm" action="/etiquetas/processar" method="POST" enctype="multipart-form-data">
+                <form id="etiquetasUploadForm" action="/etiquetas/processar" method="POST"
+                    enctype="multipart-form-data">
                     <div class="form-group">
                         <label for="etiquetasPdfs" class="form-label-dark">Selecionar Arquivos PDF (ML):</label>
                         <div class="custom-file-upload mt-2">
-                            <input type="file" id="etiquetasPdfs" name="etiquetasPdfs" accept="application/pdf" multiple style="display: none;">
+                            <input type="file" id="etiquetasPdfs" name="etiquetasPdfs" accept="application/pdf" multiple
+                                style="display: none;">
                             <label for="etiquetasPdfs" class="btn btn-ml">
                                 <i class="fas fa-file-pdf"></i> Selecionar Arquivos
                             </label>
                         </div>
-                        <small class="text-muted d-block mt-2">Você pode selecionar múltiplos arquivos simultaneamente.</small>
+                        <small class="text-muted d-block mt-2">Você pode selecionar múltiplos arquivos
+                            simultaneamente.</small>
                     </div>
 
                     <div id="etiquetasFileList" class="file-list mt-3"></div>
 
-                    <button type="submit" class="btn btn-ml btn-block mt-4 py-2"><i class="fas fa-cogs"></i> Gerar PDF Organizado (ML)</button>
+                    <br>
+                    <div class="custom-control custom-switch mt-3 mb-2">
+                        <input type="checkbox" class="custom-control-input" id="mlSemPersonalizar">
+                        <label class="custom-control-label" style="color: #aaa;" for="mlSemPersonalizar">
+                            Sem Personalizar (Para Usar De Noite)
+                        </label>
+                    </div>
+
+                    <button type="submit" class="btn btn-ml btn-block mt-4 py-2"><i class="fas fa-cogs"></i> Gerar PDF
+                        Organizado (ML)</button>
                 </form>
             </div>
 
             <div class="panel-dark">
                 <h5 class="panel-title text-info">Buscar Etiqueta Individual</h5>
                 <p class="description-text">
-                    Digite o número da Nota Fiscal para buscar e baixar a etiqueta individual (se já tiver sido processada anteriormente).
+                    Digite o número da Nota Fiscal para buscar e baixar a etiqueta individual (se já tiver sido
+                    processada anteriormente).
                 </p>
-                 <div class="form-row align-items-end">
-                     <div class="col">
+                <div class="form-row align-items-end">
+                    <div class="col">
                         <label for="nfSearchInput" class="form-label-dark">Número da NF:</label>
-                        <input type="text" class="form-control form-control-dark" id="nfSearchInput" placeholder="Digite apenas números">
-                     </div>
-                     <div class="col-auto">
-                        <button type="button" class="btn btn-info px-4" id="nfSearchButton"><i class="fas fa-search"></i> Buscar</button>
-                     </div>
-                 </div>
-                 <div id="searchResult" class="mt-3"></div>
+                        <input type="text" class="form-control form-control-dark" id="nfSearchInput"
+                            placeholder="Digite apenas números">
+                    </div>
+                    <div class="col-auto">
+                        <button type="button" class="btn btn-info px-4" id="nfSearchButton"><i
+                                class="fas fa-search"></i> Buscar</button>
+                    </div>
+                </div>
+                <div id="searchResult" class="mt-3"></div>
             </div>
 
             <div class="panel-dark">
                 <h5 class="panel-title text-success">Buscar Etiquetas por Lote (Excel)</h5>
                 <p class="description-text">
-                    Faça o upload de um arquivo Excel (.xlsx, .xls) com os números das Notas Fiscais na <b>Coluna A</b> (a partir da linha 2) para gerar um PDF único com todas as etiquetas encontradas.
+                    Faça o upload de um arquivo Excel (.xlsx, .xls) com os números das Notas Fiscais na <b>Coluna A</b>
+                    (a partir da linha 2) para gerar um PDF único com todas as etiquetas encontradas.
                 </p>
-                <form id="nfBatchUploadForm"> 
+                <form id="nfBatchUploadForm">
                     <div class="form-group">
                         <label for="nfExcelFile" class="form-label-dark">Selecionar Arquivo Excel:</label>
                         <div class="custom-file-upload mt-2">
-                            <input type="file" id="nfExcelFile" name="nfExcelFile" accept=".xlsx, .xls" style="display: none;">
+                            <input type="file" id="nfExcelFile" name="nfExcelFile" accept=".xlsx, .xls"
+                                style="display: none;">
                             <label for="nfExcelFile" class="btn btn-outline-success">
                                 <i class="fas fa-table"></i> Escolher Planilha
                             </label>
                         </div>
                         <small id="nfExcelFileName" class="text-success d-block mt-2"></small>
                     </div>
-                    <button type="submit" class="btn btn-success btn-block mt-3 py-2"><i class="fas fa-file-pdf"></i> Gerar PDF por Lote</button>
+                    <button type="submit" class="btn btn-success btn-block mt-3 py-2"><i class="fas fa-file-pdf"></i>
+                        Gerar PDF por Lote</button>
                 </form>
             </div>
 
             <div class="panel-dark">
                 <h5 class="panel-title text-primary">Atualizar Mapeamento de Ondas</h5>
                 <p class="description-text">
-                    Faça o upload da planilha (.xlsx) contendo as Colunas: Código, Horário e Cor, para atualizar a hierarquia de separação.
+                    Faça o upload da planilha (.xlsx) contendo as Colunas: Código, Horário e Cor, para atualizar a
+                    hierarquia de separação.
                 </p>
                 <form id="ondasUploadForm">
                     <div class="form-group">
@@ -266,26 +299,28 @@
                 </div>
                 <div class="p-0">
                     {{#if recentFiles.length}}
-                        <div class="list-group list-group-flush list-group-dark">
-                            {{#each recentFiles}}
-                                <div class="list-group-item d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <i class="fas fa-file-pdf text-danger mr-3" style="font-size: 1.5rem;"></i>
-                                        <span class="font-weight-bold">{{this.name}}</span>
-                                        <br>
-                                        <small class="text-muted"><i class="far fa-clock"></i> Gerado em: {{formatDateShort this.date}}</small>
-                                    </div>
-                                    <a href="/etiquetas/recentes/{{this.name}}" class="btn btn-sm btn-outline-info px-3" target="_blank">
-                                        <i class="fas fa-download"></i> Baixar
-                                    </a>
-                                </div>
-                            {{/each}}
+                    <div class="list-group list-group-flush list-group-dark">
+                        {{#each recentFiles}}
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="fas fa-file-pdf text-danger mr-3" style="font-size: 1.5rem;"></i>
+                                <span class="font-weight-bold">{{this.name}}</span>
+                                <br>
+                                <small class="text-muted"><i class="far fa-clock"></i> Gerado em: {{formatDateShort
+                                    this.date}}</small>
+                            </div>
+                            <a href="/etiquetas/recentes/{{this.name}}" class="btn btn-sm btn-outline-info px-3"
+                                target="_blank">
+                                <i class="fas fa-download"></i> Baixar
+                            </a>
                         </div>
+                        {{/each}}
+                    </div>
                     {{else}}
-                        <div class="p-4 text-center text-muted">
-                            <i class="fas fa-inbox fa-2x mb-2 opacity-50"></i><br>
-                            Nenhuma bipagem recente encontrada.
-                        </div>
+                    <div class="p-4 text-center text-muted">
+                        <i class="fas fa-inbox fa-2x mb-2 opacity-50"></i><br>
+                        Nenhuma bipagem recente encontrada.
+                    </div>
                     {{/if}}
                 </div>
             </div>
@@ -297,23 +332,26 @@
         {{!-- ABA SHOPEE --}}
         {{!-- ========================================== --}}
         <div class="tab-pane fade" id="shopee" role="tabpanel" aria-labelledby="shopee-tab">
-            
+
             <div class="panel-dark" style="border-left: 4px solid #ee4d2d;">
                 <h4 class="panel-title" style="color: #ee4d2d;">Shopee</h4>
                 <p class="description-text">
-                    Faça o upload dos arquivos PDF de etiquetas (até 500 por vez) para organizá-los por SKU e gerar um novo PDF pronto para impressão. 
+                    Faça o upload dos arquivos PDF de etiquetas (até 500 por vez) para organizá-los por SKU e gerar um
+                    novo PDF pronto para impressão.
                 </p>
 
                 <form id="shopeeEtiquetasUploadForm">
                     <div class="form-group">
                         <label class="form-label-dark" style="color: #ee4d2d;">Selecionar Arquivos PDF (Shopee):</label>
                         <div class="custom-file-upload mt-2">
-                            <input type="file" id="shopeeEtiquetasPdfs" name="etiquetasPdfs" accept="application/pdf" multiple style="display: none;">
+                            <input type="file" id="shopeeEtiquetasPdfs" name="etiquetasPdfs" accept="application/pdf"
+                                multiple style="display: none;">
                             <label for="shopeeEtiquetasPdfs" class="btn btn-shopee">
                                 <i class="fas fa-file-pdf"></i> Selecionar Arquivos
                             </label>
                         </div>
-                        <small class="text-muted d-block mt-2">Você pode selecionar múltiplos arquivos simultaneamente.</small>
+                        <small class="text-muted d-block mt-2">Você pode selecionar múltiplos arquivos
+                            simultaneamente.</small>
                     </div>
 
                     <div id="shopeeEtiquetasFileList" class="file-list mt-3"></div>
@@ -325,7 +363,8 @@
                         </label>
                     </div>
 
-                    <button type="submit" class="btn btn-ml btn-block mt-4 py-2" style="background-color: #ee4d2d; border-color: #ee4d2d;">
+                    <button type="submit" class="btn btn-ml btn-block mt-4 py-2"
+                        style="background-color: #ee4d2d; border-color: #ee4d2d;">
                         Gerar PDF Organizado (Shopee)
                     </button>
                 </form>
@@ -337,112 +376,112 @@
 </div>
 
 {{#section "scripts"}}
-  <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/js/bootstrap.bundle.min.js"></script>
 
-  <script src="/public/scripts/etiquetasManager.js"></script>
-  <script src="/public/scripts/shopeeEtiquetasManager.js"></script>
-  
-  <script>
-      // Handlers de interface visual para inputs de arquivo
-      document.getElementById('etiquetasPdfs').addEventListener('change', function() {
-          const count = this.files.length;
-          const label = this.nextElementSibling;
-          label.innerHTML = count > 0 ? `<i class="fas fa-check"></i> ${count} arquivo(s) selecionado(s)` : `<i class="fas fa-file-pdf"></i> Selecionar Arquivos`;
-      });
+<script src="/public/scripts/etiquetasManager.js"></script>
+<script src="/public/scripts/shopeeEtiquetasManager.js"></script>
 
-      document.getElementById('shopeeEtiquetasPdfs').addEventListener('change', function() {
-          const count = this.files.length;
-          const label = this.nextElementSibling;
-          label.innerHTML = count > 0 ? `<i class="fas fa-check"></i> ${count} arquivo(s) selecionado(s)` : `<i class="fas fa-file-pdf"></i> Selecionar Arquivos`;
-      });
+<script>
+    // Handlers de interface visual para inputs de arquivo
+    document.getElementById('etiquetasPdfs').addEventListener('change', function () {
+        const count = this.files.length;
+        const label = this.nextElementSibling;
+        label.innerHTML = count > 0 ? `<i class="fas fa-check"></i> ${count} arquivo(s) selecionado(s)` : `<i class="fas fa-file-pdf"></i> Selecionar Arquivos`;
+    });
 
-      document.getElementById('nfExcelFile').addEventListener('change', function() {
-          const fileName = this.files.length > 0 ? this.files[0].name : '';
-          document.getElementById('nfExcelFileName').innerHTML = fileName ? `<i class="fas fa-file-excel"></i> ${fileName}` : '';
-      });
+    document.getElementById('shopeeEtiquetasPdfs').addEventListener('change', function () {
+        const count = this.files.length;
+        const label = this.nextElementSibling;
+        label.innerHTML = count > 0 ? `<i class="fas fa-check"></i> ${count} arquivo(s) selecionado(s)` : `<i class="fas fa-file-pdf"></i> Selecionar Arquivos`;
+    });
 
-      document.getElementById('excelOndas').addEventListener('change', function() {
-          const fileName = this.files.length > 0 ? this.files[0].name : '';
-          document.getElementById('nomeArquivoOndas').innerHTML = fileName ? `<i class="fas fa-file-excel"></i> ${fileName}` : '';
-      });
+    document.getElementById('nfExcelFile').addEventListener('change', function () {
+        const fileName = this.files.length > 0 ? this.files[0].name : '';
+        document.getElementById('nfExcelFileName').innerHTML = fileName ? `<i class="fas fa-file-excel"></i> ${fileName}` : '';
+    });
 
-      // Handler do Upload de Ondas
-      document.getElementById('ondasUploadForm').addEventListener('submit', async function(e) {
-          e.preventDefault();
-          const fileInput = document.getElementById('excelOndas');
-          if (!fileInput.files || fileInput.files.length === 0) {
-              ModalSystem.alert('Selecione uma planilha de Ondas primeiro.', 'Aviso');
-              return;
-          }
+    document.getElementById('excelOndas').addEventListener('change', function () {
+        const fileName = this.files.length > 0 ? this.files[0].name : '';
+        document.getElementById('nomeArquivoOndas').innerHTML = fileName ? `<i class="fas fa-file-excel"></i> ${fileName}` : '';
+    });
 
-          const formData = new FormData();
-          formData.append('excelOndas', fileInput.files[0]);
+    // Handler do Upload de Ondas
+    document.getElementById('ondasUploadForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const fileInput = document.getElementById('excelOndas');
+        if (!fileInput.files || fileInput.files.length === 0) {
+            ModalSystem.alert('Selecione uma planilha de Ondas primeiro.', 'Aviso');
+            return;
+        }
 
-          const btn = document.getElementById('btn-enviar-ondas');
-          btn.disabled = true;
-          ModalSystem.showLoading('Sincronizando banco de dados de ondas...', 'Aguarde');
+        const formData = new FormData();
+        formData.append('excelOndas', fileInput.files[0]);
 
-          try {
-              const response = await fetch('/api/ondas-excel/upload', { method: 'POST', body: formData });
-              const data = await response.json();
-              ModalSystem.hideLoading();
+        const btn = document.getElementById('btn-enviar-ondas');
+        btn.disabled = true;
+        ModalSystem.showLoading('Sincronizando banco de dados de ondas...', 'Aguarde');
 
-              if (data.success) {
-                  ModalSystem.alert(data.message, 'Sucesso');
-                  this.reset();
-                  document.getElementById('nomeArquivoOndas').textContent = '';
-              } else {
-                  ModalSystem.alert(data.message, 'Erro no Upload');
-              }
-          } catch(err) {
-              ModalSystem.hideLoading();
-              ModalSystem.alert('Erro de conexão ao enviar a planilha.', 'Erro');
-          } finally {
-              btn.disabled = false;
-          }
-      });
+        try {
+            const response = await fetch('/api/ondas-excel/upload', { method: 'POST', body: formData });
+            const data = await response.json();
+            ModalSystem.hideLoading();
 
-      // Lógica do Dia Virtual (Skip Day) Expedição
-      async function carregaDiaVirtual() {
-          try {
-              const resp = await fetch('/api/expedicao/data-virtual');
-              const data = await resp.json();
-              if(data.success && data.virtualDate) {
-                  const btn = document.getElementById('btn-avancar-dia');
-                  const lbl = document.getElementById('lbl-data-virtual');
-                  lbl.innerText = `(Dia Atual: ${data.virtualDate})`;
-                  btn.style.display = 'inline-block';
-              }
-          } catch(e) {
-              console.error('Falha ao carregar Virtual Date', e);
-          }
-      }
+            if (data.success) {
+                ModalSystem.alert(data.message, 'Sucesso');
+                this.reset();
+                document.getElementById('nomeArquivoOndas').textContent = '';
+            } else {
+                ModalSystem.alert(data.message, 'Erro no Upload');
+            }
+        } catch (err) {
+            ModalSystem.hideLoading();
+            ModalSystem.alert('Erro de conexão ao enviar a planilha.', 'Erro');
+        } finally {
+            btn.disabled = false;
+        }
+    });
 
-      document.getElementById('btn-avancar-dia').addEventListener('click', () => {
-          ModalSystem.confirm(
-              'Atenção! Você está prestes a forçar a virada do dia de todo o módulo de Expedição. Isso congelará (Pausará) notas não bipadas de hoje e limpará as listas. Esta ação é IRREVERSÍVEL. Tem certeza?',
-              'Confirmar Salto no Tempo',
-              async () => {
-                  ModalSystem.showLoading('Aplicando o Avanço do Dia e Rotina de Limpeza...', 'Aguarde...');
-                  try {
-                      const res = await fetch('/api/expedicao/avancar-dia', { method: 'POST' });
-                      const json = await res.json();
-                      ModalSystem.hideLoading();
-                      if(json.success) {
-                          ModalSystem.alert(`Sucesso! O sistema agora operará no dia: ${json.newDate}`, 'Relógio Atualizado', 'success', () => window.location.reload());
-                      } else {
-                          ModalSystem.alert(json.message, 'Erro Crítico');
-                      }
-                  } catch(err) {
-                      ModalSystem.hideLoading();
-                      ModalSystem.alert('Erro interno de conexão com o painel temporal.', 'Falha de Sincronia');
-                  }
-              }
-          );
-      });
+    // Lógica do Dia Virtual (Skip Day) Expedição
+    async function carregaDiaVirtual() {
+        try {
+            const resp = await fetch('/api/expedicao/data-virtual');
+            const data = await resp.json();
+            if (data.success && data.virtualDate) {
+                const btn = document.getElementById('btn-avancar-dia');
+                const lbl = document.getElementById('lbl-data-virtual');
+                lbl.innerText = `(Dia Atual: ${data.virtualDate})`;
+                btn.style.display = 'inline-block';
+            }
+        } catch (e) {
+            console.error('Falha ao carregar Virtual Date', e);
+        }
+    }
 
-      // Ao abrir
-      carregaDiaVirtual();
-  </script>
+    document.getElementById('btn-avancar-dia').addEventListener('click', () => {
+        ModalSystem.confirm(
+            'Atenção! Você está prestes a forçar a virada do dia de todo o módulo de Expedição. Isso congelará (Pausará) notas não bipadas de hoje e limpará as listas. Esta ação é IRREVERSÍVEL. Tem certeza?',
+            'Confirmar Salto no Tempo',
+            async () => {
+                ModalSystem.showLoading('Aplicando o Avanço do Dia e Rotina de Limpeza...', 'Aguarde...');
+                try {
+                    const res = await fetch('/api/expedicao/avancar-dia', { method: 'POST' });
+                    const json = await res.json();
+                    ModalSystem.hideLoading();
+                    if (json.success) {
+                        ModalSystem.alert(`Sucesso! O sistema agora operará no dia: ${json.newDate}`, 'Relógio Atualizado', 'success', () => window.location.reload());
+                    } else {
+                        ModalSystem.alert(json.message, 'Erro Crítico');
+                    }
+                } catch (err) {
+                    ModalSystem.hideLoading();
+                    ModalSystem.alert('Erro interno de conexão com o painel temporal.', 'Falha de Sincronia');
+                }
+            }
+        );
+    });
+
+    // Ao abrir
+    carregaDiaVirtual();
+</script>
 {{/section}}

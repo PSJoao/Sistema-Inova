@@ -1,6 +1,7 @@
 // public/scripts/expedicaoDashboardManager.js
 
 let tabelaPendencias; // Variável global para armazenar a instância do DataTables
+let tabelaBipagemPdfs; // Tabela de PDFs gerados pela bipagem
 
 let selectedNFs = new Set();
 let isMassaMode = false;
@@ -234,6 +235,40 @@ function initTabelas() {
             { data: 'carregador' },
             { data: 'kits_separados' },
             { data: 'itens_unitarios' }
+        ]
+    });
+
+    // Tabela de PDFs de Bipagem (Hoje)
+    tabelaBipagemPdfs = $('#tabela-bipagem-pdfs').DataTable({
+        language: dataTablesLangBR,
+        pageLength: 5,
+        lengthChange: false,
+        searching: false,
+        ordering: false,
+        info: false,
+        columns: [
+            {
+                data: 'name',
+                render: function(data) {
+                    // Exibe nome mais curto (sem extensão)
+                    const shortName = data.replace('.pdf', '').replace('Bipagem-Finalizada-', 'Bip-');
+                    return `<span title="${data}" style="font-size: 0.85rem; font-weight: 500;">${shortName}</span>`;
+                }
+            },
+            {
+                data: 'hora',
+                render: function(data) {
+                    return `<span style="color: var(--accent-orange, #f07c00); font-weight: 600;">${data}</span>`;
+                }
+            },
+            { data: 'tamanho' },
+            {
+                data: 'url',
+                className: 'text-center',
+                render: function(data) {
+                    return `<a href="${data}" target="_blank" class="btn-action btn-action-print" style="display:inline-flex;text-decoration:none;" title="Baixar PDF"><i class="fas fa-download"></i></a>`;
+                }
+            }
         ]
     });
 
@@ -497,8 +532,26 @@ async function carregarDadosDashboard() {
             tabelaProdutividade.clear().rows.add(data.produtividade).draw();
         }
 
+        // Carrega PDFs de bipagem do dia
+        carregarBipagemPdfs();
+
     } catch (error) {
         console.error('Falha ao atualizar dashboard:', error);
+    }
+}
+
+// ==========================================
+// CARREGAMENTO DE PDFs DE BIPAGEM (HOJE)
+// ==========================================
+async function carregarBipagemPdfs() {
+    try {
+        const response = await fetch('/api/expedicao/bipagem-pdfs');
+        const data = await response.json();
+        if (data.success && tabelaBipagemPdfs) {
+            tabelaBipagemPdfs.clear().rows.add(data.pdfs).draw();
+        }
+    } catch (err) {
+        console.warn('Falha ao carregar PDFs de bipagem:', err);
     }
 }
 

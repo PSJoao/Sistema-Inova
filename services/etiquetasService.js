@@ -1200,6 +1200,7 @@ async function validarProdutoPorEstruturas(scannedCodes) { // 1. Parâmetro reno
             WHERE component_sku = $1  -- 1ª Tentativa: SKU
                OR gtin = $1           -- 2ª Tentativa: GTIN
                OR gtin_embalagem = $1 -- 3ª Tentativa: GTIN Embalagem
+               OR codigo_fabrica = $1 -- 4ª Tentativa: Código de Fábrica (Gerenciamento)
             LIMIT 1;
         `;
 
@@ -1207,8 +1208,39 @@ async function validarProdutoPorEstruturas(scannedCodes) { // 1. Parâmetro reno
             const res = await client.query(translationQuery, [code]);
 
             if (res.rows.length === 0) {
-                // Se nenhum dos 3 campos bateu, o código é inválido.
-                return { success: false, message: `Código bipado "${code}" não foi encontrado em nenhuma estrutura (SKU, GTIN ou GTIN Embalagem).` };
+                // FALLBACK: Busca por padrão (substring) do codigo_fabrica dentro do código bipado.
+                // Isso resolve códigos de fábrica embutidos em barcodes longos (ex: "321312311122234534" contém "111222").
+                console.log(`[Validar Produto] Exact match falhou para "${code}". Tentando busca por padrão no codigo_fabrica...`);
+                
+                const patternQuery = `
+                    SELECT DISTINCT component_sku, codigo_fabrica, LENGTH(codigo_fabrica) AS fab_len
+                    FROM cached_structures
+                    WHERE codigo_fabrica IS NOT NULL 
+                      AND codigo_fabrica <> ''
+                      AND LENGTH(codigo_fabrica) >= 4
+                    ORDER BY fab_len DESC;
+                `;
+                const patternRes = await client.query(patternQuery);
+
+                let patternMatch = null;
+                for (const row of patternRes.rows) {
+                    // Verifica se o codigo_fabrica está contido dentro do código bipado
+                    if (code.includes(row.codigo_fabrica)) {
+                        patternMatch = row;
+                        break; // Já está ordenado pelo mais longo primeiro (prioridade)
+                    }
+                }
+
+                if (!patternMatch) {
+                    return { success: false, message: `Código bipado "${code}" não foi encontrado em nenhuma estrutura (SKU, GTIN, GTIN Embalagem ou Código de Fábrica).` };
+                }
+
+                console.log(`[Validar Produto] Padrão encontrado! Código de fábrica "${patternMatch.codigo_fabrica}" detectado dentro de "${code}" → SKU: ${patternMatch.component_sku}`);
+                
+                if (!trueComponentSkus.includes(patternMatch.component_sku)) {
+                    trueComponentSkus.push(patternMatch.component_sku);
+                }
+                continue; // Pula para o próximo código
             }
 
             const foundSku = res.rows[0].component_sku;
@@ -1528,19 +1560,61 @@ async function gerarPdfBipagem(labelsToPrint, palletMarkers) {
     const palletsQueue = [...palletMarkers];
     let currentPallet = palletsQueue.shift();
 
+    // Contadores para numeração por palete
+    let currentPalletNumber = 1;  // Palete atual (começa em 1)
+    let productInPalletCount = 0; // Contador de produto dentro do palete
+
     // 1. Verifica se há paletes ANTES da primeira etiqueta (índice 0)
     while (currentPallet && currentPallet.index === labelCounter) {
         addPalletPage(currentPallet.number);
+        currentPalletNumber = currentPallet.number; // Os produtos após este marcador pertencem a este palete
+        productInPalletCount = 0; // Reseta o contador do palete
         currentPallet = palletsQueue.shift();
     }
 
     // 2. Itera sobre as etiquetas de produtos
     for (const label of labelsToPrint) {
+        // Incrementa o contador de produtos neste palete
+        productInPalletCount++;
+
         // Copia a página da etiqueta
         const source = sourceFileMap.get(label.pdf_arquivo_origem);
         if (source && source.doc) {
             const [copiedPage] = await finalPdfDoc.copyPages(source.doc, [label.pdf_pagina]);
             finalPdfDoc.addPage(copiedPage);
+
+            // --- OVERLAY: Contador de produto por palete (canto superior direito) ---
+            const { width: pageW, height: pageH } = copiedPage.getSize();
+            const counterText = `P${currentPalletNumber} #${productInPalletCount}`;
+            const counterFontSize = Math.min(12, pageW / 20);
+            const textWidth = font.widthOfTextAtSize(counterText, counterFontSize);
+            const textHeight = font.heightAtSize(counterFontSize);
+            const paddingX = 5;
+            const paddingY = 3;
+            const boxWidth = textWidth + paddingX * 2;
+            const boxHeight = textHeight + paddingY * 2;
+            const boxX = pageW - boxWidth - 6;
+            const boxY = pageH - boxHeight - 6;
+
+            // Fundo branco com borda
+            copiedPage.drawRectangle({
+                x: boxX,
+                y: boxY,
+                width: boxWidth,
+                height: boxHeight,
+                color: rgb(1, 1, 1),
+                borderColor: rgb(0, 0, 0),
+                borderWidth: 0.8,
+            });
+
+            // Texto do contador
+            copiedPage.drawText(counterText, {
+                x: boxX + paddingX,
+                y: boxY + paddingY + 1,
+                size: counterFontSize,
+                font: font,
+                color: rgb(0, 0, 0),
+            });
         }
 
         // Incrementa o contador POIS acabamos de adicionar uma etiqueta
@@ -1549,6 +1623,8 @@ async function gerarPdfBipagem(labelsToPrint, palletMarkers) {
         // 3. Verifica se há paletes logo APÓS esta etiqueta
         while (currentPallet && currentPallet.index === labelCounter) {
             addPalletPage(currentPallet.number);
+            currentPalletNumber = currentPallet.number;
+            productInPalletCount = 0; // Reseta o contador para o novo palete
             currentPallet = palletsQueue.shift();
         }
     }

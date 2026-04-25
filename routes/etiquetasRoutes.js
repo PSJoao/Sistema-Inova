@@ -63,6 +63,8 @@ router.post('/api/expedicao/exportar-dinamico', etiquetasController.apiExportarD
 
 router.post('/api/expedicao/imprimir-lote', etiquetasController.apiImprimirLotePDF);
 
+router.get('/api/expedicao/bipagem-pdfs', etiquetasController.apiListarBipagemPdfs);
+
 router.get('/etiquetas/expedicao/bipagem', etiquetasController.renderBipagemExpedicao);
 
 // ==========================================

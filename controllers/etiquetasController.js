@@ -947,6 +947,63 @@ exports.saveAndRotateRecentPdf = async (pdfBuffer, filename) => {
         console.error('Erro na rotação de PDFs recentes:', error);
     }
 }
+
+/**
+ * API: Lista os PDFs de bipagem gerados no dia atual (virtual).
+ * GET /api/expedicao/bipagem-pdfs
+ */
+exports.apiListarBipagemPdfs = async (req, res) => {
+    try {
+        // Obtém a data virtual do sistema de expedição
+        const client = await pool.connect();
+        let todayDate;
+        try {
+            const result = await client.query("SELECT timestamp_virtual_expedicao()::date AS data_virtual");
+            const raw = result.rows[0].data_virtual;
+            // node-postgres retorna DATE como Date object (meia-noite UTC)
+            if (raw instanceof Date) {
+                // Cria a data no fuso local usando os componentes UTC
+                todayDate = new Date(raw.getUTCFullYear(), raw.getUTCMonth(), raw.getUTCDate());
+            } else {
+                todayDate = new Date(String(raw) + 'T00:00:00');
+            }
+        } catch(e) {
+            const now = new Date();
+            todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        } finally {
+            client.release();
+        }
+        const tomorrowDate = new Date(todayDate);
+        tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+
+        console.log(`[API Bipagem PDFs] Filtrando PDFs entre ${todayDate.toISOString()} e ${tomorrowDate.toISOString()}`);
+
+        await ensureRecentPdfDir();
+        const files = await fs.readdir(RECENT_PDF_DIR);
+
+        const fileList = await Promise.all(files.map(async (file) => {
+            const filePath = path.join(RECENT_PDF_DIR, file);
+            const stats = await fs.stat(filePath);
+            return { name: file, birthtime: stats.birthtime, size: stats.size };
+        }));
+
+        // Filtra apenas os gerados no dia virtual atual
+        const todayFiles = fileList
+            .filter(f => f.birthtime >= todayDate && f.birthtime < tomorrowDate)
+            .sort((a, b) => b.birthtime.getTime() - a.birthtime.getTime())
+            .map(f => ({
+                name: f.name,
+                hora: f.birthtime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                tamanho: (f.size / 1024).toFixed(0) + ' KB',
+                url: `/etiquetas/recentes/${encodeURIComponent(f.name)}`
+            }));
+
+        res.json({ success: true, pdfs: todayFiles });
+    } catch (error) {
+        console.error('[API Bipagem PDFs] Erro:', error);
+        res.json({ success: true, pdfs: [] }); // Retorna vazio em vez de erro para não quebrar o dashboard
+    }
+};
 exports.exportMlSkuQuantityReport = async (req, res) => {
     console.log("[API Etiquetas ML] Iniciando geração de relatório SKU/Qtd Pendente...");
     const client = await pool.connect();
