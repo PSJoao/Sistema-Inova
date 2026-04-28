@@ -518,6 +518,7 @@ async function carregarDadosDashboard() {
                 pedidoId: item.pedido_numero || item.pack_id || '-',
                 numeroLoja: item.numero_loja_calc || item.numero_loja || '-',
                 sku: skuFormatted,
+                skusOriginal: item.skus,
                 statusBadge: statusBadge,
                 acoes: acoes
             };
@@ -683,6 +684,7 @@ function renderHistoricoPage(page) {
 function initExportButtons() {
     const btnFull = document.getElementById('btn-exportar-tabela-full');
     const btnAgrupado = document.getElementById('btn-exportar-tabela-agrupada');
+    const btnRestante = document.getElementById('btn-exportar-tabela-restante');
 
     if (btnFull) {
         btnFull.addEventListener('click', () => solicitarPlanilhaDinamica('full'));
@@ -690,6 +692,10 @@ function initExportButtons() {
 
     if (btnAgrupado) {
         btnAgrupado.addEventListener('click', () => solicitarPlanilhaDinamica('grouped'));
+    }
+
+    if (btnRestante) {
+        btnRestante.addEventListener('click', () => solicitarPlanilhaDinamica('grouped-remaining'));
     }
 
     const btnImprimirPendencias = document.getElementById('btn-imprimir-pendencias');
@@ -713,12 +719,26 @@ async function solicitarPlanilhaDinamica(type) {
 
     // Constrói o payload limpo das classes HTML
     const payloadExtraido = dadosVisiveis.map(row => {
+        let pureSkus = row.sku;
+        if (row.skusOriginal) {
+            if (Array.isArray(row.skusOriginal)) {
+                pureSkus = row.skusOriginal.map(s => s.original || s.display || s).join(', ');
+            } else if (typeof row.skusOriginal === 'string') {
+                try {
+                    const parsed = JSON.parse(row.skusOriginal);
+                    pureSkus = Array.isArray(parsed) ? parsed.map(s => s.original || s.display || s).join(', ') : row.skusOriginal;
+                } catch (e) {
+                    pureSkus = row.skusOriginal;
+                }
+            }
+        }
+
         return {
             dataEntrada: row.dataEntrada ? row.dataEntrada.replace(htmlStripper, "").trim() : "",
             nota_fiscal: row.nfHtml ? row.nfHtml.replace(htmlStripper, "").trim() : "",
             pedido: row.pedidoId ? row.pedidoId.replace(htmlStripper, "").trim() : "",
             numero_loja: row.numeroLoja ? row.numeroLoja.replace(htmlStripper, "").trim() : "",
-            sku: row.sku ? row.sku.replace(htmlStripper, "").trim() : "",
+            sku: pureSkus ? pureSkus.replace(htmlStripper, "").trim() : "",
             status: row.statusBadge ? row.statusBadge.replace(htmlStripper, "").trim() : ""
         };
     });
@@ -745,7 +765,13 @@ async function solicitarPlanilhaDinamica(type) {
         const a = document.createElement('a');
         a.style.display = 'none';
         a.href = url;
-        a.download = type === 'full' ? 'Relatorio_Completo_Expedicao.xlsx' : 'Contagem_SKU_Agrupada.xlsx';
+        if (type === 'full') {
+            a.download = 'Relatorio_Completo_Expedicao.xlsx';
+        } else if (type === 'grouped') {
+            a.download = 'Contagem_SKU_Agrupada.xlsx';
+        } else if (type === 'grouped-remaining') {
+            a.download = 'Faltantes_Ja_Separados.xlsx';
+        }
 
         document.body.appendChild(a);
         a.click();

@@ -241,6 +241,8 @@ async function syncProductsByName(name, accountType) {
         // (MODIFICADO) Guarda todos os resultados da API
         const allProductsFound = productSearchResponse.data;
 
+        console.log(JSON.stringify(allProductsFound, null, 2)); // Log detalhado dos produtos retornados pela API
+
         if (!allProductsFound || allProductsFound.length === 0) {
             console.log(`[ProductSyncByName-${accountType}] Nenhum produto encontrado (filtro "contém") com o nome: "${nameTrimmed}"`);
             client.release();

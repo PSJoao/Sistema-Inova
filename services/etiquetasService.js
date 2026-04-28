@@ -2800,6 +2800,74 @@ async function gerarExcelDinamicoDataTable(linhas, tipo) {
             const tr = sheet.addRow({ sku: sku, quantidade: mapSkus[sku] });
             tr.getCell('quantidade').alignment = { horizontal: 'center' };
         });
+    } else if (tipo === 'grouped-remaining') {
+        sheet.columns = [
+            { header: 'SKU / Produto', key: 'sku', width: 60 },
+            { header: 'Localização', key: 'localizacao', width: 25 },
+            { header: 'Qtd. Restante', key: 'quantidade', width: 15 }
+        ];
+
+        sheet.getRow(1).eachCell((cell) => {
+            cell.font = headerStyle.font;
+            cell.fill = headerStyle.fill;
+            cell.alignment = headerStyle.alignment;
+        });
+
+        const mapSkus = {};
+        
+        linhas.forEach(row => {
+            if (row.sku) {
+                const parts = row.sku.split(',');
+                parts.forEach(p => {
+                    let cleaned = p.trim();
+                    if (!cleaned) return;
+                    if (!mapSkus[cleaned]) mapSkus[cleaned] = 0;
+                    mapSkus[cleaned]++;
+                });
+            }
+        });
+
+        const client = await pool.connect();
+        try {
+            // Pega o relatório mais recente do Excel de Já Separados
+            const separadosRes = await client.query('SELECT state_json FROM historico_separados_excel ORDER BY created_at DESC LIMIT 1');
+            const separados = separadosRes.rows.length > 0 ? (separadosRes.rows[0].state_json || {}) : {};
+
+            let sortedSkus = Object.keys(mapSkus).sort();
+            for (const sku of sortedSkus) {
+                const total = mapSkus[sku];
+                // A chave salva no banco pelo upload do Excel é upper case
+                const skuUpper = sku.toUpperCase();
+                const jaSeparado = separados[skuUpper] || 0;
+                const restante = total - jaSeparado;
+
+                if (restante > 0) {
+                    let localizacao = 'Sem Localização';
+                    // Busca a localização na tabela cached_structures
+                    // Suporta tanto se for a SKU Componente, quanto se for a SKU Pai Agrupadora (Junta os locs distintos)
+                    const locRes = await client.query(`
+                        SELECT string_agg(DISTINCT component_location, ', ') as locs FROM (
+                            SELECT component_location FROM cached_structures WHERE UPPER(component_sku) = $1 AND component_location IS NOT NULL AND component_location != ''
+                            UNION
+                            SELECT s.component_location 
+                            FROM cached_products p 
+                            JOIN cached_structures s ON p.bling_id = s.parent_product_bling_id 
+                            WHERE UPPER(p.sku) = $1 AND s.component_location IS NOT NULL AND s.component_location != ''
+                        ) sub
+                    `, [skuUpper]);
+
+                    if (locRes.rows.length > 0 && locRes.rows[0].locs) {
+                        localizacao = locRes.rows[0].locs;
+                    }
+
+                    const tr = sheet.addRow({ sku: sku, localizacao: localizacao, quantidade: restante });
+                    tr.getCell('localizacao').alignment = { horizontal: 'center' };
+                    tr.getCell('quantidade').alignment = { horizontal: 'center' };
+                }
+            }
+        } finally {
+            client.release();
+        }
     }
 
     return await workbook.xlsx.writeBuffer();
