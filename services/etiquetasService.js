@@ -2860,7 +2860,17 @@ async function gerarExcelDinamicoDataTable(linhas, tipo) {
                         localizacao = locRes.rows[0].locs;
                     }
 
-                    const tr = sheet.addRow({ sku: sku, localizacao: localizacao, quantidade: restante });
+                    // Busca o tipo_ml do produto
+                    const tipoRes = await client.query(`
+                        SELECT tipo_ml FROM cached_products WHERE UPPER(sku) = $1 LIMIT 1
+                    `, [skuUpper]);
+
+                    let finalSkuName = sku;
+                    if (tipoRes.rows.length > 0 && tipoRes.rows[0].tipo_ml) {
+                        finalSkuName = `${tipoRes.rows[0].tipo_ml}-${sku}`;
+                    }
+
+                    const tr = sheet.addRow({ sku: finalSkuName, localizacao: localizacao, quantidade: restante });
                     tr.getCell('localizacao').alignment = { horizontal: 'center' };
                     tr.getCell('quantidade').alignment = { horizontal: 'center' };
                 }
