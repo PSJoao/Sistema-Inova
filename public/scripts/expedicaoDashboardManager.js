@@ -451,9 +451,14 @@ async function carregarDadosDashboard() {
         if (document.getElementById('dash-checados')) {
             document.getElementById('dash-checados').innerText = data.stats.checados || 0;
         }
-        document.getElementById('dash-heranca').innerText = data.stats.heranca || 0;
-        document.getElementById('dash-novos').innerText = data.stats.novos_hoje || 0;
+        const totalPendentes = (parseInt(data.stats.heranca) || 0) + (parseInt(data.stats.novos_hoje) || 0);
+        if (document.getElementById('dash-pendentes')) {
+            document.getElementById('dash-pendentes').innerText = totalPendentes;
+        }
         document.getElementById('dash-subtracoes').innerText = data.stats.subtracoes || 0;
+        if (document.getElementById('dash-sem-nota')) {
+            document.getElementById('dash-sem-nota').innerText = data.stats.sem_nota || 0;
+        }
         document.getElementById('dash-total').innerText = data.stats.saldo_real || 0;
         if (document.getElementById('dash-expedidos')) {
             document.getElementById('dash-expedidos').innerText = data.stats.expedidos_hoje || 0;
@@ -466,6 +471,7 @@ async function carregarDadosDashboard() {
 
             let statusBadge = '';
             if (item.status === 'pendente') statusBadge = '<span class="badge badge-orange">Pendente</span>';
+            else if (item.status === 'sem_nota') statusBadge = '<span class="badge" style="background-color: #6c757d; color: #fff;">Sem Nota</span>';
             else if (item.status === 'checado') statusBadge = '<span class="badge" style="background-color: #0dcaf0; color: #1e1e2f;">Checado</span>';
             else if (item.status === 'sem_estoque') statusBadge = '<span class="badge" style="background-color: var(--color-warning); color: #1e1e2f;">Sem Estoque</span>';
             else if (item.status === 'cancelado') statusBadge = '<span class="badge" style="background-color: var(--color-danger); color: #fff;">Cancelado</span>';
@@ -720,17 +726,29 @@ async function solicitarPlanilhaDinamica(type) {
     // Constrói o payload limpo das classes HTML
     const payloadExtraido = dadosVisiveis.map(row => {
         let pureSkus = row.sku;
+        let skuArray = [];
+        
         if (row.skusOriginal) {
             if (Array.isArray(row.skusOriginal)) {
-                pureSkus = row.skusOriginal.map(s => s.original || s.display || s).join(', ');
+                skuArray = row.skusOriginal.map(s => s.original || s.display || s);
+                pureSkus = skuArray.join(', ');
             } else if (typeof row.skusOriginal === 'string') {
                 try {
                     const parsed = JSON.parse(row.skusOriginal);
-                    pureSkus = Array.isArray(parsed) ? parsed.map(s => s.original || s.display || s).join(', ') : row.skusOriginal;
+                    if (Array.isArray(parsed)) {
+                        skuArray = parsed.map(s => s.original || s.display || s);
+                        pureSkus = skuArray.join(', ');
+                    } else {
+                        skuArray = [row.skusOriginal];
+                        pureSkus = row.skusOriginal;
+                    }
                 } catch (e) {
+                    skuArray = [row.skusOriginal];
                     pureSkus = row.skusOriginal;
                 }
             }
+        } else {
+             skuArray = [row.sku];
         }
 
         return {
@@ -738,14 +756,54 @@ async function solicitarPlanilhaDinamica(type) {
             nota_fiscal: row.nfHtml ? row.nfHtml.replace(htmlStripper, "").trim() : "",
             pedido: row.pedidoId ? row.pedidoId.replace(htmlStripper, "").trim() : "",
             numero_loja: row.numeroLoja ? row.numeroLoja.replace(htmlStripper, "").trim() : "",
+            skuArray: skuArray.map(s => s ? String(s).replace(htmlStripper, "").trim() : ""),
             sku: pureSkus ? pureSkus.replace(htmlStripper, "").trim() : "",
             status: row.statusBadge ? row.statusBadge.replace(htmlStripper, "").trim() : ""
         };
     });
 
+    // Para o tipo 'grouped', verificar se existe gôndola disponível
+    let gondolaId = null;
+    if (type === 'grouped') {
+        try {
+            const gondolaRes = await fetch('/api/gondola/listar');
+            const gondolaData = await gondolaRes.json();
+            if (gondolaData.success && gondolaData.relatorios && gondolaData.relatorios.length > 0) {
+                const ultimoGondola = gondolaData.relatorios[0];
+                gondolaId = await new Promise((resolve) => {
+                    const dataFormatada = new Date(ultimoGondola.created_at).toLocaleString('pt-BR');
+                    const mensagem = `
+                        <div style="line-height: 1.6;">
+                            <p>Foi encontrado um <strong>Relatório de Gôndola</strong> disponível:</p>
+                            <div style="background: rgba(255,165,0,0.08); border: 1px solid rgba(255,165,0,0.3); border-radius: 8px; padding: 12px 16px; margin: 12px 0;">
+                                <div style="color: var(--accent-orange, #ffa500); font-weight: bold; font-size: 0.95rem;">${ultimoGondola.nome}</div>
+                                <div style="color: var(--text-secondary, #aaa); font-size: 0.85rem; margin-top: 4px;">
+                                    <i class="fas fa-clock mr-1"></i> Gerado em: ${dataFormatada}
+                                </div>
+                            </div>
+                            <p style="font-size: 0.92rem; color: var(--text-secondary, #aaa);">
+                                Deseja usar este relatório para <strong>subtrair os itens já separados na gôndola</strong> da contagem?
+                            </p>
+                        </div>
+                    `;
+                    ModalSystem.confirm(
+                        mensagem,
+                        'Usar Relatório de Gôndola?',
+                        function() { resolve(String(ultimoGondola.id)); },
+                        function() { resolve(null); },
+                        { confirmText: 'Sim, subtrair gôndola', cancelText: 'Não, ignorar' }
+                    );
+                });
+            }
+        } catch (err) {
+            console.warn('[Contagem SKU] Não foi possível buscar relatórios de gôndola:', err);
+        }
+    }
+
     const bodyData = {
         tipo: type,
-        linhas: payloadExtraido
+        linhas: payloadExtraido,
+        gondolaId: gondolaId
     };
 
     try {

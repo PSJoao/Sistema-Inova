@@ -117,12 +117,12 @@ exports.apiDownloadRelatorioExpedicao = async (req, res) => {
 
 exports.apiExportarDinamicoExcel = async (req, res) => {
     try {
-        const { tipo, linhas } = req.body;
+        const { tipo, linhas, gondolaId } = req.body;
         if (!linhas || linhas.length === 0) {
             return res.status(400).send('Lista vazia.');
         }
 
-        const buffer = await etiquetasService.gerarExcelDinamicoDataTable(linhas, tipo);
+        const buffer = await etiquetasService.gerarExcelDinamicoDataTable(linhas, tipo, gondolaId || null);
 
         res.setHeader('Content-Disposition', `attachment; filename="Base_Dinamica.xlsx"`);
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -609,7 +609,7 @@ exports.downloadNfIndividual = async (req, res) => {
         return;
     }
     try {
-        // Re-executa a busca para obter o buffer do PDF da etiqueta
+        // Primeiro: tenta buscar PDF do disco (etiquetas manuais)
         const resultado = await buscarEtiquetaPorNF(nf);
         if (resultado.success && resultado.pdfBuffer) {
             console.log(`[Download NF] Gerando PDF individual para NF ${nf}`);
@@ -618,8 +618,18 @@ exports.downloadNfIndividual = async (req, res) => {
             res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
             res.send(resultado.pdfBuffer);
         } else {
-            console.log(`[Download NF] NF ${nf} não encontrada para download.`);
-            res.status(404).send('Etiqueta não encontrada.');
+            // Fallback: tenta gerar via pipeline unificado (cobre ZPL do Hub)
+            console.log(`[Download NF] NF ${nf} não encontrada como PDF. Tentando via pipeline ZPL...`);
+            try {
+                const pdfBuffer = await etiquetasService.gerarPdfPendentes([nf]);
+                const fileName = `Etiqueta-NF-${nf}.pdf`;
+                res.setHeader('Content-Type', 'application/pdf');
+                res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+                res.send(pdfBuffer);
+            } catch (fallbackErr) {
+                console.log(`[Download NF] NF ${nf} também não encontrada via pipeline.`);
+                res.status(404).send('Etiqueta não encontrada.');
+            }
         }
     } catch (error) {
         console.error(`[Download NF] Erro ao gerar PDF para NF ${nf}:`, error);
@@ -1488,6 +1498,8 @@ exports.renderRelatorioTardePage = (req, res) => {
 };
 exports.uploadRelatorioTarde = async (req, res) => {
     if (!req.file) return res.status(400).json({ success: false, message: 'Nenhum arquivo enviado.' });
+    // gondolaId é opcional — enviado pelo frontend quando o usuário aceitar o modal
+    const gondolaId = req.body && req.body.gondolaId ? req.body.gondolaId : null;
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -1506,17 +1518,15 @@ exports.uploadRelatorioTarde = async (req, res) => {
         worksheet.eachRow((row, rowNumber) => {
             // Regra: Os pedidos começam a partir da linha 7
             if (rowNumber < 7) return;
-            // Coluna G = 7, Coluna U = 21, Coluna AM = 39
+            // Coluna G = 7, Coluna V = 22, Coluna AM = 39
             const qtdValue = row.getCell(7).value;
-            const skuValue = row.getCell(21).value;
+            const skuValue = row.getCell(22).value;
             const cepValue = row.getCell(39).value;
             if (!skuValue || !qtdValue || !cepValue) return;
             const quantidade = parseInt(qtdValue, 10) || 0;
-            const sku = skuValue.toString().trim();
+            // Normaliza o SKU para maiúsculas para evitar problemas de case-sensitivity
+            const sku = skuValue.toString().trim().toUpperCase();
 
-            // Extrai rigorosamente os ÚLTIMOS 5 dígitos do CEP
-            const cepStr = String(cepValue).replace(/\D/g, '').padStart(8, '0');
-            const cepCabeca = cepStr.slice(-4);
             if (quantidade > 0 && sku) {
                 // Formata o CEP da planilha
                 const cepStr = String(cepValue).replace(/\D/g, '').padStart(8, '0');
@@ -1541,15 +1551,150 @@ exports.uploadRelatorioTarde = async (req, res) => {
         if (totalProcessados === 0) {
             throw new Error('Nenhum dado válido de pedido encontrado a partir da linha 7.');
         }
+        // 3. Se um relatório de gôndola foi selecionado, subtrai as quantidades já separadas.
+        // O state_json da gôndola contém itens com { component_sku, structure_name, quantidade }.
+        // Para chegar ao SKU do produto-pai, precisamos de busca reversa:
+        //   component_sku → cached_structures (parent_product_bling_account='lucas') → parent_product_bling_id
+        //   parent_product_bling_id → cached_products (bling_account='lucas') → sku (produto real)
+        // Além disso, produtos multi-volume: cada estrutura bipada conta como produto inteiro (Math.max).
+        let gondolaSummary = []; // Será preenchido se houver gôndola aplicada
+        if (gondolaId) {
+            const gondolaRes = await client.query('SELECT state_json FROM relatorios_gondola WHERE id = $1', [gondolaId]);
+            if (gondolaRes.rows.length > 0) {
+                const gondolaItens = gondolaRes.rows[0].state_json?.itens || [];
+                if (gondolaItens.length > 0) {
+                    // Passo 1: Coletar todos os component_skus únicos da gôndola
+                    const componentSkus = [...new Set(gondolaItens.map(i => i.component_sku).filter(Boolean))];
+
+                    // Passo 2: Buscar TODOS os mapeamentos component_sku → parent no banco.
+                    // Um mesmo component_sku pode pertencer a VÁRIOS produtos-pai (estruturas duplicadas).
+                    const mappingRes = await client.query(`
+                        SELECT s.component_sku, s.parent_product_bling_id, p.sku AS parent_sku
+                        FROM cached_structures s
+                        JOIN cached_products p ON s.parent_product_bling_id = p.bling_id AND p.bling_account = 'lucas'
+                        WHERE s.component_sku = ANY($1::text[])
+                          AND s.parent_product_bling_account = 'lucas'
+                    `, [componentSkus]);
+
+                    // Passo 3: Coletar os SKUs que existem no relatório da tarde (para filtrar)
+                    const skusNoRelatorio = new Set(
+                        Object.values(dadosRelatorio).map(item => item.sku.toUpperCase())
+                    );
+
+                    // Passo 4: Montar mapa de parent_bling_id → parent_sku
+                    // Só incluir pais cujo SKU realmente aparece no relatório da tarde
+                    const parentBlingIdToSku = new Map(); // { parent_bling_id → PARENT_SKU_UPPER }
+                    mappingRes.rows.forEach(row => {
+                        const parentSkuUpper = row.parent_sku.toUpperCase();
+                        if (skusNoRelatorio.has(parentSkuUpper)) {
+                            parentBlingIdToSku.set(row.parent_product_bling_id, parentSkuUpper);
+                        }
+                    });
+
+                    // Se nenhum pai bater com o relatório, pula a subtração
+                    if (parentBlingIdToSku.size > 0) {
+                        // Passo 5: Para cada produto-pai relevante, buscar TODAS as suas estruturas
+                        const parentBlingIds = [...parentBlingIdToSku.keys()];
+                        const allStructRes = await client.query(`
+                            SELECT parent_product_bling_id, component_sku
+                            FROM cached_structures
+                            WHERE parent_product_bling_id = ANY($1::bigint[])
+                              AND parent_product_bling_account = 'lucas'
+                        `, [parentBlingIds]);
+
+                        // Mapa: parent_bling_id → Set de component_skus (todos os volumes)
+                        const parentAllStructures = new Map();
+                        allStructRes.rows.forEach(row => {
+                            if (!parentAllStructures.has(row.parent_product_bling_id)) {
+                                parentAllStructures.set(row.parent_product_bling_id, new Set());
+                            }
+                            parentAllStructures.get(row.parent_product_bling_id).add(row.component_sku);
+                        });
+
+                        // Passo 6: Montar mapa de quantidades da gôndola por component_sku
+                        const gondolaQtdMap = new Map();
+                        gondolaItens.forEach(item => {
+                            if (!item.component_sku) return;
+                            gondolaQtdMap.set(
+                                item.component_sku,
+                                (gondolaQtdMap.get(item.component_sku) || 0) + (item.quantidade || 0)
+                            );
+                        });
+
+                        // Passo 7: Calcular a subtração para cada produto-pai relevante.
+                        // Usa Math.max: cada estrutura bipada conta como produto inteiro.
+                        // Ex: produto com 2 volumes (mesa+cadeira), se só mesa foi bipada 5x → subtrai 5.
+                        const parentSubtractionMap = new Map(); // { PARENT_SKU_UPPER → qtd_a_subtrair }
+
+                        for (const [parentBlingId, structureSkus] of parentAllStructures.entries()) {
+                            const parentSkuUpper = parentBlingIdToSku.get(parentBlingId);
+                            if (!parentSkuUpper) continue;
+
+                            let maxQtd = 0;
+                            for (const compSku of structureSkus) {
+                                const qtdNaGondola = gondolaQtdMap.get(compSku) || 0;
+                                maxQtd = Math.max(maxQtd, qtdNaGondola);
+                            }
+
+                            if (maxQtd > 0) {
+                                parentSubtractionMap.set(
+                                    parentSkuUpper,
+                                    (parentSubtractionMap.get(parentSkuUpper) || 0) + maxQtd
+                                );
+                            }
+                        }
+
+                        // Passo 8: Aplicar a subtração no relatório da tarde
+                        // Registra a subtração EFETIVA (limitada pela qtd disponível no relatório)
+                        const actualSubtracted = new Map(); // { PARENT_SKU_UPPER → qtd_efetivamente_subtraída }
+                        for (const chave of Object.keys(dadosRelatorio)) {
+                            const item = dadosRelatorio[chave];
+                            const skuUpper = item.sku.toUpperCase();
+                            if (parentSubtractionMap.has(skuUpper)) {
+                                const qtdGondola = parentSubtractionMap.get(skuUpper);
+                                const qtdEfetiva = Math.min(qtdGondola, item.quantidade); // Não subtrai mais do que tem
+                                item.quantidade -= qtdGondola;
+                                if (qtdEfetiva > 0) {
+                                    actualSubtracted.set(skuUpper, (actualSubtracted.get(skuUpper) || 0) + qtdEfetiva);
+                                }
+                            }
+                        }
+                        // Remove itens que zeraram ou ficaram negativos
+                        for (const chave of Object.keys(dadosRelatorio)) {
+                            if (dadosRelatorio[chave].quantidade <= 0) {
+                                delete dadosRelatorio[chave];
+                            }
+                        }
+                        console.log(`[Relatório Tarde] Subtração de gôndola (id=${gondolaId}) aplicada. Subtraídos efetivamente:`, Object.fromEntries(actualSubtracted));
+                        // Salva o resumo EFETIVO para incluir no Excel de download
+                        for (const [skuUpper, qtdSubtraida] of actualSubtracted.entries()) {
+                            gondolaSummary.push({ sku: skuUpper, quantidade_subtraida: qtdSubtraida });
+                        }
+                    } else {
+                        console.log(`[Relatório Tarde] Gôndola (id=${gondolaId}) carregada, mas nenhum produto-pai correspondente encontrado no relatório.`);
+                    }
+                }
+            }
+        }
         // Transforma o objeto num array estruturado para salvar
         const arrayRelatorio = Object.values(dadosRelatorio);
+        if (arrayRelatorio.length === 0) {
+            throw new Error('Após subtrair os itens já separados na gôndola, não sobrou nenhum item pendente para o relatório.');
+        }
+        // Monta o objeto final com os dados do relatório + resumo da gôndola (se houver)
+        // O state_json agora pode ter o formato { itens: [...], gondola: [...] }
+        // Compatibilidade: o download verifica se é array (legado) ou objeto (novo).
+        const stateToSave = {
+            itens: arrayRelatorio,
+            gondola: gondolaSummary.length > 0 ? gondolaSummary : null
+        };
         // Cria o nome do relatório
         const dataAtual = new Date();
         const nomeRelatorio = `Relatório da Tarde - ${dataAtual.toLocaleDateString('pt-BR')} às ${dataAtual.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
         // Salva no banco de dados (histórico)
         await client.query(
             'INSERT INTO historico_relatorio_tarde (nome, state_json) VALUES ($1, $2)',
-            [nomeRelatorio, JSON.stringify(arrayRelatorio)]
+            [nomeRelatorio, JSON.stringify(stateToSave)]
         );
         // Limpeza Automática: Mantém apenas os 5 mais recentes
         await client.query(`
@@ -1603,22 +1748,29 @@ exports.downloadHistoricoRelatorioTarde = async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(404).send('Relatório não encontrado.');
         }
-        const { nome, state_json } = result.rows[0];
+        const { nome, state_json: rawStateJson } = result.rows[0];
 
-        // 1. Coletar os SKUs e buscar os tipo_ml agilmente no Banco
-        const skusArray = [...new Set(state_json.map(s => s.sku))];
+        // Compatibilidade: state_json pode ser array (legado) ou objeto { itens, gondola } (novo)
+        const itensRelatorio = Array.isArray(rawStateJson) ? rawStateJson : (rawStateJson.itens || []);
+        const gondolaData = Array.isArray(rawStateJson) ? null : (rawStateJson.gondola || null);
+
+        // 1. Coletar os SKUs e buscar os tipo_ml de forma case-insensitive no Banco
+        const skusArray = [...new Set(itensRelatorio.map(s => s.sku.toUpperCase()))];
         let tipoMap = {};
         if (skusArray.length > 0) {
-            const prodRes = await client.query('SELECT sku, tipo_ml FROM cached_products WHERE sku = ANY($1::text[])', [skusArray]);
+            const prodRes = await client.query(
+                'SELECT sku, tipo_ml FROM cached_products WHERE UPPER(sku) = ANY($1::text[])',
+                [skusArray]
+            );
             prodRes.rows.forEach(p => {
-                tipoMap[p.sku] = p.tipo_ml ? p.tipo_ml.trim().toUpperCase() : 'OUTROS';
+                tipoMap[p.sku.toUpperCase()] = p.tipo_ml ? p.tipo_ml.trim().toUpperCase() : 'OUTROS';
             });
         }
 
-        // 2. Agrupar os itens do Excel pelo Tipo 
+        // 2. Agrupar os itens pelo Tipo 
         const grupos = {};
-        state_json.forEach(item => {
-            let t = tipoMap[item.sku];
+        itensRelatorio.forEach(item => {
+            let t = tipoMap[item.sku.toUpperCase()];
             if (!t) t = 'OUTROS';
             if (!grupos[t]) grupos[t] = [];
             grupos[t].push(item);
@@ -1640,14 +1792,14 @@ exports.downloadHistoricoRelatorioTarde = async (req, res) => {
 
         // Estilização do Header
         worksheet.getRow(1).eachCell(cell => {
-            if (cell.value) { // Ignorar header nulo do espaçador
+            if (cell.value) {
                 cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
                 cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F1F1F' } };
                 cell.alignment = { horizontal: 'center' };
             }
         });
 
-        // 4. Inserir linha a linha respeitando a capacidade máxima do maior grupo
+        // 4. Inserir linha a linha
         const maxRows = Math.max(...types.map(t => grupos[t].length));
         for (let i = 0; i < maxRows; i++) {
             let rowObj = {};
@@ -1660,14 +1812,49 @@ exports.downloadHistoricoRelatorioTarde = async (req, res) => {
                 }
             });
             const excelRow = worksheet.addRow(rowObj);
-
-            // Centralizar Qtd e Onda
             types.forEach(t => {
                 const qtdCell = excelRow.getCell(`qtd_${t}`);
                 if (qtdCell) qtdCell.alignment = { horizontal: 'center' };
                 const ondaCell = excelRow.getCell(`onda_${t}`);
                 if (ondaCell) ondaCell.alignment = { horizontal: 'center' };
             });
+        }
+
+        // 5. Se houve dados de gôndola, cria uma aba extra "Itens Gôndola" (com tipo_ml e ordenação)
+        if (gondolaData && gondolaData.length > 0) {
+            const wsGondola = workbook.addWorksheet('Itens Gôndola (Subtraídos)');
+            wsGondola.columns = [
+                { header: 'SKU do Produto', key: 'sku', width: 40 },
+                { header: 'Qtd Subtraída', key: 'quantidade_subtraida', width: 20, style: { numFmt: '0' } }
+            ];
+            wsGondola.getRow(1).eachCell(cell => {
+                cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2E7D32' } };
+                cell.alignment = { horizontal: 'center' };
+            });
+            // Adiciona tipo_ml e ordena
+            for (const item of gondolaData) {
+                const tipoRes = await client.query(
+                    `SELECT tipo_ml FROM cached_products WHERE UPPER(sku) = $1 LIMIT 1`,
+                    [item.sku.toUpperCase()]
+                );
+                if (tipoRes.rows.length > 0 && tipoRes.rows[0].tipo_ml) {
+                    item.skuDisplay = `${tipoRes.rows[0].tipo_ml}-${item.sku}`;
+                } else {
+                    item.skuDisplay = item.sku;
+                }
+            }
+            gondolaData.sort((a, b) => a.skuDisplay.localeCompare(b.skuDisplay, 'pt-BR', { numeric: true, sensitivity: 'base' }));
+            gondolaData.forEach(item => {
+                const row = wsGondola.addRow({ sku: item.skuDisplay, quantidade_subtraida: item.quantidade_subtraida });
+                row.getCell('quantidade_subtraida').alignment = { horizontal: 'center' };
+            });
+            const totalGondola = gondolaData.reduce((sum, i) => sum + (i.quantidade_subtraida || 0), 0);
+            wsGondola.addRow({});
+            const totalRow = wsGondola.addRow({ sku: 'TOTAL SUBTRAÍDO', quantidade_subtraida: totalGondola });
+            totalRow.font = { bold: true };
+            totalRow.getCell('sku').alignment = { horizontal: 'right' };
+            totalRow.getCell('quantidade_subtraida').alignment = { horizontal: 'center' };
         }
 
         const nomeSeguro = nome.replace(/[\/\:]/g, '-');

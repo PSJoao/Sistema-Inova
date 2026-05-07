@@ -135,7 +135,9 @@ class HubMercadoLivreService {
                         status_med: null,
                         id_envio_dev: null,
                         status_envio_dev: null,
-                        frete_envio: null
+                        frete_envio: null,
+                        nfe_numero: null,
+                        chave_acesso: null
                     };
 
                     // Captura a data limite de envio
@@ -211,7 +213,7 @@ class HubMercadoLivreService {
                                 }
 
                                 // --- CAPTURA DA ETIQUETA (ZPL) ---
-                                const deveBaixarEtiqueta = envioData.logistic_type !== 'fulfillment' && 
+                                const deveBaixarEtiqueta = envioData.logistic_type !== 'fulfillment' &&
                                     (envioData.status === 'ready_to_ship' || envioData.status === 'shipped');
 
                                 if (deveBaixarEtiqueta) {
@@ -263,6 +265,13 @@ class HubMercadoLivreService {
                     // Busca devoluções e mediações para pedidos novos
                     const detalhesReclamacao = await this.buscarDetalhesReclamacao(novoPedido.id_pedido_ml, accessToken);
                     Object.assign(novoPedido, detalhesReclamacao); // Mescla os resultados no objeto
+
+                    // --- CAPTURA ISOLADA DE NOTA FISCAL ---
+                    const nfData = await this.buscarNotaFiscal(novoPedido.id_pedido_ml, conta.seller_id, accessToken);
+                    if (nfData) {
+                        novoPedido.nfe_numero = nfData.invoiceNumber;
+                        novoPedido.chave_acesso = nfData.invoiceKey;
+                    }
 
                     // Salvar no banco
                     await this.salvarPedidoNoBanco(novoPedido);
@@ -345,7 +354,7 @@ class HubMercadoLivreService {
                         // TENTATIVA 2: Fallback em caso de pedido "Fantasma" (404) ou vazamento de escopo (403)
                         if (error.response && (error.response.status === 404 || error.response.status === 403)) {
                             console.warn(`[HUB ML] Pedido ${pedido.id_pedido_ml} retornou ${error.response.status}. Iniciando fallback de busca...`);
-                            
+
                             try {
                                 const searchUrl = `${ML_API_URL}/orders/search?seller=${pedido.seller_id}&q=${pedido.id_pedido_ml}`;
                                 const searchRes = await axios.get(searchUrl, {
@@ -416,7 +425,7 @@ class HubMercadoLivreService {
                                 headers: { 'Authorization': `Bearer ${accessToken}` }
                             });
                             const envioData = envioRes.data;
-                            
+
                             if (envioData) {
                                 pedidoAtualizado.id_envio_ml = envioData.id;
                                 pedidoAtualizado.status_envio = envioData.status;
@@ -438,7 +447,7 @@ class HubMercadoLivreService {
                                         headers: { 'Authorization': `Bearer ${accessToken}` }
                                     });
                                     const limiteEnvioData = Array.isArray(limiteEnvio.data) ? limiteEnvio.data[0] : limiteEnvio.data;
-                                    
+
                                     if (limiteEnvioData.expected_date) {
                                         pedidoAtualizado.data_limite_envio = limiteEnvioData.expected_date;
                                     }
@@ -518,6 +527,21 @@ class HubMercadoLivreService {
                     /*const detalhesReclamacaoMonitoramento = await this.buscarDetalhesReclamacao(pedidoAtualizado.id_pedido_ml, accessToken);
                     Object.assign(pedidoAtualizado, detalhesReclamacaoMonitoramento);*/
 
+                    // --- CAPTURA DE NOTA FISCAL NO MONITORAMENTO ---
+                    // Se o pedido ainda não possui NF, tenta buscar novamente
+                    if (!pedido.nfe_numero) {
+                        const nfData = await this.buscarNotaFiscal(pedidoAtualizado.id_pedido_ml, pedido.seller_id, accessToken);
+                        if (nfData) {
+                            pedidoAtualizado.nfe_numero = nfData.invoiceNumber;
+                            pedidoAtualizado.chave_acesso = nfData.invoiceKey;
+                            console.log(`[HUB ML] NF capturada tardiamente para pedido ${pedidoAtualizado.id_pedido_ml}: NF ${nfData.invoiceNumber}`);
+                        }
+                    } else {
+                        // Preserva os dados de NF existentes
+                        pedidoAtualizado.nfe_numero = pedido.nfe_numero;
+                        pedidoAtualizado.chave_acesso = pedido.chave_acesso;
+                    }
+
                     // Salva TUDO (Atualiza datas, itens, etiquetas, status e DEVOLUÇÕES)
                     await this.salvarPedidoNoBanco(pedidoAtualizado);
 
@@ -585,7 +609,7 @@ class HubMercadoLivreService {
                         // TENTATIVA 2: Fallback em caso de pedido "Fantasma" (404) ou vazamento de escopo (403)
                         if (error.response && (error.response.status === 404 || error.response.status === 403)) {
                             console.warn(`[HUB ML] Pedido ${pedido.id_pedido_ml} retornou ${error.response.status}. Iniciando fallback de busca...`);
-                            
+
                             try {
                                 const searchUrl = `${ML_API_URL}/orders/search?seller=${pedido.seller_id}&q=${pedido.id_pedido_ml}`;
                                 const searchRes = await axios.get(searchUrl, {
@@ -678,7 +702,7 @@ class HubMercadoLivreService {
                                         headers: { 'Authorization': `Bearer ${accessToken}` }
                                     });
                                     const limiteEnvioData = Array.isArray(limiteEnvio.data) ? limiteEnvio.data[0] : limiteEnvio.data;
-                                    
+
                                     if (limiteEnvioData.expected_date) {
                                         pedidoAtualizado.data_limite_envio = limiteEnvioData.expected_date;
                                     }
@@ -904,6 +928,37 @@ class HubMercadoLivreService {
         return detalhes;
     }
 
+    /**
+     * Busca a Nota Fiscal de um pedido via API ML de invoices.
+     * Retorna { invoiceNumber, invoiceKey } ou null se não encontrado.
+     */
+    async buscarNotaFiscal(idPedidoMl, sellerId, accessToken) {
+        try {
+            await delay(200);
+            const url = `${ML_API_URL}/users/${sellerId}/invoices/orders/${idPedidoMl}`;
+            const response = await axios.get(url, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+
+            const data = response.data;
+            if (data) {
+                const invoiceNumber = data.invoice_number ? String(data.invoice_number) : null;
+                const invoiceKey = data.attributes?.invoice_key || null;
+
+                if (invoiceNumber || invoiceKey) {
+                    return { invoiceNumber, invoiceKey };
+                }
+            }
+        } catch (err) {
+            // 404 = pedido sem NF ainda (normal para pedidos recentes)
+            // Outros erros são silenciados para não travar o fluxo
+            if (err.response?.status !== 404) {
+                console.warn(`[HUB ML] Erro ao buscar NF do pedido ${idPedidoMl}: ${err.message}`);
+            }
+        }
+        return null;
+    }
+
     async verificarSePedidoExiste(idPedidoMl) {
         const res = await poolHub.query('SELECT 1 FROM pedidos_mercado_livre WHERE id_pedido_ml = $1', [String(idPedidoMl)]);
         return res.rowCount > 0;
@@ -916,8 +971,8 @@ class HubMercadoLivreService {
 
         const query = `
             INSERT INTO pedidos_mercado_livre 
-            (conta_id, id_pedido_ml, date_created, status_pedido, data_limite_envio, id_envio_ml, status_envio, etiqueta_zpl, itens_pedido, comprador_nickname, data_envio_disponivel, data_envio_agendado, data_previsao_entrega, tem_dev, tem_med, status_dev, status_med, id_envio_dev, status_envio_dev, frete_envio)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+            (conta_id, id_pedido_ml, date_created, status_pedido, data_limite_envio, id_envio_ml, status_envio, etiqueta_zpl, itens_pedido, comprador_nickname, data_envio_disponivel, data_envio_agendado, data_previsao_entrega, tem_dev, tem_med, status_dev, status_med, id_envio_dev, status_envio_dev, frete_envio, nfe_numero, chave_acesso)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
             ON CONFLICT (id_pedido_ml) DO UPDATE SET
             status_pedido = EXCLUDED.status_pedido,
             status_envio = EXCLUDED.status_envio,
@@ -935,6 +990,8 @@ class HubMercadoLivreService {
             id_envio_dev = EXCLUDED.id_envio_dev,
             status_envio_dev = EXCLUDED.status_envio_dev,
             frete_envio = EXCLUDED.frete_envio,
+            nfe_numero = COALESCE(EXCLUDED.nfe_numero, pedidos_mercado_livre.nfe_numero),
+            chave_acesso = COALESCE(EXCLUDED.chave_acesso, pedidos_mercado_livre.chave_acesso),
             last_update = NOW()
         `;
 
@@ -958,7 +1015,9 @@ class HubMercadoLivreService {
             pedido.status_med || null,
             pedido.id_envio_dev || null,
             pedido.status_envio_dev || null,
-            pedido.frete_envio || null
+            pedido.frete_envio || null,
+            pedido.nfe_numero || null,
+            pedido.chave_acesso || null
         ];
 
         try {

@@ -20,7 +20,9 @@ document.addEventListener('DOMContentLoaded', () => {
         //Lista Conferidas
         completedList: document.getElementById('completed-notes-list'),
         btnClearCompleted: document.getElementById('btn-clear-completed'),
-        btnSyncCompleted: document.getElementById('btn-sync-completed')
+        btnSyncCompleted: document.getElementById('btn-sync-completed'),
+        fabFinalizarContainer: document.getElementById('fab-finalizar-container'),
+        badgeSyncCount: document.getElementById('badge-sync-count')
     };
 
     // --- ESTADO (STATE) ---
@@ -32,8 +34,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- SONS ---
     const sounds = {
-        success: new Audio('/public/sounds/notification.mp3'),
-        error: new Audio('/public/sounds/notification.mp3') // Pode adicionar um som diferente depois
+        success: document.getElementById('audio-success') || new Audio('/public/sounds/notification.mp3'),
+        error: document.getElementById('audio-error') || new Audio('/public/sounds/error.mp3')
     };
     
     // --- INICIALIZAÇÃO ---
@@ -48,6 +50,14 @@ document.addEventListener('DOMContentLoaded', () => {
         // Event Listeners
         if(elements.input) elements.input.addEventListener('keypress', handleInput);
         if(elements.btnCloseNote) elements.btnCloseNote.addEventListener('click', pauseActiveNote);
+
+        // Foco automático ao fechar modals
+        const modalElement = document.getElementById('customModal');
+        if (modalElement) {
+            modalElement.addEventListener('hidden.bs.modal', () => {
+                if (elements.input) elements.input.focus();
+            });
+        }
         
         // Clique na lista de pendentes para retomar
         if(elements.pendingList) {
@@ -95,7 +105,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (error) {
             console.error("Erro ao carregar estado:", error);
-            ModalSystem.alert("Não foi possível carregar o progresso anterior.", "Erro de Conexão");
+            ToastSystem.error("Não foi possível carregar o progresso anterior.");
+            if(elements.input) elements.input.focus();
         }
     }
 
@@ -133,7 +144,9 @@ document.addEventListener('DOMContentLoaded', () => {
     async function handleNfeScan(chave) {
         // 1. Verifica se já é a nota ativa
         if (state.activeNfe && state.activeNfe.chave === chave) {
-            ModalSystem.alert("Esta nota já está em conferência.", "Aviso");
+            sounds.error.play().catch(e => console.log(e));
+            ToastSystem.warning("Esta nota já está em conferência.");
+            if(elements.input) elements.input.focus();
             return;
         }
 
@@ -157,11 +170,13 @@ document.addEventListener('DOMContentLoaded', () => {
             ModalSystem.hideLoading();
 
             if (!response.ok) {
+                sounds.error.play().catch(e => console.log(e));
                 if (data.code === 'ALREADY_CHECKED') {
-                    ModalSystem.alert(`A nota fiscal ${data.nfeNumero || 'N/A'} já foi conferida anteriormente!`, "Nota Já Conferida");
+                    ToastSystem.warning(`A nota fiscal ${data.nfeNumero || 'N/A'} já foi conferida!`);
                 } else {
-                    ModalSystem.alert(data.message || "Erro ao buscar nota.", "Erro");
+                    ToastSystem.error(data.message || "Erro ao buscar nota.");
                 }
+                if(elements.input) elements.input.focus();
                 return;
             }
 
@@ -175,6 +190,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 cliente: data.nfe.cliente,
                 uf: data.nfe.uf,
                 pedidoBlingId: data.nfe.pedidoBlingId,
+                conta: data.nfe.conta,
                 volumes: data.volumes.map(v => ({
                     ...v,
                     checked: false 
@@ -182,18 +198,23 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             state.activeNfe = newNote;
+            sounds.success.play().catch(e => console.log(e));
             saveState();
             renderUI();
 
         } catch (error) {
             ModalSystem.hideLoading();
-            ModalSystem.alert("Erro de comunicação com o servidor.", "Erro Crítico");
+            sounds.error.play().catch(e => console.log(e));
+            ToastSystem.error("Erro de comunicação com o servidor.");
+            if(elements.input) elements.input.focus();
         }
     }
 
     function handleProductScan(code) {
         if (!state.activeNfe) {
-            ModalSystem.alert("Bipe uma Nota Fiscal primeiro!", "Sem Nota Ativa");
+            sounds.error.play().catch(e => console.log(e));
+            ToastSystem.warning("Bipe uma Nota Fiscal primeiro!");
+            if(elements.input) elements.input.focus();
             return;
         }
 
@@ -229,10 +250,13 @@ document.addEventListener('DOMContentLoaded', () => {
             );
 
             if (alreadyChecked) {
-                ModalSystem.alert("Este volume já foi conferido!", "Duplicidade");
+                sounds.error.play().catch(e => console.log('Erro som', e));
+                ToastSystem.warning("Este volume já foi conferido!");
             } else {
-                ModalSystem.alert("Este produto NÃO pertence à nota atual.", "Produto Incorreto");
+                sounds.error.play().catch(e => console.log('Erro som', e));
+                ToastSystem.error("Este produto NÃO pertence à nota atual.");
             }
+            if(elements.input) elements.input.focus();
         }
     }
 
@@ -307,23 +331,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const pendingNotes = state.completed.filter(n => n.syncStatus !== 'success');
 
         if (pendingNotes.length === 0) {
-            ModalSystem.alert("Não há notas pendentes de envio nesta lista.", "Tudo Certo");
+            ToastSystem.info("Não há notas pendentes de envio nesta lista.");
+            if(elements.input) elements.input.focus();
             return;
         }
 
-        ModalSystem.confirm(`Confirma o envio de ${pendingNotes.length} nota(s) para o Bling?`, "Conferir Lote", async () => {
+        ModalSystem.confirm(`Confirma o envio de ${pendingNotes.length} nota(s) para o Bling?`, "Finalizar Lote", async () => {
             
             ModalSystem.showLoading(`Processando 0/${pendingNotes.length}...`, "Enviando");
             
+            let retryList = [];
             let successCount = 0;
-            let errorCount = 0;
 
+            // PRIMEIRA TENTATIVA
             for (let i = 0; i < pendingNotes.length; i++) {
                 const nfe = pendingNotes[i];
                 
-                // Atualiza mensagem de loading
                 const spinnerMsg = document.getElementById('customModalMessage');
-                if(spinnerMsg) spinnerMsg.textContent = `Processando ${i+1}/${pendingNotes.length}...`;
+                if(spinnerMsg) spinnerMsg.textContent = `Processando nota ${i+1}/${pendingNotes.length}...`;
 
                 try {
                     const response = await fetch('/conferencia/api/finalize', {
@@ -337,32 +362,84 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     if (response.ok) {
                         nfe.syncStatus = 'success';
+                        nfe.syncErrorMsg = null;
                         successCount++;
                     } else {
-                        nfe.syncStatus = 'error';
-                        errorCount++;
+                        const errData = await response.json();
+                        nfe.syncErrorMsg = errData.message || "Erro desconhecido na API.";
+                        retryList.push(nfe);
                     }
                 } catch (error) {
                     console.error("Erro de rede:", error);
-                    nfe.syncStatus = 'error';
-                    errorCount++;
+                    nfe.syncErrorMsg = "Falha de comunicação/Rede.";
+                    retryList.push(nfe);
                 }
                 
-                // Salva progresso parcial para não perder em caso de crash
                 saveState();
+                renderUI(); 
+                
+                // Pausa rigorosa de 1 segundo entre requisições
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
 
-                if (i < pendingNotes.length - 1) { // Não precisa esperar na última
-                    await new Promise(resolve => setTimeout(resolve, 400));
+            // SEGUNDA TENTATIVA (RETRY PARA AS FALHAS)
+            if (retryList.length > 0) {
+                const spinnerMsg = document.getElementById('customModalMessage');
+                if(spinnerMsg) spinnerMsg.textContent = `Re-tentando ${retryList.length} notas que falharam...`;
+                
+                // Pequena pausa antes de começar os retries
+                await new Promise(resolve => setTimeout(resolve, 1500));
+
+                for (let i = 0; i < retryList.length; i++) {
+                    const nfe = retryList[i];
+                    
+                    if(spinnerMsg) spinnerMsg.textContent = `Re-tentando nota ${i+1}/${retryList.length}...`;
+
+                    try {
+                        const response = await fetch('/conferencia/api/finalize', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                nfeNumero: nfe.numero,
+                                pedidoBlingId: nfe.pedidoBlingId
+                            })
+                        });
+
+                        if (response.ok) {
+                            nfe.syncStatus = 'success';
+                            nfe.syncErrorMsg = null;
+                            successCount++;
+                        } else {
+                            const errData = await response.json();
+                            nfe.syncStatus = 'error'; // Marcar como erro definitivo para exibição
+                            nfe.syncErrorMsg = errData.message || "Falha definitiva na API.";
+                        }
+                    } catch (error) {
+                        nfe.syncStatus = 'error';
+                        nfe.syncErrorMsg = "Falha definitiva de comunicação/Rede.";
+                    }
+                    
+                    saveState();
+                    renderUI();
+                    
+                    // Pausa rigorosa de 1 segundo entre requisições de retry
+                    await new Promise(resolve => setTimeout(resolve, 1000));
                 }
             }
 
             ModalSystem.hideLoading();
             renderUI(); // Atualiza os ícones na lista
 
+            const errorCount = pendingNotes.length - successCount;
+
             if (errorCount > 0) {
-                ModalSystem.alert(`${successCount} enviadas com sucesso.<br>${errorCount} falharam. Verifique os ícones em vermelho.`, "Finalizado com Alertas");
+                sounds.error.play().catch(e => console.log(e));
+                ToastSystem.warning(`${successCount} com sucesso. ${errorCount} notas falharam (detalhes na lista).`);
+                if(elements.input) elements.input.focus();
             } else {
-                ModalSystem.alert(`${successCount} notas conferidas com sucesso!`, "Sucesso");
+                sounds.success.play().catch(e => console.log(e));
+                ToastSystem.success(`${successCount} notas finalizadas com sucesso!`);
+                if(elements.input) elements.input.focus();
             }
         });
     }
@@ -379,7 +456,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const nfe = state.activeNfe;
             elements.lblNfeNumber.textContent = nfe.numero;
             
-            // [ALTERAÇÃO] Removida renderização de Cliente e UF aqui
+            const lblCliente = document.getElementById('active-nfe-cliente');
+            if (lblCliente) lblCliente.textContent = nfe.cliente ? `${nfe.cliente} - ${nfe.uf || ''}` : 'Cliente não informado';
+
+            const lblConta = document.getElementById('active-nfe-conta');
+            if (lblConta) lblConta.textContent = nfe.conta ? `Conta: ${nfe.conta}` : '';
 
             // Barra de Progresso
             const total = nfe.volumes.length;
@@ -387,7 +468,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const percent = total === 0 ? 0 : Math.round((done / total) * 100);
             
             elements.progressBar.style.width = `${percent}%`;
-            elements.progressBar.textContent = `${done}/${total} (${percent}%)`;
+            
+            const progressTextEl = document.getElementById('active-progress-text');
+            if (progressTextEl) {
+                progressTextEl.textContent = `${done}/${total} (${percent}%)`;
+            } else {
+                elements.progressBar.textContent = `${done}/${total} (${percent}%)`;
+            }
             
             // Lista de Volumes
             elements.volumesList.innerHTML = nfe.volumes.map(vol => `
@@ -442,16 +529,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     Nenhuma nota aguardando.
                 </div>`;
             elements.btnClearCompleted.style.display = 'none';
-            elements.btnSyncCompleted.style.display = 'none';
+            if(elements.fabFinalizarContainer) elements.fabFinalizarContainer.style.display = 'none';
         } else {
             elements.btnClearCompleted.style.display = 'inline-block';
-            elements.btnSyncCompleted.style.display = 'inline-block';
+            
+            const countToSync = state.completed.filter(n => n.syncStatus !== 'success').length;
+            if(elements.fabFinalizarContainer) {
+                elements.fabFinalizarContainer.style.display = countToSync > 0 ? 'block' : 'none';
+                if(elements.badgeSyncCount) elements.badgeSyncCount.textContent = countToSync;
+            }
             
             elements.completedList.innerHTML = state.completed.map(nfe => {
                 // Define cor e ícone baseados no status de envio
                 let borderClass = 'border-secondary';
                 let iconHtml = '<i class="fas fa-clock" title="Aguardando Envio"></i>';
                 let statusColor = '#888';
+                let errorHtml = '';
 
                 if (nfe.syncStatus === 'success') {
                     statusColor = '#28a745'; // Verde
@@ -459,6 +552,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (nfe.syncStatus === 'error') {
                     statusColor = '#dc3545'; // Vermelho
                     iconHtml = '<i class="fas fa-exclamation-triangle" title="Erro no Envio"></i>';
+                    if (nfe.syncErrorMsg) {
+                        errorHtml = `<div style="color: #ff8888; font-size: 0.8rem; margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 5px;">
+                                        <i class="fas fa-info-circle"></i> ${nfe.syncErrorMsg}
+                                     </div>`;
+                    }
                 } else {
                     // Pending (Amarelo/Laranja)
                     statusColor = '#ffc107'; 
@@ -466,17 +564,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 return `
-                <div class="nota-conferida-item" style="border-left: 4px solid ${statusColor};">
-                    <div class="nota-conferida-info">
-                        <strong>NF ${nfe.numero}</strong>
-                        <span style="color: ${statusColor}; font-size: 0.85rem; font-weight:bold;">
-                            ${iconHtml} ${nfe.syncStatus === 'success' ? 'Conferido' : (nfe.syncStatus === 'error' ? 'Falha' : 'Aguardando')}
-                        </span>
+                <div class="nota-conferida-item" style="border-left: 4px solid ${statusColor}; flex-direction: column;">
+                    <div style="display: flex; justify-content: space-between; width: 100%;">
+                        <div class="nota-conferida-info">
+                            <strong>NF ${nfe.numero}</strong>
+                            <span style="color: ${statusColor}; font-size: 0.85rem; font-weight:bold; margin-left: 5px;">
+                                ${iconHtml} ${nfe.syncStatus === 'success' ? 'Finalizado' : (nfe.syncStatus === 'error' ? 'Falha' : 'Aguardando')}
+                            </span>
+                        </div>
+                        <div style="text-align: right;">
+                             <div style="font-size: 0.75rem; color: #666;">${nfe.finishedAt}</div>
+                             <span class="badge-progresso" style="background-color: #333; border: 1px solid #555;">${nfe.volumes.length} vol</span>
+                        </div>
                     </div>
-                    <div style="text-align: right;">
-                         <div style="font-size: 0.75rem; color: #666;">${nfe.finishedAt}</div>
-                         <span class="badge-progresso" style="background-color: #333; border: 1px solid #555;">${nfe.volumes.length} vol</span>
-                    </div>
+                    ${errorHtml}
                 </div>
                 `;
             }).join('');

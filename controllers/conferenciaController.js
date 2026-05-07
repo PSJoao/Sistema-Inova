@@ -17,7 +17,7 @@ const pool = new Pool({
 
 exports.renderBipagemPage = (req, res) => {
     res.render('conferencia/bipagem', {
-        title: 'Conferência de Expedição',
+        title: 'Conferência de Pedidos',
         user: req.session.username
     });
 };
@@ -33,7 +33,7 @@ exports.renderGerenciamentoPage = (req, res) => {
 exports.getState = async (req, res) => {
     try {
         const userId = req.session.userId || 0;
-        
+
         const result = await pool.query(
             'SELECT state_json FROM conferencia_expedicao_state WHERE user_id = $1',
             [userId]
@@ -86,7 +86,7 @@ exports.searchNfeByChave = async (req, res) => {
             FROM cached_nfe 
             WHERE chave_acesso = $1 OR nfe_numero = $1
         `;
-        
+
         const nfeResult = await pool.query(nfeQuery, [chave]);
 
         if (nfeResult.rows.length === 0) {
@@ -97,7 +97,7 @@ exports.searchNfeByChave = async (req, res) => {
 
         // 2. Verifica se já foi conferida
         if (nfe.conferencia_realizada) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 message: `A Nota Fiscal ${nfe.nfe_numero} já foi conferida anteriormente!`,
                 code: 'ALREADY_CHECKED',
                 nfeNumero: nfe.nfe_numero
@@ -162,13 +162,11 @@ exports.finalizeConferencia = async (req, res) => {
     const client = await pool.connect();
 
     try {
-        // [ALTERAÇÃO] Busca a conta (bling_account) da nota antes de prosseguir
         const accountResult = await client.query(
-            'SELECT bling_account FROM cached_nfe WHERE nfe_numero = $1', 
+            'SELECT bling_account FROM cached_nfe WHERE nfe_numero = $1',
             [nfeNumero]
         );
-        
-        // Se não achar a nota (improvável), usa 'lucas' como fallback seguro ou lança erro
+
         const accountName = accountResult.rows.length > 0 ? accountResult.rows[0].bling_account : 'lucas';
 
         await client.query('BEGIN');
@@ -181,12 +179,11 @@ exports.finalizeConferencia = async (req, res) => {
 
         // 2. Atualiza Bling (Situação "Verificado")
         try {
-            // [ALTERAÇÃO] Usa a conta recuperada do banco dinamicamente
             console.log(`[Conferência] Finalizando NF ${nfeNumero} na conta: ${accountName}`);
-            
-            const accessToken = await getValidBlingToken(accountName); 
+
+            const accessToken = await getValidBlingToken(accountName);
             const url = `https://api.bling.com.br/Api/v3/pedidos/vendas/${pedidoBlingId}/situacoes/24`;
-            
+
             await axios.patch(url, {}, {
                 headers: { 'Authorization': `Bearer ${accessToken}` }
             });
@@ -194,23 +191,44 @@ exports.finalizeConferencia = async (req, res) => {
             console.log(`[Conferência] Pedido ${pedidoBlingId} (NF ${nfeNumero}) atualizado para 'Verificado' no Bling (${accountName}).`);
 
         } catch (blingError) {
+            let errorMsg = "Erro desconhecido ao atualizar Bling.";
             console.error('\n========================================');
             console.error(`[Conferência] ERRO DETALHADO AO ATUALIZAR BLING (NF ${nfeNumero})`);
-            
+
             if (blingError.response) {
-                // O servidor respondeu, mas com erro (4xx, 5xx)
                 console.error('STATUS HTTP:', blingError.response.status);
-                // O 'data' contém a mensagem real do Bling explicando o erro
                 console.error('RESPOSTA DO BLING (MOTIVO):', JSON.stringify(blingError.response.data, null, 2));
+                if (blingError.response.data && blingError.response.data.error) {
+                    errorMsg = blingError.response.data.error.message || JSON.stringify(blingError.response.data.error);
+                } else {
+                    errorMsg = "O Bling rejeitou a atualização (Status " + blingError.response.status + ").";
+                }
             } else if (blingError.request) {
-                // A requisição foi feita mas o Bling não respondeu
                 console.error('ERRO DE REDE: Sem resposta do servidor do Bling.');
+                errorMsg = "Sem comunicação com a API do Bling.";
             } else {
-                // Erro interno na montagem da requisição
                 console.error('ERRO INTERNO:', blingError.message);
+                errorMsg = blingError.message;
             }
             console.error('========================================\n');
+
+            // Lança o erro para o catch principal fazer ROLLBACK e devolver ao frontend
+            throw new Error(`Bling: ${errorMsg}`);
         }
+
+        // 3. Integração com Expedição (Marca etiqueta como checado se não estiver expedido)
+        await client.query(`
+            UPDATE cached_etiquetas_ml 
+            SET status = 'checado' 
+            WHERE nfe_numero = $1 AND status != 'expedido'
+        `, [nfeNumero]);
+
+        // 4. Grava no Relatório Histórico
+        const username = req.session.username || 'Sistema';
+        await client.query(`
+            INSERT INTO conferencia_relatorio (nfe_numero, usuario)
+            VALUES ($1, $2)
+        `, [nfeNumero, username]);
 
         await client.query('COMMIT');
         res.json({ success: true, message: 'Conferência finalizada com sucesso.' });
@@ -218,6 +236,12 @@ exports.finalizeConferencia = async (req, res) => {
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('Erro ao finalizar conferência:', error);
+
+        // Se for um erro que lançamos manualmente do Bling, manda a mensagem limpa
+        if (error.message && error.message.startsWith('Bling:')) {
+            return res.status(400).json({ message: error.message.replace('Bling: ', '') });
+        }
+
         res.status(500).json({ message: 'Erro ao finalizar conferência.' });
     } finally {
         client.release();
@@ -230,7 +254,7 @@ exports.finalizeConferencia = async (req, res) => {
 exports.getProdutosSemEanApi = async (req, res) => {
     try {
         const { draw, start, length, search, filterOption } = req.query;
-        
+
         const limit = parseInt(length) || 10;
         const offset = parseInt(start) || 0;
         const searchValue = search && search.value ? `%${search.value}%` : null;
@@ -273,7 +297,7 @@ exports.getProdutosSemEanApi = async (req, res) => {
               AND (s.gtin IS NULL OR s.gtin = '')
               AND (s.gtin_embalagem IS NULL OR s.gtin_embalagem = '')
         `;
-        
+
         const queryParams = [];
 
         // Filtro de "Escondidos"

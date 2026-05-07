@@ -4,6 +4,7 @@ const pdfParse = require('pdf-parse');
 const { PDFDocument, rgb, StandardFonts, degrees } = require('pdf-lib');
 const ExcelJS = require('exceljs');
 const bwip = require('bwip-js');
+const axios = require('axios');
 const { findAndCacheNfeByNumber, findAndCachePedidoByLojaNumber } = require('../blingSyncService');
 const fs = require('fs').promises;
 const path = require('path');
@@ -522,47 +523,80 @@ async function buscarInformacoesCruciais(etiquetasExtraidas, nomeArquivoGerado, 
 
                     console.log(`   [DB Cache] Tentando salvar etiqueta no banco de dados...`);
                     try {
-                        const insertQuery = `
-                            INSERT INTO cached_etiquetas_ml (
-                                nfe_numero, numero_loja, pack_id, chave_acesso, skus,
-                                quantidade_total, locations, pdf_pagina, pdf_arquivo_origem,
-                                situacao, last_processed_at, created_at
-                            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, timestamp_virtual_expedicao(), timestamp_virtual_expedicao())
-                            ON CONFLICT (chave_acesso) DO UPDATE SET
-                                nfe_numero = EXCLUDED.nfe_numero,
-                                numero_loja = EXCLUDED.numero_loja,
-                                pack_id = EXCLUDED.pack_id,
-                                skus = EXCLUDED.skus,
-                                quantidade_total = EXCLUDED.quantidade_total,
-                                locations = EXCLUDED.locations,
-                                -- pdf_pagina e pdf_arquivo_origem NÃO são atualizados aqui.
-                                -- Serão atualizados SOMENTE após o PDF ser gravado no disco (atualizarPaginasCorretasNoDB).
-                                situacao = 'pendente',
-                                last_processed_at = timestamp_virtual_expedicao();
-                        `;
+                        const skusOriginais = JSON.stringify(info.skus.map(s => ({ original: s.original })));
 
-                        const skusOriginais = info.skus.map(s => s.original).join(',');
+                        // ============================================================
+                        // DEDUPLICAÇÃO HIERÁRQUICA (Idêntica ao HubPedidosService)
+                        // ============================================================
+                        let registroExistente = null;
 
-                        await client.query(insertQuery, [
-                            info.nfeNumero,
-                            numeroLojaFinal,
-                            packIdOriginal,
-                            info.chaveAcesso,
-                            skusOriginais,
-                            info.totalQuantidade,
-                            info.locations.join(','),
-                            etiqueta.pageIndex,
-                            nomeArquivoGerado, // Salva o NOME DO ARQUIVO GERADO
-                            'pendente'
-                        ]);
-                        console.log(`   [DB Cache] Etiqueta (Chave ${info.chaveAcesso}) salva/atualizada com sucesso.`);
-                    } catch (dbError) {
-                        // ... (tratamento de erro do DB)
-                        if (dbError.code === '23505') { // Pode ser outra constraint, mas chave_acesso é a principal
-                            console.warn(`   [DB Cache] Aviso: Etiqueta com chave de acesso ${info.chaveAcesso} já existe ou conflito. Atualizando.`);
-                        } else {
-                            console.error(`   [DB Cache] ERRO ao salvar etiqueta no banco:`, dbError.message);
+                        if (info.nfeNumero) {
+                            const r1 = await client.query('SELECT id FROM cached_etiquetas_ml WHERE nfe_numero = $1 LIMIT 1', [info.nfeNumero]);
+                            registroExistente = r1.rows[0];
                         }
+                        if (!registroExistente && numeroLojaFinal) {
+                            const r2 = await client.query('SELECT id FROM cached_etiquetas_ml WHERE numero_loja = $1 LIMIT 1', [numeroLojaFinal]);
+                            registroExistente = r2.rows[0];
+                        }
+                        if (!registroExistente && packIdOriginal) {
+                            const r3 = await client.query('SELECT id FROM cached_etiquetas_ml WHERE pack_id = $1 LIMIT 1', [packIdOriginal]);
+                            registroExistente = r3.rows[0];
+                        }
+                        if (!registroExistente && info.chaveAcesso) {
+                            const r4 = await client.query('SELECT id FROM cached_etiquetas_ml WHERE chave_acesso = $1 LIMIT 1', [info.chaveAcesso]);
+                            registroExistente = r4.rows[0];
+                        }
+
+                        if (registroExistente) {
+                            // UPDATE: Atualiza o registro existente com os novos dados do PDF
+                            await client.query(`
+                                UPDATE cached_etiquetas_ml SET
+                                    nfe_numero = COALESCE(nfe_numero, $1),
+                                    numero_loja = COALESCE(numero_loja, $2),
+                                    pack_id = COALESCE(pack_id, $3),
+                                    chave_acesso = COALESCE(chave_acesso, $4),
+                                    skus = $5,
+                                    quantidade_total = $6,
+                                    locations = $7,
+                                    situacao = 'pendente',
+                                    last_processed_at = timestamp_virtual_expedicao()
+                                WHERE id = $8
+                            `, [
+                                info.nfeNumero,
+                                numeroLojaFinal,
+                                packIdOriginal,
+                                info.chaveAcesso,
+                                skusOriginais,
+                                info.totalQuantidade,
+                                info.locations.join(','),
+                                registroExistente.id
+                            ]);
+                            console.log(`   [DB Cache] Etiqueta (ID ${registroExistente.id} / NF ${info.nfeNumero || 'Sem NF'}) enriquecida e atualizada com sucesso.`);
+                        } else {
+                            // INSERT: Cria um novo registro caso não exista nenhuma âncora
+                            const insertQuery = `
+                                INSERT INTO cached_etiquetas_ml (
+                                    nfe_numero, numero_loja, pack_id, chave_acesso, skus,
+                                    quantidade_total, locations, pdf_pagina, pdf_arquivo_origem,
+                                    situacao, last_processed_at, created_at
+                                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, timestamp_virtual_expedicao(), timestamp_virtual_expedicao())
+                            `;
+                            await client.query(insertQuery, [
+                                info.nfeNumero,
+                                numeroLojaFinal,
+                                packIdOriginal,
+                                info.chaveAcesso,
+                                skusOriginais,
+                                info.totalQuantidade,
+                                info.locations.join(','),
+                                etiqueta.pageIndex,
+                                nomeArquivoGerado,
+                                'pendente'
+                            ]);
+                            console.log(`   [DB Cache] Etiqueta (Chave ${info.chaveAcesso}) salva como novo registro com sucesso.`);
+                        }
+                    } catch (dbError) {
+                        console.error(`   [DB Cache] ERRO ao salvar/atualizar etiqueta no banco:`, dbError.message);
                     }
                 } else {
                     console.warn(`   > AVISO: Não foi possível encontrar informações completas (ou chave de acesso) para a etiqueta ID: ${etiqueta.id}`);
@@ -914,16 +948,21 @@ async function gerarPdfOrganizado(etiquetasOrdenadas, estoqueMapa = {}) {
 
             currentY -= 15; // Move o Y para baixo para os SKUs
 
-            // 3. SKUs (com quebra de linha)
-            const skusText = `${etiqueta.skus.map(s => s.display).join(', ')}`;
-            const skuLines = wrapText(skusText, pageWidth - (padding * 2), 8);
+            // 3. SKUs (com quebra de linha inteligente)
+            const isMultipleSkus = etiqueta.skus && etiqueta.skus.length > 1;
+            const fontSizeSku = isMultipleSkus ? 7 : 9; // Reduz tamanho se houver mais de um
+            const lineHeightSku = isMultipleSkus ? 8 : 10;
+            
+            // O separador agora inclui aspas ou barra reta para separar melhor SKUs curtos na mesma linha
+            const skusText = etiqueta.skus.map(s => s.display).join('  |  ');
+            const skuLines = wrapText(skusText, pageWidth - (padding * 2), fontSizeSku);
 
             for (const line of skuLines) {
                 page.drawText(line, {
                     x: padding, y: currentY,
-                    font: font, size: 9,
+                    font: font, size: fontSizeSku,
                 });
-                currentY -= 5; // Move para a próxima linha de SKU
+                currentY -= lineHeightSku; // Move para a próxima linha de SKU com espaço seguro
             }
 
             /*const saldoEstoque = estoqueMapa[etiqueta.numeroNf] !== undefined ? estoqueMapa[etiqueta.numeroNf] : '...';
@@ -964,19 +1003,19 @@ async function gerarPdfOrganizado(etiquetasOrdenadas, estoqueMapa = {}) {
                     scale: 3
                 });
                 const qrDanfeImg = await finalPdfDoc.embedPng(qrDanfeBytes);
-                
+
                 page.drawImage(qrDanfeImg, {
                     x: currentQrX,
                     y: qrYPos,
                     width: qrCodeSize,
                     height: qrCodeSize
                 });
-                
+
                 // Mini legenda
-                page.drawText('DANFE', { 
-                    x: currentQrX + 6, 
-                    y: qrYPos + 32, 
-                    font: font, size: 5 
+                page.drawText('DANFE', {
+                    x: currentQrX + 6,
+                    y: qrYPos + 32,
+                    font: font, size: 5
                 });
             }
 
@@ -988,21 +1027,21 @@ async function gerarPdfOrganizado(etiquetasOrdenadas, estoqueMapa = {}) {
                     scale: 3
                 });
                 const qrCheckoutImg = await finalPdfDoc.embedPng(qrCheckoutBytes);
-                
+
                 page.drawImage(qrCheckoutImg, {
                     x: currentQrX + 90,
                     y: qrYPos,
                     width: qrCodeSize,
                     height: qrCodeSize
                 });
-                
+
                 // Mini legenda
-                page.drawText('Check', { 
-                    x: currentQrX + 97.5, 
-                    y: qrYPos + 32, 
-                    font: font, size: 5 
+                page.drawText('Check', {
+                    x: currentQrX + 97.5,
+                    y: qrYPos + 32,
+                    font: font, size: 5
                 });
-                
+
                 currentQrX += qrCodeSize + 15; // Move o eixo X para o próximo QR Code
             }
 
@@ -1211,7 +1250,7 @@ async function validarProdutoPorEstruturas(scannedCodes) { // 1. Parâmetro reno
                 // FALLBACK: Busca por padrão (substring) do codigo_fabrica dentro do código bipado.
                 // Isso resolve códigos de fábrica embutidos em barcodes longos (ex: "321312311122234534" contém "111222").
                 console.log(`[Validar Produto] Exact match falhou para "${code}". Tentando busca por padrão no codigo_fabrica...`);
-                
+
                 const patternQuery = `
                     SELECT DISTINCT component_sku, codigo_fabrica, LENGTH(codigo_fabrica) AS fab_len
                     FROM cached_structures
@@ -1236,7 +1275,7 @@ async function validarProdutoPorEstruturas(scannedCodes) { // 1. Parâmetro reno
                 }
 
                 console.log(`[Validar Produto] Padrão encontrado! Código de fábrica "${patternMatch.codigo_fabrica}" detectado dentro de "${code}" → SKU: ${patternMatch.component_sku}`);
-                
+
                 if (!trueComponentSkus.includes(patternMatch.component_sku)) {
                     trueComponentSkus.push(patternMatch.component_sku);
                 }
@@ -1303,7 +1342,9 @@ async function validarProdutoPorEstruturas(scannedCodes) { // 1. Parâmetro reno
                 WHERE e.situacao = 'pendente'
                   AND e.status IN ('pendente', 'sem_estoque')
                 AND (
-                    $1 = ANY(string_to_array(e.skus, ','))
+                    (e.skus NOT LIKE '[%' AND $1 = ANY(string_to_array(e.skus, ',')))
+                    OR
+                    (e.skus LIKE '[%' AND e.skus::jsonb @> ('[{"original":"' || $1 || '"}]')::jsonb)
                     OR 
                     (e.skus LIKE '%[object Object]%' AND n.product_ids_list LIKE '%' || $2::text || '%')
                 );
@@ -1391,7 +1432,9 @@ async function finalizarBipagem(scanList) {
                         WHERE e.situacao = 'pendente'
                           AND e.status IN ('pendente', 'sem_estoque')
                         AND (
-                            $1 = ANY(string_to_array(e.skus, ','))
+                            (e.skus NOT LIKE '[%' AND $1 = ANY(string_to_array(e.skus, ',')))
+                            OR
+                            (e.skus LIKE '[%' AND e.skus::jsonb @> ('[{"original":"' || $1 || '"}]')::jsonb)
                             OR 
                             (e.skus LIKE '%[object Object]%' AND n.product_ids_list LIKE '%' || $2::text || '%')
                         );
@@ -1427,12 +1470,11 @@ async function finalizarBipagem(scanList) {
                         WHERE e.situacao = 'pendente'
                           AND e.status IN ('pendente', 'sem_estoque')
                           AND (
-                              $1 = ANY(string_to_array(e.skus, ',')) -- Lógica 1 (SKU)
+                              (e.skus NOT LIKE '[%' AND $1 = ANY(string_to_array(e.skus, ',')))
+                              OR
+                              (e.skus LIKE '[%' AND e.skus::jsonb @> ('[{"original":"' || $1 || '"}]')::jsonb)
                               OR 
-                              (
-                                  e.skus LIKE '%[object Object]%' -- Lógica 2 (Fallback)
-                                  AND n.product_ids_list LIKE '%' || $2::text || '%'
-                              )
+                              (e.skus LIKE '%[object Object]%' AND n.product_ids_list LIKE '%' || $2::text || '%')
                           )
                         LIMIT 1;
                     `;
@@ -2054,6 +2096,7 @@ async function obterDadosDashboardExpedicao() {
                 COUNT(*) FILTER (WHERE status = 'checado') as checados,
                 COUNT(*) FILTER (WHERE DATE(created_at) < data_virtual_expedicao() AND status = 'pendente') as heranca,
                 COUNT(*) FILTER (WHERE DATE(created_at) = data_virtual_expedicao() AND status = 'pendente') as novos_hoje,
+                COUNT(*) FILTER (WHERE status = 'sem_nota') as sem_nota,
                 COUNT(*) FILTER (WHERE status IN ('sem_estoque')) as subtracoes,
                 COUNT(*) FILTER (WHERE status IN ('pendente', 'checado')) as saldo_real
             FROM cached_etiquetas_ml
@@ -2103,14 +2146,14 @@ async function obterDadosDashboardExpedicao() {
             try {
                 if (typeof row.skus === 'string') {
                     if (row.skus.startsWith('[')) skusObj = JSON.parse(row.skus);
-                    else skusObj = row.skus.split(',').map(s => ({ original: s.trim() }));
+                    else skusObj = [{ original: row.skus.trim() }]; // Não faz split por vírgula — SKUs podem conter vírgula
                 } else if (Array.isArray(row.skus)) {
                     skusObj = row.skus;
                 }
             } catch (e) {
                 skusObj = [{ original: row.skus }];
             }
-            
+
             row.parsedSkus = skusObj.map(s => {
                 let rawSku = (s.original || s.sku || (typeof s === 'string' ? s : '')).toString().trim();
                 uniqueSkus.add(rawSku);
@@ -2122,14 +2165,15 @@ async function obterDadosDashboardExpedicao() {
         if (uniqueSkus.size > 0) {
             const skusArray = Array.from(uniqueSkus).filter(s => s !== '');
             if (skusArray.length > 0) {
-                const prodQuery = `SELECT sku, tipo_ml FROM cached_products WHERE sku = ANY($1::text[])`;
-                const prodRes = await client.query(prodQuery, [skusArray]);
+                const skusUpper = skusArray.map(s => s.toUpperCase());
+                const prodQuery = `SELECT sku, tipo_ml FROM cached_products WHERE UPPER(sku) = ANY($1::text[]) AND bling_account = 'lucas'`;
+                const prodRes = await client.query(prodQuery, [skusUpper]);
                 const tipoMap = {};
-                prodRes.rows.forEach(p => { tipoMap[p.sku] = p.tipo_ml; });
+                prodRes.rows.forEach(p => { tipoMap[p.sku.toUpperCase()] = p.tipo_ml; });
 
                 pendenciasTratadas.forEach(row => {
                     const finalSkus = row.parsedSkus.map(item => {
-                        const tipo = tipoMap[item.raw];
+                        const tipo = tipoMap[item.raw.toUpperCase()];
                         let prefixado = item.raw;
                         if (tipo && tipo.toString().trim() !== '') {
                             prefixado = `${tipo.toString().toUpperCase()}-${item.raw}`;
@@ -2156,6 +2200,34 @@ async function obterDadosDashboardExpedicao() {
             ORDER BY itens_unitarios DESC NULLS LAST, kits_separados DESC NULLS LAST
         `;
         const prodRes = await client.query(prodQuery);
+
+        // Ordena a tabela do dashboard considerando o tipo do SKU e ordem alfabética
+        pendenciasTratadas.sort((a, b) => {
+            if (a.order_status !== b.order_status) return a.order_status - b.order_status;
+
+            const getDisplaySkus = (row) => {
+                let parsed = [];
+                try {
+                    parsed = JSON.parse(row.skus);
+                    if (Array.isArray(parsed)) return parsed.map(s => s.display || s.original || s).join(';').toUpperCase();
+                } catch (e) { }
+                return String(row.skus).toUpperCase();
+            };
+
+            const skuA = getDisplaySkus(a);
+            const skuB = getDisplaySkus(b);
+
+            const aComecaComLetra = /^[A-Z]/.test(skuA);
+            const bComecaComLetra = /^[A-Z]/.test(skuB);
+
+            if (aComecaComLetra && !bComecaComLetra) return -1;
+            if (!aComecaComLetra && bComecaComLetra) return 1;
+
+            if (skuA < skuB) return -1;
+            if (skuA > skuB) return 1;
+
+            return new Date(b.created_at) - new Date(a.created_at);
+        });
 
         return {
             stats: statsRes.rows[0],
@@ -2200,7 +2272,7 @@ async function criarColeta() {
         const resCount = await client.query(`SELECT COUNT(*) FROM expedicao_coletas WHERE DATE(created_at) = data_virtual_expedicao()`);
         const nextId = parseInt(resCount.rows[0].count) + 1;
         const ident = `Coleta ${String(nextId).padStart(2, '0')}`;
-        
+
         const res = await client.query(`INSERT INTO expedicao_coletas (identificacao, created_at) VALUES ($1, timestamp_virtual_expedicao()) RETURNING *`, [ident]);
         return res.rows[0];
     } finally { client.release(); }
@@ -2215,7 +2287,7 @@ async function deletarColeta(id) {
             JOIN expedicao_registros r ON r.palete_id = p.id
             WHERE p.coleta_id = $1
         `, [id]);
-        
+
         if (parseInt(check.rows[0].count) > 0) {
             throw new Error('Não é possível excluir esta coleta pois ela contém paletes com notas expedidas.');
         }
@@ -2245,7 +2317,7 @@ async function criarPalete(coletaId) {
         const resCount = await client.query(`SELECT COUNT(*) FROM expedicao_paletes WHERE coleta_id = $1`, [coletaId]);
         const nextId = parseInt(resCount.rows[0].count) + 1;
         const ident = `Palete ${String(nextId).padStart(2, '0')}`;
-        
+
         const res = await client.query(`INSERT INTO expedicao_paletes (coleta_id, identificacao, created_at) VALUES ($1, $2, timestamp_virtual_expedicao()) RETURNING *`, [coletaId, ident]);
         return res.rows[0];
     } finally { client.release(); }
@@ -2298,7 +2370,7 @@ async function registrarBipagemExpedicaoFinal(paleteId, nfLida, carregadoresIds)
         const mlCheck = await client.query(`SELECT id, skus FROM cached_etiquetas_ml WHERE nfe_numero = $1 LIMIT 1`, [nfLida]);
         if (mlCheck.rows.length > 0) {
             const row = mlCheck.rows[0];
-            
+
             // Nova lógica de Kit: verificar se tem volumes > 1 na cached_products
             let skuArray = [];
             if (typeof row.skus === 'string') {
@@ -2387,9 +2459,9 @@ async function identificarCodigoBipado(codigo) {
         if (mlCheck.rows.length > 0) {
             // TRAVA DE SEGURANÇA: Bloqueia imediatamente se a nota estiver cancelada
             if (mlCheck.rows[0].status === 'cancelado') {
-                return { 
-                    success: false, 
-                    message: `A Nota Fiscal ${finalNfeNumero} está CANCELADA e não pode ser expedida. Devolva o produto.` 
+                return {
+                    success: false,
+                    message: `A Nota Fiscal ${finalNfeNumero} está CANCELADA e não pode ser expedida. Devolva o produto.`
                 };
             }
 
@@ -2438,13 +2510,13 @@ async function atualizarStatusEmLote(nfList, novoStatus) {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        
+
         if (novoStatus === 'impresso') {
             throw new Error("Não é possível dar uma nota como expedida pela Bipagem em Massa. Utilize o módulo principal de Expedição.");
         }
 
         let queryParams = [novoStatus, nfList];
-        
+
         await client.query(`
             UPDATE cached_etiquetas_ml
             SET status = $1, last_processed_at = timestamp_virtual_expedicao()
@@ -2487,7 +2559,7 @@ async function atualizarGlobalDashboardEmLote(nfList, novoStatus) {
             if (estadoAnterior !== 'impresso' && novoStatus === 'impresso') {
                 const rColeta = await client.query(`SELECT id FROM expedicao_coletas WHERE DATE(created_at) = data_virtual_expedicao() LIMIT 1`);
                 let coletaId = rColeta.rows.length > 0 ? rColeta.rows[0].id : null;
-                
+
                 if (!coletaId) {
                     const insertC = await client.query(`INSERT INTO expedicao_coletas (identificacao, data_criacao, created_at) VALUES ('Coleta Forçada Sistema', data_virtual_expedicao(), timestamp_virtual_expedicao()) RETURNING id`);
                     coletaId = insertC.rows[0].id;
@@ -2550,7 +2622,7 @@ async function obterHierarquiaExpedicaoHoje() {
                     paletes: new Map()
                 });
             }
-            
+
             const coleta = coletasMap.get(row.coleta_id);
 
             if (row.palete_id) {
@@ -2587,7 +2659,7 @@ async function obterHierarquiaExpedicaoHoje() {
 async function movimentarNfHierarquia(dados) {
     const { action, nf, coletaId, targetPaleteId } = dados;
     const client = await pool.connect();
-    
+
     try {
         await client.query('BEGIN');
 
@@ -2606,11 +2678,11 @@ async function movimentarNfHierarquia(dados) {
             await client.query(`DELETE FROM expedicao_registros WHERE id = $1`, [registroId]);
             // Volta o status para pendente
             await client.query(`UPDATE cached_etiquetas_ml SET status = 'pendente' WHERE nfe_numero = $1`, [nf]);
-            
+
         } else if (action === 'mover_existente') {
             if (!targetPaleteId) throw new Error('Palete de destino não informado.');
             if (currentPaleteId == targetPaleteId) throw new Error('A nota já está neste palete.');
-            
+
             // Verifica se o palete destino pertence à coleta certa
             const pCheck = await client.query(`SELECT coleta_id FROM expedicao_paletes WHERE id = $1`, [targetPaleteId]);
             if (pCheck.rows.length === 0 || pCheck.rows[0].coleta_id != coletaId) {
@@ -2621,7 +2693,7 @@ async function movimentarNfHierarquia(dados) {
 
         } else if (action === 'mover_novo') {
             if (!coletaId) throw new Error('Coleta ID não informado para a criação do palete.');
-            
+
             // Conta os paletes atuais para o novo sequencial
             const countRes = await client.query(`SELECT COUNT(*) as total FROM expedicao_paletes WHERE coleta_id = $1`, [coletaId]);
             const nextIdx = parseInt(countRes.rows[0].total) + 1;
@@ -2733,7 +2805,7 @@ async function gerarRelatorioExcelExpedicao(dataRaw) {
     } finally { client.release(); }
 }
 
-async function gerarExcelDinamicoDataTable(linhas, tipo) {
+async function gerarExcelDinamicoDataTable(linhas, tipo, gondolaId = null) {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Dados Dinamicos');
 
@@ -2769,8 +2841,11 @@ async function gerarExcelDinamicoDataTable(linhas, tipo) {
         });
 
     } else if (tipo === 'grouped') {
+        // === CONTAGEM SKU AGRUPADA ===
+        // Agora com: localização, tipo_ml, case-insensitive, e subtração de gôndola opcional
         sheet.columns = [
             { header: 'SKU / Produto', key: 'sku', width: 60 },
+            { header: 'Localização', key: 'localizacao', width: 25 },
             { header: 'Quantidade', key: 'quantidade', width: 15 }
         ];
 
@@ -2780,26 +2855,204 @@ async function gerarExcelDinamicoDataTable(linhas, tipo) {
             cell.alignment = headerStyle.alignment;
         });
 
+        // Agrupar SKUs (case-insensitive)
         const mapSkus = {};
-        
         linhas.forEach(row => {
-            if (row.sku) {
-                // Fatiar SKUs se dentro da MESMA nota via vírgula como vem da renderização Frontend
-                const parts = row.sku.split(',');
-                parts.forEach(p => {
-                    let cleaned = p.trim();
-                    if (!cleaned) return;
-                    if (!mapSkus[cleaned]) mapSkus[cleaned] = 0;
-                    mapSkus[cleaned]++;
-                });
+            let skusParaContar = [];
+            if (row.skuArray && Array.isArray(row.skuArray)) {
+                skusParaContar = row.skuArray;
+            } else if (row.sku) {
+                // Não faz split por vírgula — SKUs podem conter vírgula no nome
+                skusParaContar = [row.sku];
             }
+            skusParaContar.forEach(p => {
+                let cleaned = typeof p === 'string' ? p.trim() : String(p).trim();
+                if (!cleaned) return;
+                const key = cleaned.toUpperCase(); // Case-insensitive
+                if (!mapSkus[key]) mapSkus[key] = { original: cleaned, count: 0 };
+                mapSkus[key].count++;
+            });
         });
 
-        let sortedSkus = Object.keys(mapSkus).sort();
-        sortedSkus.forEach(sku => {
-            const tr = sheet.addRow({ sku: sku, quantidade: mapSkus[sku] });
-            tr.getCell('quantidade').alignment = { horizontal: 'center' };
-        });
+        // Subtração de gôndola (se selecionada)
+        let gondolaSummary = [];
+        if (gondolaId) {
+            const gondClient = await pool.connect();
+            try {
+                const gondolaRes = await gondClient.query('SELECT state_json FROM relatorios_gondola WHERE id = $1', [gondolaId]);
+                if (gondolaRes.rows.length > 0) {
+                    const gondolaItens = gondolaRes.rows[0].state_json?.itens || [];
+                    if (gondolaItens.length > 0) {
+                        const componentSkus = [...new Set(gondolaItens.map(i => i.component_sku).filter(Boolean))];
+
+                        // Busca reversa: component_sku → parent SKU
+                        const mappingRes = await gondClient.query(`
+                            SELECT s.component_sku, s.parent_product_bling_id, p.sku AS parent_sku
+                            FROM cached_structures s
+                            JOIN cached_products p ON s.parent_product_bling_id = p.bling_id AND p.bling_account = 'lucas'
+                            WHERE s.component_sku = ANY($1::text[])
+                              AND s.parent_product_bling_account = 'lucas'
+                        `, [componentSkus]);
+
+                        // Filtrar pais que existem no mapSkus
+                        const skusNoMapa = new Set(Object.keys(mapSkus));
+                        const parentBlingIdToSku = new Map();
+                        mappingRes.rows.forEach(row => {
+                            const parentSkuUpper = row.parent_sku.toUpperCase();
+                            if (skusNoMapa.has(parentSkuUpper)) {
+                                parentBlingIdToSku.set(row.parent_product_bling_id, parentSkuUpper);
+                            }
+                        });
+
+                        if (parentBlingIdToSku.size > 0) {
+                            const parentBlingIds = [...parentBlingIdToSku.keys()];
+                            const allStructRes = await gondClient.query(`
+                                SELECT parent_product_bling_id, component_sku
+                                FROM cached_structures
+                                WHERE parent_product_bling_id = ANY($1::bigint[])
+                                  AND parent_product_bling_account = 'lucas'
+                            `, [parentBlingIds]);
+
+                            const parentAllStructures = new Map();
+                            allStructRes.rows.forEach(row => {
+                                if (!parentAllStructures.has(row.parent_product_bling_id)) {
+                                    parentAllStructures.set(row.parent_product_bling_id, new Set());
+                                }
+                                parentAllStructures.get(row.parent_product_bling_id).add(row.component_sku);
+                            });
+
+                            const gondolaQtdMap = new Map();
+                            gondolaItens.forEach(item => {
+                                if (!item.component_sku) return;
+                                gondolaQtdMap.set(item.component_sku, (gondolaQtdMap.get(item.component_sku) || 0) + (item.quantidade || 0));
+                            });
+
+                            const parentSubtractionMap = new Map();
+                            for (const [parentBlingId, structureSkus] of parentAllStructures.entries()) {
+                                const parentSkuUpper = parentBlingIdToSku.get(parentBlingId);
+                                if (!parentSkuUpper) continue;
+                                let maxQtd = 0;
+                                for (const compSku of structureSkus) {
+                                    maxQtd = Math.max(maxQtd, gondolaQtdMap.get(compSku) || 0);
+                                }
+                                if (maxQtd > 0) {
+                                    parentSubtractionMap.set(parentSkuUpper, (parentSubtractionMap.get(parentSkuUpper) || 0) + maxQtd);
+                                }
+                            }
+
+                            // Aplicar subtração efetiva
+                            for (const [skuUpper, qtdGondola] of parentSubtractionMap.entries()) {
+                                if (mapSkus[skuUpper]) {
+                                    const qtdEfetiva = Math.min(qtdGondola, mapSkus[skuUpper].count);
+                                    mapSkus[skuUpper].count -= qtdGondola;
+                                    if (qtdEfetiva > 0) {
+                                        gondolaSummary.push({ sku: skuUpper, quantidade_subtraida: qtdEfetiva });
+                                    }
+                                }
+                            }
+
+                            // Remover itens zerados ou negativos
+                            for (const key of Object.keys(mapSkus)) {
+                                if (mapSkus[key].count <= 0) delete mapSkus[key];
+                            }
+                        }
+                    }
+                }
+            } finally {
+                gondClient.release();
+            }
+        }
+
+        // Buscar localização e tipo_ml para cada SKU, montar array intermediário
+        const client = await pool.connect();
+        try {
+            const itensMontados = []; // { finalSkuName, localizacao, count }
+            for (const skuUpper of Object.keys(mapSkus)) {
+                const { count } = mapSkus[skuUpper];
+
+                // Busca localização (mesma lógica do faltantes)
+                let localizacao = 'Sem Localização';
+                const locRes = await client.query(`
+                    SELECT string_agg(DISTINCT component_location, ', ') as locs FROM (
+                        SELECT component_location FROM cached_structures WHERE UPPER(component_sku) = $1 AND component_location IS NOT NULL AND component_location != ''
+                        UNION
+                        SELECT s.component_location 
+                        FROM cached_products p 
+                        JOIN cached_structures s ON p.bling_id = s.parent_product_bling_id 
+                        WHERE UPPER(p.sku) = $1 AND s.component_location IS NOT NULL AND s.component_location != ''
+                    ) sub
+                `, [skuUpper]);
+                if (locRes.rows.length > 0 && locRes.rows[0].locs) {
+                    localizacao = locRes.rows[0].locs;
+                }
+
+                // Busca tipo_ml
+                const tipoRes = await client.query(`
+                    SELECT tipo_ml FROM cached_products WHERE UPPER(sku) = $1 LIMIT 1
+                `, [skuUpper]);
+
+                let finalSkuName = skuUpper;
+                if (tipoRes.rows.length > 0 && tipoRes.rows[0].tipo_ml) {
+                    finalSkuName = `${tipoRes.rows[0].tipo_ml}-${skuUpper}`;
+                }
+
+                itensMontados.push({ sku: finalSkuName, localizacao, quantidade: count });
+            }
+
+            // Ordena alfanumericamente pelo nome final do SKU (inclui prefixo tipo_ml)
+            itensMontados.sort((a, b) => a.sku.localeCompare(b.sku, 'pt-BR', { numeric: true, sensitivity: 'base' }));
+
+            // Insere no Excel já ordenado
+            itensMontados.forEach(item => {
+                const tr = sheet.addRow(item);
+                tr.getCell('localizacao').alignment = { horizontal: 'center' };
+                tr.getCell('quantidade').alignment = { horizontal: 'center' };
+            });
+        } finally {
+            client.release();
+        }
+
+        // Aba extra com dados da gôndola subtraídos (com tipo_ml e ordenação)
+        if (gondolaSummary.length > 0) {
+            const wsGondola = workbook.addWorksheet('Itens Gôndola (Subtraídos)');
+            wsGondola.columns = [
+                { header: 'SKU do Produto', key: 'sku', width: 40 },
+                { header: 'Qtd Subtraída', key: 'quantidade_subtraida', width: 20, style: { numFmt: '0' } }
+            ];
+            wsGondola.getRow(1).eachCell(cell => {
+                cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2E7D32' } };
+                cell.alignment = { horizontal: 'center' };
+            });
+            // Adiciona tipo_ml e ordena
+            const gondClient2 = await pool.connect();
+            try {
+                for (const item of gondolaSummary) {
+                    const tipoRes = await gondClient2.query(
+                        `SELECT tipo_ml FROM cached_products WHERE UPPER(sku) = $1 LIMIT 1`,
+                        [item.sku.toUpperCase()]
+                    );
+                    if (tipoRes.rows.length > 0 && tipoRes.rows[0].tipo_ml) {
+                        item.skuDisplay = `${tipoRes.rows[0].tipo_ml}-${item.sku}`;
+                    } else {
+                        item.skuDisplay = item.sku;
+                    }
+                }
+            } finally {
+                gondClient2.release();
+            }
+            gondolaSummary.sort((a, b) => a.skuDisplay.localeCompare(b.skuDisplay, 'pt-BR', { numeric: true, sensitivity: 'base' }));
+            gondolaSummary.forEach(item => {
+                const row = wsGondola.addRow({ sku: item.skuDisplay, quantidade_subtraida: item.quantidade_subtraida });
+                row.getCell('quantidade_subtraida').alignment = { horizontal: 'center' };
+            });
+            const totalGondola = gondolaSummary.reduce((sum, i) => sum + (i.quantidade_subtraida || 0), 0);
+            wsGondola.addRow({});
+            const totalRow = wsGondola.addRow({ sku: 'TOTAL SUBTRAÍDO', quantidade_subtraida: totalGondola });
+            totalRow.font = { bold: true };
+            totalRow.getCell('sku').alignment = { horizontal: 'right' };
+            totalRow.getCell('quantidade_subtraida').alignment = { horizontal: 'center' };
+        }
     } else if (tipo === 'grouped-remaining') {
         sheet.columns = [
             { header: 'SKU / Produto', key: 'sku', width: 60 },
@@ -2814,17 +3067,22 @@ async function gerarExcelDinamicoDataTable(linhas, tipo) {
         });
 
         const mapSkus = {};
-        
+
         linhas.forEach(row => {
-            if (row.sku) {
-                const parts = row.sku.split(',');
-                parts.forEach(p => {
-                    let cleaned = p.trim();
-                    if (!cleaned) return;
-                    if (!mapSkus[cleaned]) mapSkus[cleaned] = 0;
-                    mapSkus[cleaned]++;
-                });
+            let skusParaContar = [];
+            if (row.skuArray && Array.isArray(row.skuArray)) {
+                skusParaContar = row.skuArray;
+            } else if (row.sku) {
+                // Não faz split por vírgula — SKUs podem conter vírgula no nome
+                skusParaContar = [row.sku];
             }
+
+            skusParaContar.forEach(p => {
+                let cleaned = typeof p === 'string' ? p.trim() : String(p).trim();
+                if (!cleaned) return;
+                if (!mapSkus[cleaned]) mapSkus[cleaned] = 0;
+                mapSkus[cleaned]++;
+            });
         });
 
         const client = await pool.connect();
@@ -2894,10 +3152,10 @@ async function pausarNotasViradaDoDia() {
         `;
         const res = await client.query(query);
         console.log(`[Virada de Dia] ${res.rowCount} Notas Fiscais pendentes foram pausadas (sem_estoque) manualmente ou no avançar do dia.`);
-        
+
         // Reset Coletas (Fecha as ativas do dia anterior)
         await client.query(`UPDATE expedicao_coletas SET status = 'concluida' WHERE status = 'ativa'`);
-        
+
     } catch (e) {
         console.error('[Virada de Dia] Erro ao tentar pausar Notas:', e);
     } finally {
@@ -2910,11 +3168,11 @@ async function obterDataVirtualAtiva() {
     try {
         const res = await client.query('SELECT data_virtual_expedicao()::TEXT as dt');
         const dtStr = res.rows[0].dt; // Retorna string pura 'YYYY-MM-DD'
-        
+
         // Formatar para o frontend BR
         const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(dtStr);
-        if(match) {
-             return `${match[3]}/${match[2]}/${match[1]}`;
+        if (match) {
+            return `${match[3]}/${match[2]}/${match[1]}`;
         }
         return dtStr;
     } finally {
@@ -2926,29 +3184,29 @@ async function avancarDiaVirtual() {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        
+
         // 1. Resgata qual é a próxima data da data_virtual_expedicao() atual
         const resStr = await client.query(`SELECT (data_virtual_expedicao() + INTERVAL '1 day')::DATE as next_date`);
         const nextDate = resStr.rows[0].next_date; // Formato string YYYY-MM-DD ou Date
-        
+
         let dateStr = nextDate instanceof Date ? nextDate.toISOString().split('T')[0] : nextDate;
-        if(typeof dateStr === 'string' && dateStr.includes('T')) dateStr = dateStr.split('T')[0];
-        
+        if (typeof dateStr === 'string' && dateStr.includes('T')) dateStr = dateStr.split('T')[0];
+
         // 2. Roda a "Virada do Dia" ANTES de mudar a data
         await pausarNotasViradaDoDia();
-        
+
         // 3. Atualiza a tabela com a nova data real/futura
         await client.query(`
             INSERT INTO configuracoes_expedicao (chave, valor)
             VALUES ('data_virtual', $1)
             ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = timestamp_virtual_expedicao()
         `, [dateStr]);
-        
+
         await client.query('COMMIT');
-        
+
         // Retorna formatada
         const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr);
-        if(match) return `${match[3]}/${match[2]}/${match[1]}`;
+        if (match) return `${match[3]}/${match[2]}/${match[1]}`;
         return dateStr;
     } catch (e) {
         await client.query('ROLLBACK');
@@ -2964,82 +3222,519 @@ async function gerarPdfPendentes(nfList) {
 
     const cepsMap = await getCepsOndaMap();
     const client = await pool.connect();
-    let orderedNfList = [];
-    
+
     try {
+        // ============================================================
+        // 1. BUSCAR DADOS ENRIQUECIDOS DE TODAS AS NFs
+        // ============================================================
         const query = `
-            SELECT m.nfe_numero, m.skus, cpv.cep
+            SELECT m.nfe_numero, m.skus, m.etiqueta_zpl,
+                   COALESCE(m.chave_acesso, nf.chave_acesso) AS chave_acesso,
+                   m.quantidade_total, m.numero_loja, m.pack_id,
+                   m.pdf_arquivo_origem, m.pdf_pagina,
+                   cpv.cep, cpv.numero AS pedido_interno
             FROM cached_etiquetas_ml m
             LEFT JOIN cached_pedido_venda cpv ON cpv.nfe_parent_numero = m.nfe_numero
+            LEFT JOIN cached_nfe nf ON nf.nfe_numero = m.nfe_numero
             WHERE m.nfe_numero = ANY($1)
         `;
         const res = await client.query(query, [nfList]);
-        
-        const etiquetasFake = res.rows.map(row => {
+
+        if (res.rows.length === 0) throw new Error('Nenhuma etiqueta encontrada para os identificadores fornecidos.');
+
+        // ============================================================
+        // 2. ENRIQUECER SKUs COM tipo_ml (OBRIGATÓRIO)
+        // ============================================================
+        const uniqueSkus = new Set();
+        const rowsEnriquecidos = res.rows.map(row => {
             let parsedSkus = [];
             try {
                 if (typeof row.skus === 'string') {
                     if (row.skus.startsWith('[')) {
-                        parsedSkus = JSON.parse(row.skus).map(s => ({ display: s.display || s.original || s }));
+                        parsedSkus = JSON.parse(row.skus).map(s => {
+                            const raw = (s.original || s.display || s).toString().trim();
+                            uniqueSkus.add(raw);
+                            return { raw, display: s.display || raw, original: raw };
+                        });
                     } else {
-                        parsedSkus = row.skus.split(',').map(s => ({ display: s.trim() }));
+                        parsedSkus = row.skus.split(',').map(s => {
+                            const raw = s.trim();
+                            uniqueSkus.add(raw);
+                            return { raw, display: raw, original: raw };
+                        });
                     }
-                } else if (Array.isArray(row.skus)) {
-                    parsedSkus = row.skus.map(s => ({ display: s.display || s.original || s }));
                 }
-            } catch(e) { parsedSkus = [{ display: row.skus }]; }
+            } catch (e) {
+                const raw = String(row.skus || '').trim();
+                if (raw) uniqueSkus.add(raw);
+                parsedSkus = [{ raw, display: raw, original: raw }];
+            }
+            row._parsedSkus = parsedSkus;
+            return row;
+        });
 
+        // Buscar tipo_ml de cached_products
+        const tipoMap = {};
+        if (uniqueSkus.size > 0) {
+            const skusArray = Array.from(uniqueSkus).filter(s => s !== '');
+            if (skusArray.length > 0) {
+                const skusUpper = skusArray.map(s => s.toUpperCase());
+                const prodRes = await client.query(
+                    `SELECT sku, tipo_ml FROM cached_products WHERE UPPER(sku) = ANY($1::text[]) AND bling_account = 'lucas'`,
+                    [skusUpper]
+                );
+                prodRes.rows.forEach(p => { tipoMap[p.sku.toUpperCase()] = p.tipo_ml; });
+            }
+        }
+
+        // Aplicar prefixo de tipo aos SKUs
+        rowsEnriquecidos.forEach(row => {
+            row._parsedSkus = row._parsedSkus.map(item => {
+                const tipo = tipoMap[item.raw.toUpperCase()];
+                const prefixado = (tipo && tipo.toString().trim() !== '')
+                    ? `${tipo.toString().toUpperCase()}-${item.raw}`
+                    : item.raw;
+                return { display: prefixado, original: item.raw };
+            });
+        });
+
+        // ============================================================
+        // 3. CLASSIFICAR CADA NF (ZPL vs PDF) E MONTAR ETIQUETAS
+        // ============================================================
+        const etiquetasFake = rowsEnriquecidos.map(row => {
+            const temPdfValido = row.pdf_arquivo_origem
+                && row.pdf_arquivo_origem !== 'desconhecido'
+                && row.pdf_pagina !== null
+                && row.pdf_pagina !== undefined;
+
+            const temZpl = !!row.etiqueta_zpl && !temPdfValido;
+
+            // Calcular onda pelo CEP
             const cepStr = String(row.cep || '').replace(/\D/g, '').padStart(8, '0');
             let cepCabeca = cepStr.startsWith('0') ? cepStr.substring(1, 5) : cepStr.substring(0, 5);
-            const onda = cepsMap.get(cepCabeca);
+            const ondaCor = cepsMap.get(cepCabeca);
+
+            // Buscar chave_acesso: prioriza cached_nfe, fallback para cached_etiquetas_ml
+            let chaveAcesso = row.chave_acesso || null;
 
             return {
                 nfeNumero: row.nfe_numero,
-                skus: parsedSkus,
-                onda: onda ? { prioridade: getCorPrioridade(onda), cor: onda } : null
+                skus: row._parsedSkus,
+                onda: ondaCor ? { prioridade: getCorPrioridade(ondaCor), cor: ondaCor } : null,
+                // Dados extras para montagem da página
+                _tipo: temZpl ? 'zpl' : 'pdf',
+                _etiquetaZpl: row.etiqueta_zpl,
+                _pdfArquivoOrigem: row.pdf_arquivo_origem,
+                _pdfPagina: row.pdf_pagina,
+                _chaveAcesso: chaveAcesso,
+                _quantidadeTotal: row.quantidade_total || row._parsedSkus.length,
+                _pedidoInterno: row.pedido_interno || null,
+                _numeroLoja: row.numero_loja || row.pack_id || null
             };
         });
 
-        // Aplica a mesmíssima fórmula do processo inicial de upload de NFs
+        // ============================================================
+        // 4. ORDENAR TUDO JUNTO (mesma lógica do ordenador)
+        // ============================================================
         const etiquetasOrdenadas = ordenarEtiquetas(etiquetasFake);
-        orderedNfList = etiquetasOrdenadas.map(e => e.nfeNumero);
 
-        // Fallback de segurança: insere eventuais NFs não retornadas na DB pro final
-        const dbFoundNfs = new Set(orderedNfList);
-        for (const orig of nfList) {
-            if (!dbFoundNfs.has(orig)) orderedNfList.push(orig);
+        // Atribuir sequência por SKU
+        atribuirSequenciaPorSku(etiquetasOrdenadas);
+
+        // ============================================================
+        // 5. GERAR PDF FINAL UNIFICADO
+        // ============================================================
+        const mergedPdf = await PDFDocument.create();
+        const font = await mergedPdf.embedFont(StandardFonts.Helvetica);
+        const boldFont = await mergedPdf.embedFont(StandardFonts.HelveticaBold);
+        let foundCount = 0;
+
+        for (let i = 0; i < etiquetasOrdenadas.length; i++) {
+            const etiqueta = etiquetasOrdenadas[i];
+            const pageNum = i + 1;
+
+            try {
+                if (etiqueta._tipo === 'pdf') {
+                    // === ETIQUETA MANUAL (PDF) — busca do disco ===
+                    const resultado = await buscarEtiquetaPorNF(etiqueta.nfeNumero);
+                    if (resultado.success && resultado.pdfBuffer) {
+                        const individualPdf = await PDFDocument.load(resultado.pdfBuffer);
+                        const [copiedPage] = await mergedPdf.copyPages(individualPdf, [0]);
+                        mergedPdf.addPage(copiedPage);
+                        foundCount++;
+                    } else {
+                        console.warn(`[Impressão] NF ${etiqueta.nfeNumero}: PDF não encontrado no disco. Pulando.`);
+                    }
+
+                } else if (etiqueta._tipo === 'zpl') {
+                    // === ETIQUETA HUB (ZPL) — montagem em tempo real ===
+                    await montarPaginaZpl(mergedPdf, etiqueta, font, boldFont, pageNum);
+                    foundCount++;
+                }
+            } catch (e) {
+                console.error(`[Impressão] Erro ao processar NF ${etiqueta.nfeNumero}:`, e.message);
+            }
         }
 
-    } catch (err) {
-        console.error('Erro na ordenação de impressão em lote, prosseguindo com a ordem original:', err);
-        orderedNfList = nfList;
+        if (foundCount === 0) {
+            throw new Error('Nenhuma etiqueta física foi encontrada para os identificadores fornecidos.');
+        }
+
+        const pdfBytes = await mergedPdf.save();
+        return Buffer.from(pdfBytes);
+
     } finally {
         client.release();
     }
+}
 
-    const mergedPdf = await PDFDocument.create();
-    let foundCount = 0;
-    
-    for (const nf of orderedNfList) {
-        try {
-            const resultado = await buscarEtiquetaPorNF(nf);
-            if (resultado.success && resultado.pdfBuffer) {
-                const individualPdf = await PDFDocument.load(resultado.pdfBuffer);
-                const [copiedPage] = await mergedPdf.copyPages(individualPdf, [0]);
-                mergedPdf.addPage(copiedPage);
-                foundCount++;
+/**
+ * Monta uma página PDF para uma etiqueta do tipo ZPL (Hub).
+ * Layout idêntico ao gerarPdfOrganizado: canhoto no topo + etiqueta embaixo.
+ * A ZPL é parseada para extrair informações de envio que são renderizadas como texto.
+ */
+async function montarPaginaZpl(pdfDoc, etiqueta, font, boldFont, pageNum) {
+    const cmToPoints = (cm) => cm * 28.3465;
+    const pageWidth = cmToPoints(10);
+    const pageHeight = cmToPoints(15);
+    const canhotoHeight = cmToPoints(2.5);
+    const etiquetaHeight = pageHeight - canhotoHeight;
+
+    const page = pdfDoc.addPage([pageWidth, pageHeight]);
+    const padding = 8;
+
+    // --- CANHOTO (mesmo layout do gerarPdfOrganizado) ---
+    page.drawRectangle({
+        x: 0, y: etiquetaHeight,
+        width: pageWidth, height: canhotoHeight,
+        color: rgb(1, 1, 1),
+    });
+
+    let currentY = pageHeight - 15;
+
+    // Número da página
+    const pageNumText = `Pág: ${pageNum}`;
+    const pageNumTextWidth = boldFont.widthOfTextAtSize(pageNumText, 8);
+    page.drawText(pageNumText, {
+        x: pageWidth - pageNumTextWidth - 5,
+        y: pageHeight - 12,
+        font: boldFont, size: 8,
+        color: rgb(0.5, 0.5, 0.5)
+    });
+
+    // Quantidade
+    const qtdText = `Qtd: ${etiqueta._quantidadeTotal || '-'}`;
+    page.drawText(qtdText, {
+        x: padding, y: currentY,
+        font: boldFont, size: 9.5,
+    });
+
+    // Checkout (número do pedido interno no Bling)
+    if (etiqueta._pedidoInterno) {
+        page.drawText(`Checkout: ${etiqueta._pedidoInterno}`, {
+            x: padding + 120, y: currentY,
+            font: boldFont, size: 9.5,
+        });
+    }
+
+    currentY -= 15;
+
+    // SKUs (com tipo_ml prefixado — OBRIGATÓRIO) e quebra inteligente para múltiplos
+    const wrapText = (text, maxWidth, fontSize) => {
+        const words = text.split(' ');
+        let line = '';
+        const lines = [];
+        const textWidth = (str) => font.widthOfTextAtSize(str, fontSize);
+        for (const word of words) {
+            const testLine = line + (line ? ' ' : '') + word;
+            if (textWidth(testLine) > maxWidth) {
+                lines.push(line);
+                line = word;
+            } else {
+                line = testLine;
             }
-        } catch (e) { 
-            console.error(`Erro ao buscar etiqueta da NF ${nf}:`, e.message); 
+        }
+        lines.push(line);
+        return lines;
+    };
+
+    const isMultipleSkus = etiqueta.skus && etiqueta.skus.length > 1;
+    const fontSizeSku = isMultipleSkus ? 7 : 9; // Reduz tamanho se houver mais de um
+    const lineHeightSku = isMultipleSkus ? 8 : 10;
+    
+    const skusText = etiqueta.skus.map(s => s.display).join('  |  ');
+    const skuLines = wrapText(skusText, pageWidth - (padding * 2), fontSizeSku);
+    
+    for (const line of skuLines) {
+        page.drawText(line, {
+            x: padding, y: currentY,
+            font: font, size: fontSizeSku,
+        });
+        currentY -= lineHeightSku; // Espaçamento seguro entre as quebras
+    }
+
+    currentY -= 8;
+
+    // Onda
+    if (etiqueta.onda && etiqueta.onda.cor !== '-') {
+        page.drawText(`Onda: ${etiqueta.onda.cor.toUpperCase()}`, {
+            x: padding + 120, y: currentY,
+            font: boldFont, size: 9
+        });
+    }
+
+    // Sequência
+    const seqText = `Seq: ${etiqueta.sequencia || '-'}`;
+    page.drawText(seqText, {
+        x: padding, y: currentY,
+        font: boldFont, size: 9,
+    });
+
+    // QR Codes
+    const qrCodeSize = 30;
+    const qrYPos = currentY - 28;
+    let currentQrX = padding + 50;
+
+    // QR DANFE (chave de acesso)
+    if (etiqueta._chaveAcesso) {
+        try {
+            const qrDanfeBytes = await bwip.toBuffer({
+                bcid: 'qrcode',
+                text: etiqueta._chaveAcesso,
+                scale: 3
+            });
+            const qrDanfeImg = await pdfDoc.embedPng(qrDanfeBytes);
+            page.drawImage(qrDanfeImg, {
+                x: currentQrX, y: qrYPos,
+                width: qrCodeSize, height: qrCodeSize
+            });
+            page.drawText('DANFE', {
+                x: currentQrX + 6, y: qrYPos + 32,
+                font: font, size: 5
+            });
+        } catch (qrErr) {
+            console.warn(`[ZPL Canhoto] Erro ao gerar QR DANFE: ${qrErr.message}`);
         }
     }
-    
-    if (foundCount === 0) {
-        throw new Error('Nenhuma etiqueta física foi encontrada no diretório para os identificadores fornecidos.');
+
+    // QR Checkout
+    if (etiqueta._pedidoInterno) {
+        try {
+            const qrCheckoutBytes = await bwip.toBuffer({
+                bcid: 'qrcode',
+                text: String(etiqueta._pedidoInterno),
+                scale: 3
+            });
+            const qrCheckoutImg = await pdfDoc.embedPng(qrCheckoutBytes);
+            page.drawImage(qrCheckoutImg, {
+                x: currentQrX + 90, y: qrYPos,
+                width: qrCodeSize, height: qrCodeSize
+            });
+            page.drawText('Check', {
+                x: currentQrX + 97.5, y: qrYPos + 32,
+                font: font, size: 5
+            });
+        } catch (qrErr) {
+            console.warn(`[ZPL Canhoto] Erro ao gerar QR Checkout: ${qrErr.message}`);
+        }
     }
-    
-    const pdfBytes = await mergedPdf.save();
-    return Buffer.from(pdfBytes);
+
+    // --- CORPO DA ETIQUETA (Integração Labelary) ---
+    const zplContent = etiqueta._etiquetaZpl || '';
+    let usouFallback = false;
+
+    if (zplContent) {
+        let labelImageBytes = null;
+        let success = false;
+
+        for (let attempt = 1; attempt <= 5; attempt++) {
+            try {
+                // Chamada à API pública Labelary (4 polegadas x 6 polegadas, 8 dpmm = 203 dpi)
+                const response = await axios.post('http://api.labelary.com/v1/printers/8dpmm/labels/4x6/0/', zplContent, {
+                    headers: { 'Accept': 'image/png' },
+                    responseType: 'arraybuffer',
+                    timeout: 300 // 0,3 segundos de limite por tentativa
+                });
+
+                labelImageBytes = response.data;
+                success = true;
+                break; // Sai do loop se a requisição for bem sucedida
+            } catch (apiError) {
+                console.warn(`[Impressão ZPL] Falha na API Labelary para NF ${etiqueta.nfeNumero} (Tentativa ${attempt}/5). Erro: ${apiError.message}`);
+                if (attempt < 5) {
+                    await new Promise(res => setTimeout(res, 100)); // Pausa padronizada de 0,1 segundos
+                }
+            }
+        }
+
+        if (success && labelImageBytes) {
+            try {
+                const labelImage = await pdfDoc.embedPng(labelImageBytes);
+
+                // Desenhar a imagem PNG da etiqueta ocupando perfeitamente o espaço disponível
+                page.drawImage(labelImage, {
+                    x: 0,
+                    y: 0,
+                    width: pageWidth,
+                    height: etiquetaHeight
+                });
+            } catch (embedError) {
+                console.warn(`[Impressão ZPL] Falha ao renderizar a imagem PNG da Labelary para NF ${etiqueta.nfeNumero}. Usando fallback de texto. Erro:`, embedError.message);
+                usouFallback = true;
+            }
+        } else {
+            usouFallback = true;
+        }
+    } else {
+        usouFallback = true;
+    }
+
+    // --- FALLBACK (Caso a API caia ou não exista ZPL válido) ---
+    if (usouFallback) {
+        const infoEnvio = extrairInfoDaZpl(zplContent);
+
+        // Fundo cinza claro para a seção da etiqueta
+        page.drawRectangle({
+            x: 0, y: 0,
+            width: pageWidth, height: etiquetaHeight,
+            color: rgb(0.97, 0.97, 0.97),
+        });
+
+        // Borda separadora
+        page.drawLine({
+            start: { x: 0, y: etiquetaHeight },
+            end: { x: pageWidth, y: etiquetaHeight },
+            thickness: 1.5,
+            color: rgb(0, 0, 0),
+        });
+
+        let bodyY = etiquetaHeight - 20;
+        const bodyPadding = 12;
+        const lineHeight = 13;
+
+        // Título
+        page.drawText('ETIQUETA DE ENVIO (Hub) - FALLBACK', {
+            x: bodyPadding, y: bodyY,
+            font: boldFont, size: 10,
+            color: rgb(0.2, 0.2, 0.2)
+        });
+        bodyY -= lineHeight + 5;
+
+        // Linha separadora
+        page.drawLine({
+            start: { x: bodyPadding, y: bodyY + 5 },
+            end: { x: pageWidth - bodyPadding, y: bodyY + 5 },
+            thickness: 0.5,
+            color: rgb(0.7, 0.7, 0.7),
+        });
+
+        bodyY -= 5;
+
+        // Renderizar campos extraídos da ZPL
+        const campos = [
+            { label: 'Destinatário', valor: infoEnvio.destinatario },
+            { label: 'Endereço', valor: infoEnvio.endereco },
+            { label: 'Cidade/UF', valor: infoEnvio.cidadeUf },
+            { label: 'CEP', valor: infoEnvio.cep },
+            { label: 'Despacho', valor: infoEnvio.despacho },
+            { label: 'Transp.', valor: infoEnvio.transportadora },
+            { label: 'NF', valor: etiqueta.nfeNumero || '-' },
+            { label: 'Loja', valor: etiqueta._numeroLoja || '-' },
+        ].filter(c => c.valor);
+
+        for (const campo of campos) {
+            if (bodyY < 20) break; // Segurança
+            page.drawText(`${campo.label}: `, {
+                x: bodyPadding, y: bodyY,
+                font: boldFont, size: 8,
+                color: rgb(0.3, 0.3, 0.3)
+            });
+            const labelWidth = boldFont.widthOfTextAtSize(`${campo.label}: `, 8);
+
+            const valorLines = wrapText(campo.valor, pageWidth - bodyPadding * 2 - labelWidth, 8);
+            for (let li = 0; li < valorLines.length; li++) {
+                page.drawText(valorLines[li], {
+                    x: bodyPadding + (li === 0 ? labelWidth : 0),
+                    y: bodyY,
+                    font: font, size: 8,
+                    color: rgb(0.1, 0.1, 0.1)
+                });
+                if (li < valorLines.length - 1) bodyY -= lineHeight * 0.8;
+            }
+            bodyY -= lineHeight;
+        }
+
+        // Código de rastreio
+        if (infoEnvio.rastreio) {
+            bodyY -= 5;
+            page.drawText('Rastreio:', {
+                x: bodyPadding, y: bodyY,
+                font: boldFont, size: 9,
+                color: rgb(0, 0, 0)
+            });
+            bodyY -= lineHeight;
+            page.drawText(infoEnvio.rastreio, {
+                x: bodyPadding, y: bodyY,
+                font: boldFont, size: 11,
+                color: rgb(0, 0, 0)
+            });
+        }
+    }
+
+    console.log(`[Impressão ZPL] Página montada para NF ${etiqueta.nfeNumero} | SKUs: ${skusText}`);
+}
+
+/**
+ * Extrai informações legíveis do conteúdo ZPL.
+ * Parseia os campos ^FD...^FS para extrair dados de envio.
+ */
+function extrairInfoDaZpl(zplContent) {
+    const info = {};
+    if (!zplContent) return info;
+
+    // Extrair todos os campos ^FD...^FS
+    const fieldMatches = zplContent.match(/\^FD([^\^]*)\^FS/gi) || [];
+    const campos = fieldMatches.map(m => {
+        const match = m.match(/\^FD(.*?)\^FS/i);
+        return match ? match[1].trim() : '';
+    }).filter(Boolean);
+
+    // Heurística para identificar campos pelo conteúdo
+    for (const campo of campos) {
+        // CEP (8 dígitos)
+        if (/^\d{5}-?\d{3}$/.test(campo) || /^\d{8}$/.test(campo)) {
+            info.cep = campo;
+        }
+        // Despacho
+        else if (/despachar/i.test(campo)) {
+            info.despacho = campo.replace(/despachar:?\s*/i, '').trim();
+        }
+        // Rastreio (padrão ML)
+        else if (/^[A-Z]{2}\d{9}[A-Z]{2}$/.test(campo)) {
+            info.rastreio = campo;
+        }
+        // UF (2 letras isoladas no final de algo)
+        else if (/,\s*[A-Z]{2}$/.test(campo)) {
+            info.cidadeUf = campo;
+        }
+    }
+
+    // Tentar extrair destinatário (geralmente o primeiro campo alfanumérico longo)
+    for (const campo of campos) {
+        if (campo.length > 5 && /^[A-Za-zÀ-ÿ\s]+$/.test(campo) && !info.destinatario) {
+            info.destinatario = campo;
+        }
+    }
+
+    // Tentar extrair endereço (campo com número e texto)
+    for (const campo of campos) {
+        if (campo.length > 10 && /\d/.test(campo) && /[a-zA-Z]/.test(campo)
+            && campo !== info.cep && campo !== info.rastreio && !info.endereco) {
+            info.endereco = campo;
+        }
+    }
+
+    return info;
 }
 
 module.exports = {

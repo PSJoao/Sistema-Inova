@@ -8,7 +8,7 @@ const monitoringRoutes = require('./routes/monitoringRoutes');
 const madeiraRoutes = require('./routes/madeiraRoutes');
 const viaVarejoRoutes = require('./routes/viaVarejoRoutes'); // Importar as rotas do Via Varejo
 const relacaoRoutes = require('./routes/relacaoRoutes');
-const rastreioRoutes = require('./routes/rastreioRoutes'); 
+const rastreioRoutes = require('./routes/rastreioRoutes');
 const pedidosRoutes = require('./routes/pedidosRoutes');
 const handlebarsHelpers = require('./helpers/handlebarsHelpers');
 const authRoutes = require('./routes/authRoutes');
@@ -37,10 +37,11 @@ const fs = require('fs').promises;
 const PDF_STORAGE_DIR_CLEANUP = path.join(__dirname, 'pdfEtiquetas');
 const MAX_FILE_AGE_DAYS = 30;
 const favicon = require('serve-favicon');
-const cron = require('node-cron'); 
+const cron = require('node-cron');
 const { exec } = require('child_process');
 const hubRoutes = require('./hub/routes/hubRoutes');
 const hubMlService = require('./hub/services/hubMercadoLivreService');
+const HubPedidosService = require('./services/HubPedidosService');
 
 const app = express();
 const PORT = 3000;
@@ -51,8 +52,8 @@ app.use(bodyParser.json({ limit: '500mb' }));
 
 // Configuração do Handlebars com helpers personalizados
 app.engine('handlebars', exphbs.engine({
-  defaultLayout: 'main',
-  helpers: handlebarsHelpers
+    defaultLayout: 'main',
+    helpers: handlebarsHelpers
 }));
 app.set('view engine', 'handlebars');
 app.set('views', __dirname + '/views');
@@ -69,33 +70,33 @@ app.use(authController.sessionMiddleware);
 app.use(flash());
 
 app.use((req, res, next) => {
-  res.locals.success_msg = req.flash('success'); // Para mensagens de sucesso
-  res.locals.error_msg = req.flash('error');     // Para mensagens de erro
-  res.locals.info_msg = req.flash('info');       // Para mensagens de aviso/info
+    res.locals.success_msg = req.flash('success'); // Para mensagens de sucesso
+    res.locals.error_msg = req.flash('error');     // Para mensagens de erro
+    res.locals.info_msg = req.flash('info');       // Para mensagens de aviso/info
 
-  // Dados da Sessão para as Views
-  if (req.session && req.session.userId) { // Verifica se o usuário está logado
-    res.locals.isAuthenticated = true; // Uma flag útil para o template
-    res.locals.username = req.session.username; // Torna {{username}} disponível
-    res.locals.cargo = req.session.role;    // Torna {{userCargo}} disponível (para usar como {{userCargo}} nos templates)
-                                                // Se quiser usar {{cargo}} como na rota do mainMenu, pode ser res.locals.cargo = req.session.role;
-  } else {
-    res.locals.isAuthenticated = false;
-    res.locals.username = null;
-    res.locals.userCargo = null;
-  }
+    // Dados da Sessão para as Views
+    if (req.session && req.session.userId) { // Verifica se o usuário está logado
+        res.locals.isAuthenticated = true; // Uma flag útil para o template
+        res.locals.username = req.session.username; // Torna {{username}} disponível
+        res.locals.cargo = req.session.role;    // Torna {{userCargo}} disponível (para usar como {{userCargo}} nos templates)
+        // Se quiser usar {{cargo}} como na rota do mainMenu, pode ser res.locals.cargo = req.session.role;
+    } else {
+        res.locals.isAuthenticated = false;
+        res.locals.username = null;
+        res.locals.userCargo = null;
+    }
 
-  next();
+    next();
 });
 
 //Proteger o menu principal para exigir login
 app.get('/', authController.requireAuth, (req, res) => {
-  res.render('mainMenu', { 
-    title: 'Menu Principal', 
-    username: req.session.username,
-    cargo: req.session.role,
-    layout: false // Adicione esta linha
-  });
+    res.render('mainMenu', {
+        title: 'Menu Principal',
+        username: req.session.username,
+        cargo: req.session.role,
+        layout: false // Adicione esta linha
+    });
 });
 
 // Usar rotas de monitoramento
@@ -149,30 +150,30 @@ let isHubSyncRunning = false;
 
 //Agendamento do hub
 //cron.schedule('*/1 * * * *', async () => {
-    // 1. Verifica se já está rodando
-    /*if (isHubSyncRunning) {
-        console.log(`[HUB Cron] Sincronização anterior ainda em andamento. Pulando este ciclo...`);
-        return; // Sai da função e espera o próximo minuto
-    }
+// 1. Verifica se já está rodando
+/*if (isHubSyncRunning) {
+    console.log(`[HUB Cron] Sincronização anterior ainda em andamento. Pulando este ciclo...`);
+    return; // Sai da função e espera o próximo minuto
+}
 
-    // 2. Ativa a trava
-    isHubSyncRunning = true;
-    console.log('[HUB Cron] Iniciando ciclo de sincronização...');
+// 2. Ativa a trava
+isHubSyncRunning = true;
+console.log('[HUB Cron] Iniciando ciclo de sincronização...');
 
-    try {
-        // 3. Executa as tarefas críticas
-        //await hubMlService.capturarNovosPedidos();
-        await hubMlService.monitorarPedidosExistentes();
-        console.log('[HUB Cron] Ciclo finalizado com sucesso.');
+try {
+    // 3. Executa as tarefas críticas
+    //await hubMlService.capturarNovosPedidos();
+    await hubMlService.monitorarPedidosExistentes();
+    console.log('[HUB Cron] Ciclo finalizado com sucesso.');
 
-    } catch (error) {
-        // 4. Tratamento de erro para não derrubar o servidor
-        console.error('[HUB Cron] Erro durante a sincronização:', error);
+} catch (error) {
+    // 4. Tratamento de erro para não derrubar o servidor
+    console.error('[HUB Cron] Erro durante a sincronização:', error);
 
-    } finally {
-        // 5. IMPORTANTE: Solta a trava independente de sucesso ou erro
-        isHubSyncRunning = false;
-    }
+} finally {
+    // 5. IMPORTANTE: Solta a trava independente de sucesso ou erro
+    isHubSyncRunning = false;
+}
 });*/
 
 let isHubProdutosSyncRunning = false;
@@ -245,26 +246,26 @@ let isHubProdutosSyncRunning = false;
 
 //Agendar tarefa para atualizar preços da madeira a cada 20 minutos
 //cron.schedule('*/20 * * * *', async () => {
-  /*console.log(`${new Date().toISOString()}: Executando tarefa agendada de atualização de preços...`);
-  try {
-    await Promise.all([
-            updatePrices(),
-            updatePricesMM()
-        ]);
-  } catch (error) {
-    console.error(`${new Date().toISOString()}: Erro pego na execução agendada de updatePrices:`, error);
-  }
+/*console.log(`${new Date().toISOString()}: Executando tarefa agendada de atualização de preços...`);
+try {
+  await Promise.all([
+          updatePrices(),
+          updatePricesMM()
+      ]);
+} catch (error) {
+  console.error(`${new Date().toISOString()}: Erro pego na execução agendada de updatePrices:`, error);
+}
 });*/
 //0 */2 * * *
 //cron.schedule('0 */2 * * *', async () => { // A cada 2 horas
-  /*console.log(`${new Date().toISOString()}: Disparando job agendado de atualização de tokens Bling...`);
-  try {
-    await runScheduledTokenRefresh();
-  } catch (error) {
-    // O runScheduledTokenRefresh já deve logar seus próprios erros internos,
-    // mas podemos logar um erro geral do agendador aqui se a promessa for rejeitada.
-    console.error(`${new Date().toISOString()}: Erro pego pelo agendador node-cron ao executar runScheduledTokenRefresh:`, error);
-  }
+/*console.log(`${new Date().toISOString()}: Disparando job agendado de atualização de tokens Bling...`);
+try {
+  await runScheduledTokenRefresh();
+} catch (error) {
+  // O runScheduledTokenRefresh já deve logar seus próprios erros internos,
+  // mas podemos logar um erro geral do agendador aqui se a promessa for rejeitada.
+  console.error(`${new Date().toISOString()}: Erro pego pelo agendador node-cron ao executar runScheduledTokenRefresh:`, error);
+}
 });
 console.log('Job de refresh de tokens Bling agendado para rodar a cada 5 horas.');*/
 
@@ -367,15 +368,38 @@ const dataHora = new Date().toLocaleString('pt-BR');
   timezone: "America/Sao_Paulo"
 });*/
 
+// ===========================================================
+// CRON: Hub Pedidos → Expedição (Sincronização a cada 1 minuto)
+// ===========================================================
+let isHubPedidosSyncRunning = false;
+
+cron.schedule('*/1 * * * *', async () => {
+    if (isHubPedidosSyncRunning) {
+        console.log('[HubPedidos CRON] Sincronização anterior ainda em andamento. Pulando.');
+        return;
+    }
+    isHubPedidosSyncRunning = true;
+    try {
+        await HubPedidosService.sincronizar();
+    } catch (error) {
+        console.error('[HubPedidos CRON] Erro:', error);
+    } finally {
+        isHubPedidosSyncRunning = false;
+    }
+}, {
+    scheduled: true,
+    timezone: "America/Sao_Paulo"
+});
+
 // Rota para lidar com páginas não encontradas
 app.use((req, res) => {
-  res.status(404).send('Página não encontrada');
+    res.status(404).send('Página não encontrada');
 });
 
 
 // Iniciar o servidor
 const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Servidor rodando em http://localhost:${PORT}`);
+    console.log(`Servidor rodando em http://localhost:${PORT}`);
 });
 
 server.setTimeout(1800000); // 30 minutos em milissegundos

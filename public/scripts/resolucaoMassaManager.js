@@ -1,5 +1,5 @@
-document.addEventListener('DOMContentLoaded', function() {
-    
+document.addEventListener('DOMContentLoaded', function () {
+
     // --- MAPEAMENTO DOS ELEMENTOS DA UI ---
     const elements = {
         chaveAcessoInput: document.getElementById('chaveAcessoInput'),
@@ -26,13 +26,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
         state.volumesParaResolver.set(volume.id, {
             // Usa o ID da assistência que veio junto com o produto
-            assistenciaId: volume.assistencia_id, 
+            assistenciaId: volume.assistencia_id,
             produtoId: volume.id,
             nomeProduto: volume.nome_produto,
             nfOrigem: assistenciaInfo.nf_origem,
             nomePedido: assistenciaInfo.nome_pedido
         });
-        
+
         renderizarLista();
     };
 
@@ -53,8 +53,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         <strong>${item.nomeProduto}</strong>
                         <small>NF ${item.nfOrigem} - ${item.nomePedido}</small>
                     </div>
-                    <button class="btn btn-icon btn-remove-item" title="Remover da Lista">
-                        <i class="fas fa-times-circle text-danger"></i>
+                    <button class="btn btn-danger btn-remove-item" title="Remover da Lista">
+                        Remover
                     </button>
                 `;
                 elements.volumesResolvidosList.appendChild(li);
@@ -77,7 +77,7 @@ document.addEventListener('DOMContentLoaded', function() {
      * @param {object} assistencia - Os dados da assistência e seus produtos.
      */
     const abrirModalSelecaoVolume = (assistencia) => {
-        const volumesDisponiveis = assistencia.produtos.filter(p => 
+        const volumesDisponiveis = assistencia.produtos.filter(p =>
             p.status_volume !== 'Resolvida' && !state.volumesParaResolver.has(p.id)
         );
 
@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         // Agora o 'value' do option será o ID do produto (volume)
-        const optionsHTML = volumesDisponiveis.map(v => 
+        const optionsHTML = volumesDisponiveis.map(v =>
             `<option value="${v.id}">${v.nome_produto}</option>`
         ).join('');
 
@@ -105,7 +105,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const selectedVolumeId = parseInt(select.value, 10);
                 // Encontra o objeto completo do volume na lista de disponíveis
                 const volumeSelecionado = volumesDisponiveis.find(p => p.id === selectedVolumeId);
-                
+
                 if (volumeSelecionado) {
                     // Passa o objeto do volume e os dados gerais da assistência
                     adicionarVolumeNaLista(volumeSelecionado, assistencia);
@@ -151,7 +151,7 @@ document.addEventListener('DOMContentLoaded', function() {
             event.target.focus();
         }
     };
-    
+
     /**
      * Envia os volumes selecionados para a API para serem salvos como "Resolvidos".
      */
@@ -193,7 +193,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const setupEventListeners = () => {
         elements.chaveAcessoInput.addEventListener('change', handleBipagem);
         elements.btnSalvarResolucoes.addEventListener('click', salvarResolucoes);
-        
+
         elements.volumesResolvidosList.addEventListener('click', (e) => {
             const removeButton = e.target.closest('.btn-remove-item');
             if (removeButton) {

@@ -19,38 +19,94 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        const formData = new FormData();
-        formData.append('excelVendas', fileInput.files[0]);
-
-        const btn = document.getElementById('btn-gerar-tarde');
-        btn.disabled = true;
-        ModalSystem.showLoading('Processando vendas e cruzando CEPs com as Ondas...', 'Aguarde');
-
+        // Antes de submeter, verifica se existe um relatório de gôndola disponível
+        let gondolaId = null;
         try {
-            const response = await fetch('/api/relatorio-tarde/upload', {
-                method: 'POST',
-                body: formData
-            });
-            
-            const data = await response.json();
-            ModalSystem.hideLoading();
-
-            if (data.success) {
-                ModalSystem.alert(data.message, 'Sucesso');
-                form.reset();
-                fileNameDisplay.textContent = '';
-                carregarHistoricoTarde(); // Atualiza a tabela na tela
-            } else {
-                ModalSystem.alert(data.message, 'Erro ao Gerar');
+            const gondolaRes = await fetch('/api/gondola/listar');
+            const gondolaData = await gondolaRes.json();
+            if (gondolaData.success && gondolaData.relatorios && gondolaData.relatorios.length > 0) {
+                const ultimoGondola = gondolaData.relatorios[0]; // Já vem ordenado por created_at DESC
+                gondolaId = await perguntarSobreGondola(ultimoGondola);
             }
         } catch (err) {
-            ModalSystem.hideLoading();
-            ModalSystem.alert('Erro de conexão ao enviar a planilha.', 'Erro de Rede');
-        } finally {
-            btn.disabled = false;
+            // Falha silenciosa: se não conseguir buscar a gôndola, continua sem ela
+            console.warn('[Relatório Tarde] Não foi possível buscar relatórios de gôndola:', err);
         }
+
+        // Monta o FormData e envia
+        await enviarRelatorioTarde(fileInput.files[0], gondolaId);
     });
 });
+
+/**
+ * Exibe o modal de confirmação da gôndola e retorna uma Promise que resolve
+ * com o gondolaId escolhido (string) ou null (se recusar).
+ */
+function perguntarSobreGondola(ultimoGondola) {
+    return new Promise((resolve) => {
+        const dataFormatada = new Date(ultimoGondola.created_at).toLocaleString('pt-BR');
+        const mensagem = `
+            <div style="line-height: 1.6;">
+                <p>Foi encontrado um <strong>Relatório de Gôndola</strong> disponível:</p>
+                <div style="background: rgba(255,165,0,0.08); border: 1px solid rgba(255,165,0,0.3); border-radius: 8px; padding: 12px 16px; margin: 12px 0;">
+                    <div style="color: var(--accent-orange, #ffa500); font-weight: bold; font-size: 0.95rem;">${ultimoGondola.nome}</div>
+                    <div style="color: var(--text-secondary, #aaa); font-size: 0.85rem; margin-top: 4px;">
+                        <i class="fas fa-clock mr-1"></i> Gerado em: ${dataFormatada}
+                    </div>
+                </div>
+                <p style="font-size: 0.92rem; color: var(--text-secondary, #aaa);">
+                    Deseja usar este relatório para <strong>subtrair os itens já separados na gôndola</strong> do relatório da tarde?
+                </p>
+            </div>
+        `;
+        ModalSystem.confirm(
+            mensagem,
+            'Usar Relatório de Gôndola?',
+            function() { resolve(String(ultimoGondola.id)); }, // Sim → usa a gôndola
+            function() { resolve(null); },                      // Não → ignora
+            { confirmText: 'Sim, subtrair gôndola', cancelText: 'Não, ignorar' }
+        );
+    });
+}
+
+/**
+ * Envia o arquivo Excel para o servidor, com ou sem gondolaId.
+ */
+async function enviarRelatorioTarde(arquivo, gondolaId) {
+    const btn = document.getElementById('btn-gerar-tarde');
+    btn.disabled = true;
+    ModalSystem.showLoading('Processando vendas e cruzando CEPs com as Ondas...', 'Aguarde');
+
+    const formData = new FormData();
+    formData.append('excelVendas', arquivo);
+    if (gondolaId) {
+        formData.append('gondolaId', gondolaId);
+    }
+
+    try {
+        const response = await fetch('/api/relatorio-tarde/upload', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        ModalSystem.hideLoading();
+
+        if (data.success) {
+            ModalSystem.alert(data.message, 'Sucesso');
+            document.getElementById('relatorioTardeForm').reset();
+            document.getElementById('nomeArquivoVendas').textContent = '';
+            carregarHistoricoTarde(); // Atualiza a tabela na tela
+        } else {
+            ModalSystem.alert(data.message, 'Erro ao Gerar');
+        }
+    } catch (err) {
+        ModalSystem.hideLoading();
+        ModalSystem.alert('Erro de conexão ao enviar a planilha.', 'Erro de Rede');
+    } finally {
+        btn.disabled = false;
+    }
+}
 
 async function carregarHistoricoTarde() {
     const tbody = document.getElementById('tabela-historico-tarde');
@@ -112,3 +168,4 @@ function excluirRelatorioTarde(id) {
         }
     );
 }
+

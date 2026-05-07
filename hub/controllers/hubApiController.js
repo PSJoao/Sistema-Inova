@@ -103,6 +103,8 @@ exports.getPedidos = async (req, res) => {
                     status_med: p.status_med || null,
                     id_envio_dev: p.id_envio_dev || null,
                     status_envio_dev: p.status_envio_dev || null,
+                    nfe_numero: p.nfe_numero || null,
+                    chave_acesso: p.chave_acesso || null,
                     // --------------------
                     ids_pedidos_originais: [],
                     itens: []

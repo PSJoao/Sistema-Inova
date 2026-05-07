@@ -551,15 +551,18 @@ function focalizarHierarquia() {
 
 function atualizarContadorVolumes(container, activePaleteId) {
     const badge = document.getElementById('palete-vol-count');
+    const badgeColeta = document.getElementById('coleta-total-count');
     if (!badge) return;
 
     if (!activePaleteId) {
         badge.style.display = 'none';
+        if (badgeColeta) badgeColeta.style.display = 'none';
         return;
     }
 
     if (!container) container = document.getElementById('hierarquia-container');
 
+    // Contagem do palete ativo
     let count = 0;
     if (container) {
         const paleteContent = container.querySelector(`.h-palete-collapsible[data-palete-id="${activePaleteId}"]`);
@@ -570,6 +573,19 @@ function atualizarContadorVolumes(container, activePaleteId) {
 
     badge.textContent = `${count} vol`;
     badge.style.display = 'inline-block';
+
+    // Contagem total da coleta ativa
+    if (badgeColeta && estadoAtual.coletaId && container) {
+        const coletaContent = container.querySelector(`.h-coleta-content[data-coleta-id="${estadoAtual.coletaId}"]`);
+        let totalColeta = 0;
+        if (coletaContent) {
+            totalColeta = coletaContent.querySelectorAll('.h-nf-tag').length;
+        }
+        badgeColeta.textContent = `${totalColeta} total coleta`;
+        badgeColeta.style.display = 'inline-block';
+    } else if (badgeColeta) {
+        badgeColeta.style.display = 'none';
+    }
 }
 
 // ==========================================

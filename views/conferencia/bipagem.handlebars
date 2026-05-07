@@ -1,102 +1,271 @@
-{{!< main}}
+{{!< main}} {{#section "head" }} <link href="/public/styles/bipagemExpedicao.css" rel="stylesheet">
+    {{/section}}
 
-{{#section "head"}}
-  <link href="/public/styles/conferencia.css" rel="stylesheet">
-{{/section}}
+    <div class="bipagem-wrapper">
 
-<div class="content-card" style="padding: 0; height: 100%; border: none; box-shadow: none; background: transparent; margin-bottom: 100px;">
-    
-    {{!-- Cabeçalho da Página --}}
-    <div class="page-header-actions" style="padding: 15px 20px; background: #1e1e1e; border-bottom: 1px solid #333; margin-bottom: 0;">
-        <h1 class="page-title" style="color: #e0e0e0;"><i class="fas fa-boxes" style="color: #ff6b00;"></i> {{title}}</h1>
+        <div class="bipagem-header">
+            <h1>{{title}}</h1>
+        </div>
+
+        <div class="bipagem-grid">
+
+            {{!-- PAINEL 1: NOTA ATIVA (Foco Principal) e ESTADO VAZIO --}}
+            <div class="bipagem-panel"
+                style="position: relative; display: flex; flex-direction: column; min-height: 400px; padding: 0;">
+
+                {{!-- ESTADO VAZIO (Quando nenhuma nota está ativa) --}}
+                <div id="empty-state-panel"
+                    style="text-align: center; padding: 4rem 2rem; flex-grow: 1; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                    <div
+                        style="background: rgba(255, 107, 0, 0.1); width: 100px; height: 100px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 20px;">
+                        <i class="fas fa-barcode fa-3x" style="color: var(--accent-orange);"></i>
+                    </div>
+                    <h3 style="color: white; font-weight: 600; margin-bottom: 10px;">Aguardando Bipagem</h3>
+                    <p style="color: var(--text-muted); font-size: 1rem; max-width: 300px; line-height: 1.5;">Bipe o
+                        código de barras de uma Nota Fiscal para iniciar a conferência, ou selecione uma nota pendente
+                        na lista de pendentes.</p>
+                </div>
+
+                <div id="active-note-panel" style="display: none; height: 100%; flex-direction: column;">
+                    <div class="bipagem-panel-title"
+                        style="display: flex; justify-content: space-between; align-items: center; background: rgba(255, 107, 0, 0.05); padding: 15px 20px; border-bottom: 1px solid rgba(255, 107, 0, 0.1); border-radius: 12px 12px 0 0;">
+                        <div style="display: flex; flex-direction: row; gap: 10px;">
+                            <span class="nota-ativa-titulo"
+                                style="font-size: 1.3rem; font-weight: bold; color: var(--accent-orange); display: flex; align-items: center; gap: 8px;">
+                                <i class="fas fa-file-invoice"></i> NF <span id="active-nfe-number">---</span>
+                            </span>
+                            <button class="btn-bip danger" id="btn-close-active-note"
+                                title="Pausar e Voltar para Pendentes"
+                                style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px;">
+                                <i class="fas fa-pause"></i> Pausar
+                            </button>
+                            {{!--<span id="active-nfe-cliente"
+                                style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 4px;"></span>--}}
+                        </div>
+                    </div>
+
+                    <div style="padding: 20px; flex-grow: 1; display: flex; flex-direction: column;">
+                        <div class="progress-container"
+                            style="margin-bottom: 20px; background: rgba(0,0,0,0.3); border-radius: 20px; height: 24px; position: relative; overflow: hidden; border: 1px solid rgba(255,255,255,0.05);">
+                            <div id="active-progress-bar" class="progress-bar"
+                                style="background: linear-gradient(90deg, var(--accent-orange), #ff8c00); height: 100%; transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1); width: 0%;">
+                            </div>
+                            <div id="active-progress-text"
+                                style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.85rem; color: white; text-shadow: 1px 1px 2px rgba(0,0,0,0.8); pointer-events: none;">
+                                0/0 (0%)</div>
+                        </div>
+
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px dashed rgba(255,255,255,0.1); padding-bottom: 10px;">
+                            <span style="color: var(--text-secondary); font-size: 0.95rem; font-weight: 600;">
+                                <i class="fas fa-box-open" style="margin-right: 5px;"></i> Itens da Nota
+                            </span>
+                            {{!--<span id="active-nfe-conta" class="badge"
+                                style="background: rgba(255,255,255,0.1); color: var(--text-muted); font-size: 0.75rem;"></span>--}}
+                        </div>
+
+                        <div id="active-volumes-list" class="active-volumes-list"
+                            style="overflow-y: auto; flex-grow: 1; max-height: 500px; padding-right: 5px;">
+                            {{!-- Renderizado via JS --}}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {{!-- PAINEL 2: LISTAS (Pendentes / Em Pausa e Conferidas) --}}
+            <div style="display: flex; flex-direction: column; gap: 20px;">
+                <div class="bipagem-panel">
+                    <div class="bipagem-panel-title">
+                        Pendentes / Em Pausa
+                    </div>
+                    <div id="pending-notes-list" style="min-height: 100px;">
+                        {{!-- Renderizado via JS --}}
+                        <div class="text-center mt-4" style="font-size: 0.9rem; color: var(--text-muted);">
+                            <i class="fas fa-check-double fa-2x mb-2"></i><br>
+                            Lista vazia.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bipagem-panel">
+                    <div class="bipagem-panel-title"
+                        style="display: flex; justify-content: space-between; align-items: center;">
+                        <span>Conferidas</span>
+                        <button id="btn-clear-completed" class="btn-bip danger" title="Limpar histórico da tela"
+                            style="padding: 0.2rem 0.6rem; display: none;">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </div>
+                    <div id="completed-notes-list" style="min-height: 150px; overflow-y: auto; max-height: 400px;">
+                        {{!-- Renderizado via JS --}}
+                        <div class="text-center mt-3" style="font-size: 0.9rem; color: var(--text-muted);">
+                            Nenhuma nota aguardando conferência.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        {{!-- BOTÃO FLUTUANTE (FAB) PARA FINALIZAR --}}
+        <div id="fab-finalizar-container"
+            style="position: fixed; bottom: 90px; right: 30px; display: none; z-index: 1000;">
+            <button id="btn-sync-completed"
+                style="background: var(--accent-orange); color: white; border: none; border-radius: 30px; padding: 12px 24px; font-size: 1.1rem; font-weight: bold; box-shadow: 0 4px 15px rgba(255, 107, 0, 0.4); cursor: pointer; transition: all 0.3s; display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-paper-plane"></i> Finalizar
+                <span id="badge-sync-count"
+                    style="background: rgba(0,0,0,0.2); padding: 2px 8px; border-radius: 12px; font-size: 0.9rem;">0</span>
+            </button>
+        </div>
+
     </div>
-
-    <div class="conferencia-container">
-
-        <div class="conferencia-card conferidas-container" style="display: flex; flex-direction: column; margin-top: 10px;">
-            <div class="pendentes-titulo" style="display: flex; justify-content: space-between; align-items: center;">
-                <span><i class="fas fa-list-check" style="color: #28a745;"></i> Conferidas (Aguardando)</span>
-                <div>
-                    {{!-- Botão Principal de Disparo --}}
-                    <button id="btn-sync-completed" class="btn btn-sm btn-success" title="Enviar notas conferidas para o Bling" style="margin-right: 5px; font-weight: bold;">
-                        <i class="fas fa-paper-plane"></i> Conferir
-                    </button>
-                    {{!-- Botão de Limpar --}}
-                    <button id="btn-clear-completed" class="btn btn-sm btn-outline-secondary" title="Limpar histórico da tela">
-                        <i class="fas fa-trash-alt"></i>
-                    </button>
-                </div>
-            </div>
-            <div id="completed-notes-list">
-                {{!-- Renderizado via JS --}}
-                <div class="text-center mt-3" style="font-size: 0.9rem; color: #555;">
-                    Nenhuma nota aguardando conferência.
-                </div>
-            </div>
-        </div>
-
-        {{!-- PAINEL 1: NOTA ATIVA (Foco Principal) --}}
-        <div id="active-note-panel" class="conferencia-card nota-ativa-card" style="display: none;">
-            <div class="nota-ativa-header">
-                <span class="nota-ativa-titulo">
-                    <i class="fas fa-file-invoice"></i> NF <span id="active-nfe-number">---</span>
-                </span>
-                <button class="btn btn-sm btn-outline-danger" id="btn-close-active-note" title="Pausar e Voltar para Pendentes">
-                    <i class="fas fa-arrow-right"></i> Pausar
-                </button>
-            </div>
-            
-            {{!-- [ALTERAÇÃO] Removida a div 'nota-ativa-info' (Cliente/Local) --}}
-            {{!-- A lista de produtos ganha destaque imediato --}}
-
-            <div class="progress-container">
-                <div id="active-progress-bar" class="progress-bar">0/0</div>
-            </div>
-
-            <div style="margin-top: 10px; color: #aaa; font-size: 0.9rem;">
-                <i class="fas fa-list"></i> Produtos/Estruturas a conferir:
-            </div>
-
-            {{!-- Lista de Volumes para conferir --}}
-            <div id="active-volumes-list" class="active-volumes-list" style="overflow-y: auto;">
-                {{!-- Renderizado via JS --}}
-            </div>
-        </div>
-
-        {{!-- ESTADO VAZIO (Quando nenhuma nota está ativa) --}}
-        <div id="empty-state-panel" class="conferencia-card empty-state-panel" style="text-align: center; ">
-            <i class="fas fa-barcode fa-4x mb-4" style="color: #333;"></i>
-            <h3 style="color: #888;">Nenhuma Nota Ativa</h3>
-            <p style="color: #555;">Bipe uma Nota Fiscal para iniciar a conferência<br>ou selecione uma nota pendente ao lado.</p>
-        </div>
-
-        {{!-- PAINEL 2: LISTA DE PENDENTES (Multitarefa) --}}
-        <div class="conferencia-card pendentes-container">
-            <div class="pendentes-titulo">
-                <i class="fas fa-clock"></i> Pendentes / Em Pausa
-            </div>
-            <div id="pending-notes-list">
-                {{!-- Renderizado via JS --}}
-                <div class="text-center mt-5" style="font-size: 0.9rem; color: #555;">
-                    <i class="fas fa-check-double fa-2x mb-2"></i><br>
-                    Lista vazia.
-                </div>
-            </div>
-        </div>
-
-    </div>
-
-</div>
 
     {{!-- FOOTER: INPUT FIXO DE BIPAGEM --}}
-    <div class="input-area-fixed">
-        <div class="input-icon-wrapper">
-            <i class="fas fa-barcode"></i>
-            <input type="text" class="input-bipagem" id="conferenciaInput" placeholder="Bipe a Chave da NF, SKU ou Código..." autocomplete="off" autofocus>
+    <div class="input-area-fixed"
+        style="position: fixed; bottom: 0; left: 0; width: 100%; backdrop-filter: blur(10px); padding: 15px; border-top: 1px solid rgba(255,255,255,0.05); z-index: 999; display: flex; justify-content: center;">
+        <div class="input-icon-wrapper" style="position: relative; width: 100%; max-width: 600px;">
+            <i class="fas fa-barcode"
+                style="position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: var(--accent-orange); font-size: 1.2rem;"></i>
+            <input type="text" class="input-bipagem" id="conferenciaInput"
+                placeholder="Bipe a Chave da NF, SKU ou Código..." autocomplete="off" autofocus
+                style="width: 100%; padding: 12px 15px 12px 45px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: transparent; color: white; font-size: 1.1rem; outline: none; transition: all 0.3s;">
         </div>
     </div>
 
-{{#section "scripts"}}
-  {{!-- Script Gerenciador da Conferência --}}
-  <script src="/public/scripts/conferenciaManager.js"></script>
-{{/section}}
+    <audio id="audio-success" src="/public/sounds/notification.mp3"></audio>
+    <audio id="audio-error" src="/public/sounds/error.mp3"></audio>
+
+    {{#section "scripts"}}
+    <script src="/public/scripts/toastSystem.js"></script>
+    <script src="/public/scripts/conferenciaManager.js"></script>
+    <style>
+        /* Ajustes extras para garantir o comportamento escuro dentro do wrapper sem afetar o layout raiz */
+        body {
+            padding-bottom: 80px;
+        }
+
+        .nota-pendente-item,
+        .nota-conferida-item {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 12px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .volume-item {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid #333;
+            padding: 10px;
+            margin-bottom: 5px;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .volume-item.conferido {
+            border-left: 4px solid #28a745;
+            background: rgba(40, 167, 69, 0.1);
+        }
+
+        .volume-item .status-icon {
+            font-size: 1.5rem;
+            color: #555;
+        }
+
+        .volume-item.conferido .status-icon {
+            color: #28a745;
+        }
+
+        .badge-progresso {
+            background: var(--accent-orange);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .input-bipagem:focus {
+            border-color: var(--accent-orange) !important;
+            box-shadow: 0 0 0 2px rgba(255, 107, 0, 0.2);
+        }
+
+        #btn-sync-completed:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 107, 0, 0.6);
+        }
+
+        /* --- RESPONSIVIDADE ESTRITA PARA CELULARES --- */
+        @media (max-width: 768px) {
+            .bipagem-grid {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+
+            .bipagem-panel {
+                padding: 10px;
+                min-height: auto !important;
+            }
+
+            #empty-state-panel {
+                padding: 2rem 1rem !important;
+            }
+
+            .nota-ativa-titulo {
+                font-size: 1.1rem !important;
+            }
+
+            .volume-item {
+                padding: 6px;
+                gap: 8px;
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .volume-item .status-icon {
+                font-size: 1.2rem;
+                align-self: center;
+                margin-bottom: -5px;
+            }
+
+            .volume-item .volume-details {
+                font-size: 0.85rem;
+                line-height: 1.2;
+            }
+
+            .bipagem-panel-title {
+                padding: 10px !important;
+                flex-direction: column;
+                gap: 5px;
+                align-items: flex-start !important;
+            }
+
+            #btn-close-active-note {
+                align-self: flex-end;
+            }
+
+            .btn-bip {
+                padding: 0.2rem 0.5rem !important;
+                font-size: 0.8rem !important;
+            }
+
+            .badge-progresso {
+                font-size: 0.7rem;
+            }
+
+            #fab-finalizar-container {
+                bottom: 80px !important;
+                right: 15px !important;
+            }
+
+            #btn-sync-completed {
+                padding: 10px 18px !important;
+                font-size: 1rem !important;
+            }
+        }
+    </style>
+    {{/section}}
