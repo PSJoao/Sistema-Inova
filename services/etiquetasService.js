@@ -948,22 +948,16 @@ async function gerarPdfOrganizado(etiquetasOrdenadas, estoqueMapa = {}) {
 
             currentY -= 15; // Move o Y para baixo para os SKUs
 
-            // 3. SKUs (com quebra de linha inteligente)
+            // 3. SKUs (linha única, sem quebra — evita empurrar QR codes)
             const isMultipleSkus = etiqueta.skus && etiqueta.skus.length > 1;
-            const fontSizeSku = isMultipleSkus ? 7 : 9; // Reduz tamanho se houver mais de um
-            const lineHeightSku = isMultipleSkus ? 8 : 10;
-            
-            // O separador agora inclui aspas ou barra reta para separar melhor SKUs curtos na mesma linha
+            const fontSizeSku = isMultipleSkus ? 7.5 : 7.5;
             const skusText = etiqueta.skus.map(s => s.display).join('  |  ');
-            const skuLines = wrapText(skusText, pageWidth - (padding * 2), fontSizeSku);
 
-            for (const line of skuLines) {
-                page.drawText(line, {
-                    x: padding, y: currentY,
-                    font: font, size: fontSizeSku,
-                });
-                currentY -= lineHeightSku; // Move para a próxima linha de SKU com espaço seguro
-            }
+            page.drawText(skusText, {
+                x: padding, y: currentY,
+                font: font, size: fontSizeSku,
+            });
+            currentY -= (isMultipleSkus ? 8 : 10);
 
             /*const saldoEstoque = estoqueMapa[etiqueta.numeroNf] !== undefined ? estoqueMapa[etiqueta.numeroNf] : '...';
             page.drawText(`ESTOQUE: ${saldoEstoque}`, {
@@ -3257,11 +3251,10 @@ async function gerarPdfPendentes(nfList) {
                             return { raw, display: s.display || raw, original: raw };
                         });
                     } else {
-                        parsedSkus = row.skus.split(',').map(s => {
-                            const raw = s.trim();
-                            uniqueSkus.add(raw);
-                            return { raw, display: raw, original: raw };
-                        });
+                        // Não faz split por vírgula — SKUs podem conter vírgula no nome
+                        const raw = row.skus.trim();
+                        if (raw) uniqueSkus.add(raw);
+                        parsedSkus = [{ raw, display: raw, original: raw }];
                     }
                 }
             } catch (e) {
@@ -3299,15 +3292,40 @@ async function gerarPdfPendentes(nfList) {
         });
 
         // ============================================================
+        // 2b. BUSCAR LOCALIZAÇÕES PARA CADA NF (via SKU → cached_structures)
+        // ============================================================
+        for (const row of rowsEnriquecidos) {
+            const rawSkus = row._parsedSkus.map(s => s.original.toUpperCase()).filter(Boolean);
+            let locations = [];
+            if (rawSkus.length > 0) {
+                try {
+                    const locRes = await client.query(`
+                        SELECT DISTINCT s.component_location
+                        FROM cached_structures s
+                        JOIN cached_products p ON s.parent_product_bling_id = p.bling_id AND p.bling_account = 'lucas'
+                        WHERE UPPER(p.sku) = ANY($1::text[])
+                          AND s.component_location IS NOT NULL
+                          AND s.component_location != ''
+                    `, [rawSkus]);
+                    locations = locRes.rows.map(r => r.component_location);
+                } catch (locErr) {
+                    console.warn(`[Bipagem] Erro ao buscar localizações para NF ${row.nfe_numero}:`, locErr.message);
+                }
+            }
+            row._locations = locations;
+        }
+
+        // ============================================================
         // 3. CLASSIFICAR CADA NF (ZPL vs PDF) E MONTAR ETIQUETAS
         // ============================================================
         const etiquetasFake = rowsEnriquecidos.map(row => {
-            const temPdfValido = row.pdf_arquivo_origem
+            const temZpl = !!row.etiqueta_zpl && row.etiqueta_zpl !== 'Sem Etiqueta';
+
+            const temPdfValido = !temZpl // PDF só é usado se NÃO tiver ZPL (hierarquia: ZPL > PDF)
+                && row.pdf_arquivo_origem
                 && row.pdf_arquivo_origem !== 'desconhecido'
                 && row.pdf_pagina !== null
                 && row.pdf_pagina !== undefined;
-
-            const temZpl = !!row.etiqueta_zpl && !temPdfValido;
 
             // Calcular onda pelo CEP
             const cepStr = String(row.cep || '').replace(/\D/g, '').padStart(8, '0');
@@ -3320,6 +3338,7 @@ async function gerarPdfPendentes(nfList) {
             return {
                 nfeNumero: row.nfe_numero,
                 skus: row._parsedSkus,
+                locations: row._locations || [],
                 onda: ondaCor ? { prioridade: getCorPrioridade(ondaCor), cor: ondaCor } : null,
                 // Dados extras para montagem da página
                 _tipo: temZpl ? 'zpl' : 'pdf',
@@ -3437,41 +3456,27 @@ async function montarPaginaZpl(pdfDoc, etiqueta, font, boldFont, pageNum) {
         });
     }
 
+    // Localização
+    if (etiqueta.locations && etiqueta.locations.length > 0) {
+        const locText = `Loc: ${etiqueta.locations.join(', ')}`;
+        page.drawText(locText, {
+            x: padding + 45, y: currentY,
+            font: font, size: 8,
+        });
+    }
+
     currentY -= 15;
 
-    // SKUs (com tipo_ml prefixado — OBRIGATÓRIO) e quebra inteligente para múltiplos
-    const wrapText = (text, maxWidth, fontSize) => {
-        const words = text.split(' ');
-        let line = '';
-        const lines = [];
-        const textWidth = (str) => font.widthOfTextAtSize(str, fontSize);
-        for (const word of words) {
-            const testLine = line + (line ? ' ' : '') + word;
-            if (textWidth(testLine) > maxWidth) {
-                lines.push(line);
-                line = word;
-            } else {
-                line = testLine;
-            }
-        }
-        lines.push(line);
-        return lines;
-    };
-
+    // SKUs (linha única, sem quebra — evita empurrar QR codes)
     const isMultipleSkus = etiqueta.skus && etiqueta.skus.length > 1;
-    const fontSizeSku = isMultipleSkus ? 7 : 9; // Reduz tamanho se houver mais de um
-    const lineHeightSku = isMultipleSkus ? 8 : 10;
-    
+    const fontSizeSku = isMultipleSkus ? 7 : 9;
     const skusText = etiqueta.skus.map(s => s.display).join('  |  ');
-    const skuLines = wrapText(skusText, pageWidth - (padding * 2), fontSizeSku);
-    
-    for (const line of skuLines) {
-        page.drawText(line, {
-            x: padding, y: currentY,
-            font: font, size: fontSizeSku,
-        });
-        currentY -= lineHeightSku; // Espaçamento seguro entre as quebras
-    }
+
+    page.drawText(skusText, {
+        x: padding, y: currentY,
+        font: font, size: fontSizeSku,
+    });
+    currentY -= (isMultipleSkus ? 8 : 10);
 
     currentY -= 8;
 
@@ -3492,7 +3497,7 @@ async function montarPaginaZpl(pdfDoc, etiqueta, font, boldFont, pageNum) {
 
     // QR Codes
     const qrCodeSize = 30;
-    const qrYPos = currentY - 28;
+    const qrYPos = currentY - 19.5;
     let currentQrX = padding + 50;
 
     // QR DANFE (chave de acesso)
@@ -3536,6 +3541,27 @@ async function montarPaginaZpl(pdfDoc, etiqueta, font, boldFont, pageNum) {
             });
         } catch (qrErr) {
             console.warn(`[ZPL Canhoto] Erro ao gerar QR Checkout: ${qrErr.message}`);
+        }
+    }
+
+    if (etiqueta._chaveAcesso) {
+        try {
+            const qrDanfeBytes = await bwip.toBuffer({
+                bcid: 'qrcode',
+                text: etiqueta._chaveAcesso,
+                scale: 3
+            });
+            const qrDanfeImg = await pdfDoc.embedPng(qrDanfeBytes);
+            page.drawImage(qrDanfeImg, {
+                x: currentQrX + 180, y: qrYPos,
+                width: qrCodeSize, height: qrCodeSize
+            });
+            page.drawText('DANFE', {
+                x: currentQrX + 186, y: qrYPos + 32,
+                font: font, size: 5
+            });
+        } catch (qrErr) {
+            console.warn(`[ZPL Canhoto] Erro ao gerar QR DANFE: ${qrErr.message}`);
         }
     }
 
