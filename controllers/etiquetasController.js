@@ -91,6 +91,31 @@ exports.apiGetDashboardExpedicao = async (req, res) => {
     }
 };
 
+exports.apiGetConferenciaGestao = async (req, res) => {
+    try {
+        const dados = await etiquetasService.obterDadosGestaoConferencia();
+        res.json(dados);
+    } catch (error) {
+        console.error('[EtiquetasController] Erro ao buscar dados de gestão da conferência:', error);
+        res.status(500).json({ error: 'Erro ao carregar dados de gestão da conferência.' });
+    }
+};
+
+exports.apiSyncBlingConferencia = async (req, res) => {
+    try {
+        const { nfeList } = req.body;
+        if (!nfeList || !Array.isArray(nfeList) || nfeList.length === 0) {
+            return res.status(400).json({ error: 'Lista de notas inválida.' });
+        }
+
+        const resultados = await etiquetasService.syncBlingConferenciaMassa(nfeList);
+        res.json({ success: true, resultados });
+    } catch (error) {
+        console.error('[EtiquetasController] Erro ao sincronizar Bling em massa:', error);
+        res.status(500).json({ error: 'Erro ao sincronizar com o Bling.' });
+    }
+};
+
 exports.apiGetHistoricoExpedicoes = async (req, res) => {
     try {
         const historico = await etiquetasService.obterHistoricoExpedicoes();
@@ -977,7 +1002,7 @@ exports.apiListarBipagemPdfs = async (req, res) => {
             } else {
                 todayDate = new Date(String(raw) + 'T00:00:00');
             }
-        } catch(e) {
+        } catch (e) {
             const now = new Date();
             todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         } finally {
@@ -1776,63 +1801,97 @@ exports.downloadHistoricoRelatorioTarde = async (req, res) => {
             grupos[t].push(item);
         });
 
-        // 3. Montar as colunas dinâmicas par a par no Excel
-        const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet('Relatório da Tarde');
+        // 3. Gerar PDF usando pdf-lib (mesmo estilo do relatório de separação)
+        const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
+        const pdfDoc = await PDFDocument.create();
+        const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
+        // Layout
+        const margin = 12;
+        const rowHeight = 28;
+        const pageWidth = 595.28; // A4
+        const pageHeight = 841.89;
+        const tableWidth = pageWidth - (margin * 2);
+
+        // Colunas: Anotações | SKU do Produto | Qtd
+        const colQuantidadeWidth = 38;
+        const colAnotacoesWidth = 50;
+        const colSkuWidth = tableWidth - colAnotacoesWidth - colQuantidadeWidth;
+
+        const colAnotacoesX = margin;
+        const colSkuX = colAnotacoesX + colAnotacoesWidth;
+        const colQuantidadeX = colSkuX + colSkuWidth;
+
+        const drawTableRow = (page, y, t1, t2, t3, isHeader = false) => {
+            const cFont = isHeader ? boldFont : font;
+            const fSize = isHeader ? 11 : 10;
+            const vOff = (rowHeight - fSize) / 2;
+
+            // Retângulos com bordas
+            page.drawRectangle({ x: colAnotacoesX, y: y - rowHeight, width: colAnotacoesWidth, height: rowHeight, borderColor: rgb(0, 0, 0), borderWidth: 0.5 });
+            page.drawRectangle({ x: colSkuX, y: y - rowHeight, width: colSkuWidth, height: rowHeight, borderColor: rgb(0, 0, 0), borderWidth: 0.5 });
+            page.drawRectangle({ x: colQuantidadeX, y: y - rowHeight, width: colQuantidadeWidth, height: rowHeight, borderColor: rgb(0, 0, 0), borderWidth: 0.5 });
+
+            // Textos
+            page.drawText(String(t1), { x: colAnotacoesX + 3, y: y - rowHeight + vOff, font: cFont, size: fSize });
+            page.drawText(String(t2), { x: colSkuX + 3, y: y - rowHeight + vOff, font: cFont, size: fSize });
+            page.drawText(String(t3), { x: colQuantidadeX + 3, y: y - rowHeight + vOff, font: cFont, size: fSize });
+        };
+
+        // 4. Iterar por cada tipo de produto, criando nova página para cada tipo
         const types = Object.keys(grupos).sort();
-        let columns = [];
-        types.forEach(t => {
-            columns.push({ header: `${t} - SKU`, key: `sku_${t}`, width: 35 });
-            columns.push({ header: `QTD`, key: `qtd_${t}`, width: 12 });
-            columns.push({ header: `ONDA`, key: `onda_${t}`, width: 18 });
-            columns.push({ header: '', key: `space_${t}`, width: 3 }); // Espaçador
-        });
-        worksheet.columns = columns;
 
-        // Estilização do Header
-        worksheet.getRow(1).eachCell(cell => {
-            if (cell.value) {
-                cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F1F1F' } };
-                cell.alignment = { horizontal: 'center' };
-            }
-        });
+        for (const tipo of types) {
+            const itens = grupos[tipo];
 
-        // 4. Inserir linha a linha
-        const maxRows = Math.max(...types.map(t => grupos[t].length));
-        for (let i = 0; i < maxRows; i++) {
-            let rowObj = {};
-            types.forEach(t => {
-                const item = grupos[t][i];
-                if (item) {
-                    rowObj[`sku_${t}`] = item.sku;
-                    rowObj[`qtd_${t}`] = item.quantidade;
-                    rowObj[`onda_${t}`] = item.onda;
+            // Nova página para cada tipo
+            let page = pdfDoc.addPage([pageWidth, pageHeight]);
+            let y = pageHeight - 40;
+
+            // Título do tipo
+            page.drawText(`Relatório da Tarde — ${tipo}`, { x: margin, y, font: boldFont, size: 14 });
+            y -= 18;
+            page.drawText(new Date().toLocaleString('pt-BR'), { x: margin, y, font: font, size: 9 });
+            y -= 5;
+            page.drawText(`${itens.length} itens`, { x: margin + 200, y, font: font, size: 9, color: rgb(0.4, 0.4, 0.4) });
+            y -= 18;
+
+            // Header da tabela
+            drawTableRow(page, y, 'Anot.', 'SKU do Produto', 'Qtd', true);
+            y -= rowHeight;
+
+            // Linhas de dados
+            for (const item of itens) {
+                // Verifica se precisa de nova página (continuação do mesmo tipo)
+                if (y < margin + rowHeight + 10) {
+                    page = pdfDoc.addPage([pageWidth, pageHeight]);
+                    y = pageHeight - 40;
+
+                    // Re-desenha header de continuação
+                    page.drawText(`${tipo} (continuação)`, { x: margin, y, font: boldFont, size: 11 });
+                    y -= 22;
+                    drawTableRow(page, y, 'Anot.', 'SKU do Produto', 'Qtd', true);
+                    y -= rowHeight;
                 }
-            });
-            const excelRow = worksheet.addRow(rowObj);
-            types.forEach(t => {
-                const qtdCell = excelRow.getCell(`qtd_${t}`);
-                if (qtdCell) qtdCell.alignment = { horizontal: 'center' };
-                const ondaCell = excelRow.getCell(`onda_${t}`);
-                if (ondaCell) ondaCell.alignment = { horizontal: 'center' };
-            });
+
+                drawTableRow(page, y, '', item.sku, String(item.quantidade));
+                y -= rowHeight;
+            }
+
+            // Linha de total do tipo
+            if (y < margin + rowHeight + 10) {
+                page = pdfDoc.addPage([pageWidth, pageHeight]);
+                y = pageHeight - 40;
+            }
+            const totalTipo = itens.reduce((sum, i) => sum + (i.quantidade || 0), 0);
+            drawTableRow(page, y, '', `Total ${tipo}:`, String(totalTipo), true);
+            y -= rowHeight;
         }
 
-        // 5. Se houve dados de gôndola, cria uma aba extra "Itens Gôndola" (com tipo_ml e ordenação)
+        // 5. Se houve dados de gôndola, cria página(s) extra "Itens Gôndola"
         if (gondolaData && gondolaData.length > 0) {
-            const wsGondola = workbook.addWorksheet('Itens Gôndola (Subtraídos)');
-            wsGondola.columns = [
-                { header: 'SKU do Produto', key: 'sku', width: 40 },
-                { header: 'Qtd Subtraída', key: 'quantidade_subtraida', width: 20, style: { numFmt: '0' } }
-            ];
-            wsGondola.getRow(1).eachCell(cell => {
-                cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2E7D32' } };
-                cell.alignment = { horizontal: 'center' };
-            });
-            // Adiciona tipo_ml e ordena
+            // Enriquecer com tipo_ml
             for (const item of gondolaData) {
                 const tipoRes = await client.query(
                     `SELECT tipo_ml FROM cached_products WHERE UPPER(sku) = $1 LIMIT 1`,
@@ -1845,27 +1904,43 @@ exports.downloadHistoricoRelatorioTarde = async (req, res) => {
                 }
             }
             gondolaData.sort((a, b) => a.skuDisplay.localeCompare(b.skuDisplay, 'pt-BR', { numeric: true, sensitivity: 'base' }));
-            gondolaData.forEach(item => {
-                const row = wsGondola.addRow({ sku: item.skuDisplay, quantidade_subtraida: item.quantidade_subtraida });
-                row.getCell('quantidade_subtraida').alignment = { horizontal: 'center' };
-            });
+
+            let pageG = pdfDoc.addPage([pageWidth, pageHeight]);
+            let yG = pageHeight - 40;
+            pageG.drawText('Itens Gôndola (Subtraídos)', { x: margin, y: yG, font: boldFont, size: 14 });
+            yG -= 20;
+            pageG.drawText(new Date().toLocaleString('pt-BR'), { x: margin, y: yG, font: font, size: 9 });
+            yG -= 22;
+
+            // Header
+            drawTableRow(pageG, yG, '', 'SKU do Produto', 'Qtd Sub.', true);
+            yG -= rowHeight;
+
+            for (const item of gondolaData) {
+                if (yG < margin + rowHeight + 10) {
+                    pageG = pdfDoc.addPage([pageWidth, pageHeight]);
+                    yG = pageHeight - 40;
+                    drawTableRow(pageG, yG, '', 'SKU do Produto', 'Qtd Sub.', true);
+                    yG -= rowHeight;
+                }
+                drawTableRow(pageG, yG, '', item.skuDisplay, String(item.quantidade_subtraida || 0));
+                yG -= rowHeight;
+            }
+
             const totalGondola = gondolaData.reduce((sum, i) => sum + (i.quantidade_subtraida || 0), 0);
-            wsGondola.addRow({});
-            const totalRow = wsGondola.addRow({ sku: 'TOTAL SUBTRAÍDO', quantidade_subtraida: totalGondola });
-            totalRow.font = { bold: true };
-            totalRow.getCell('sku').alignment = { horizontal: 'right' };
-            totalRow.getCell('quantidade_subtraida').alignment = { horizontal: 'center' };
+            drawTableRow(pageG, yG, '', 'TOTAL SUBTRAÍDO:', String(totalGondola), true);
         }
 
-        const nomeSeguro = nome.replace(/[\/\:]/g, '-');
+        // 6. Salvar e enviar
+        const pdfBytes = await pdfDoc.save();
+        const nomeSeguro = nome.replace(/[\/\\:]/g, '-');
 
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', `attachment; filename="${nomeSeguro}.xlsx"`);
-        await workbook.xlsx.write(res);
-        res.end();
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${nomeSeguro}.pdf"`);
+        res.send(Buffer.from(pdfBytes));
     } catch (error) {
-        console.error('[Relatório Tarde] Erro ao gerar Excel:', error);
-        res.status(500).send('Erro ao gerar arquivo de Excel.');
+        console.error('[Relatório Tarde] Erro ao gerar PDF:', error);
+        res.status(500).send('Erro ao gerar arquivo PDF.');
     } finally {
         client.release();
     }

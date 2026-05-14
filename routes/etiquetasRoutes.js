@@ -52,6 +52,10 @@ router.get('/etiquetas/dashboard-expedicao', etiquetasController.renderDashboard
 router.get('/api/expedicao/dashboard-dados', etiquetasController.apiGetDashboardExpedicao);
 router.post('/api/expedicao/atualizar-status', etiquetasController.apiAtualizarStatusPendencia);
 
+// Rotas de API para a Gestão de Conferência em Massa (Dashboard)
+router.get('/api/expedicao/conferencia-gestao', etiquetasController.apiGetConferenciaGestao);
+router.post('/api/expedicao/conferencia-sync-bling', etiquetasController.apiSyncBlingConferencia);
+
 router.get('/api/expedicao/historico', etiquetasController.apiGetHistoricoExpedicoes);
 router.get('/api/expedicao/historico/relatorio/:data', etiquetasController.apiDownloadRelatorioExpedicao);
 

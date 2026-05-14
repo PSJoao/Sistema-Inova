@@ -207,41 +207,25 @@ async function upsertProductStructure(client, productData, accountType) {
         }
 
         // Lucas usa gtin/gtinEmbalagem, Eliane usa apenas os campos básicos.
-        if (accountType === 'lucas') {
-             await client.query(
-                `INSERT INTO cached_structures (
-                    parent_product_bling_id, parent_product_bling_account, component_sku,
-                    component_location, structure_name, gtin, gtin_embalagem
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-                ON CONFLICT (parent_product_bling_id, parent_product_bling_account, component_sku)
-                DO NOTHING`,
-                [
-                    productData.id,
-                    accountType,
-                    componenteDetails.codigo,
-                    componenteDetails.estoque?.localizacao,
-                    componenteDetails.nome,
-                    componenteDetails.gtin,
-                    componenteDetails.gtinEmbalagem
-                ]
-            );
-        } else { // Eliane ou padrão
-             await client.query(
-                `INSERT INTO cached_structures (
-                    parent_product_bling_id, parent_product_bling_account, component_sku,
-                    component_location, structure_name
-                ) VALUES ($1, $2, $3, $4, $5)
-                ON CONFLICT (parent_product_bling_id, parent_product_bling_account, component_sku)
-                DO NOTHING`,
-                [
-                    productData.id,
-                    accountType,
-                    componenteDetails.codigo,
-                    componenteDetails.estoque?.localizacao,
-                    componenteDetails.nome
-                ]
-            );
-        }
+        // Unificado: Lucas e Eliane agora salvam GTIN e Quantidade
+        await client.query(
+            `INSERT INTO cached_structures (
+                parent_product_bling_id, parent_product_bling_account, component_sku,
+                component_location, structure_name, gtin, gtin_embalagem, quantidade
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (parent_product_bling_id, parent_product_bling_account, component_sku)
+            DO UPDATE SET quantidade = EXCLUDED.quantidade`,
+            [
+                productData.id,
+                accountType,
+                componenteDetails.codigo,
+                componenteDetails.estoque?.localizacao,
+                componenteDetails.nome,
+                componenteDetails.gtin,
+                componenteDetails.gtinEmbalagem,
+                componente.quantidade || 1
+            ]
+        );
     }
 }
 

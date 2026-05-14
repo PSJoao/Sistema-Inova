@@ -1,0 +1,94 @@
+# Campo `data_despache` na Expedição
+
+Adicionar o campo `data_despache` (DATE) à `cached_etiquetas_ml`, capturando a data de despacho a partir das etiquetas PDF e ZPL, exibindo na dashboard e permitindo filtro por período.
+
+## Proposta de Mudanças
+
+### 1. Banco de Dados — Migração
+
+Adicionar coluna `data_despache DATE` à tabela `cached_etiquetas_ml`:
+
+```sql
+ALTER TABLE cached_etiquetas_ml ADD COLUMN IF NOT EXISTS data_despache DATE;
+```
+
+---
+
+### 2. Parsing da Data de Despacho
+
+Função utilitária `parseDataDespache(textoDespacho, anoReferencia)` que converte textos como:
+- PDF: `"sábado 9/mai"` → `2026-05-09`
+- ZPL: `"s_c3_a1bado 4/abr"` (hex encoded) → `2026-04-04`
+
+Mapeamento de meses abreviados em PT-BR: `jan→1, fev→2, mar→3, abr→4, mai→5, jun→6, jul→7, ago→8, set→9, out→10, nov→11, dez→12`
+
+O `anoReferencia` será `new Date().getFullYear()` (ano atual no momento do processamento).
+
+---
+
+### 3. Extração — Fluxo PDF (Ordenador)
+
+#### [MODIFY] [etiquetasService.js](file:///c:/Sistemas/Sistema-Inova/services/etiquetasService.js)
+
+**Etapa de extração** (~linha 378-432): O `textoPagina` do PDF já está disponível. Adicionar regex para capturar o texto "Despachar: ..." e chamar `parseDataDespache`:
+
+```js
+const despacharMatch = textoPagina.match(/Despachar:\s*\S+\s+(\d{1,2}\/\w{3})/i);
+```
+
+O resultado será armazenado em `etiquetaData.dataDespache`.
+
+**Etapa de salvamento** (~linhas 552-596): Os queries UPDATE e INSERT terão o novo campo `data_despache`:
+- UPDATE: `data_despache = COALESCE(data_despache, $N)`
+- INSERT: Incluir na lista de campos
+
+---
+
+### 4. Extração — Fluxo ZPL (Hub)
+
+#### [MODIFY] [HubPedidosService.js](file:///c:/Sistemas/Sistema-Inova/services/HubPedidosService.js)
+
+Na função `inserirNovoPedido` e no fluxo de UPDATE do `processarPacote`:
+
+O ZPL usa encoding hex para acentos (`_c3_a1` = á, `_c3_a3` = ã, etc.). 
+
+1. Decodificar os hex escapes do ZPL: `_c3_a1` → `á`
+2. Aplicar a mesma regex `Despachar:\s*\S+\s+(\d{1,2}\/\w{3})`
+3. Chamar `parseDataDespache` e salvar no INSERT/UPDATE
+
+---
+
+### 5. Dashboard — Coluna e Filtro
+
+#### [MODIFY] [etiquetasService.js](file:///c:/Sistemas/Sistema-Inova/services/etiquetasService.js) — `obterDadosDashboardExpedicao`
+
+- Adicionar `m.data_despache` à query da fila (~linha 3225)
+- Retornar `data_despache` formatado como `dd/mm/yyyy` no JSON
+
+#### [MODIFY] [expedicaoDashboardManager.js](file:///c:/Sistemas/Sistema-Inova/public/scripts/expedicaoDashboardManager.js)
+
+- Substituir coluna "Pedido" por "Despache" com o valor formatado `dd/mm/yyyy`
+- Adicionar 2 inputs de data (de/até) como filtro de período acima da tabela
+- Filtrar client-side via DataTables search
+
+#### [MODIFY] Template da dashboard
+
+- Trocar header "Pedido" por "Despache" na tabela
+- Adicionar inputs de filtro por período
+
+---
+
+## Open Questions
+
+> [!IMPORTANT]
+> **Formato ZPL hex**: O exemplo mostra `_c3_a1` para "á" (UTF-8 bytes `0xC3 0xA1`). Existem outros padrões de encoding no ZPL que devemos considerar, ou é só esse formato `_XX` para cada byte?
+
+> [!IMPORTANT]
+> **Substituição total da coluna Pedido**: Quer remover completamente a coluna "Pedido" (que mostra o pedido interno/checkout), ou quer manter ambas visíveis? O pedido ficaria visível apenas no canhoto da etiqueta?
+
+## Verification Plan
+
+### Automated Tests
+- Processar um PDF de etiqueta com "Despachar: sábado 9/mai" e verificar que `data_despache = 2026-05-09` foi salvo
+- Processar um ZPL com "Despachar: s_c3_a1bado 4/abr" e verificar que `data_despache = 2026-04-04` foi salvo
+- Verificar filtro de período na dashboard mostra apenas etiquetas no range selecionado

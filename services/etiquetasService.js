@@ -8,6 +8,7 @@ const axios = require('axios');
 const { findAndCacheNfeByNumber, findAndCachePedidoByLojaNumber } = require('../blingSyncService');
 const fs = require('fs').promises;
 const path = require('path');
+const { getValidBlingToken } = require('./blingTokenManager');
 
 // Configuração do banco de dados
 const pool = new Pool({
@@ -2082,6 +2083,108 @@ async function gerarRelatoriosSeparacao(etiquetasOrdenadas, abatimentosManuais =
 // NOVOS MÉTODOS: DASHBOARD DE EXPEDIÇÃO E GERENCIAMENTO
 // ============================================================================
 
+async function obterDadosGestaoConferencia() {
+    const client = await pool.connect();
+    try {
+        const query = `
+            SELECT 
+                m.nfe_numero,
+                m.status as status_ml,
+                m.passou_conferencia_bipagem,
+                m.bling_sync_status,
+                m.bling_error_msg,
+                cr.usuario as conferente,
+                cr.data_hora as conferido_em,
+                cpv.numero as pedido_numero
+            FROM cached_etiquetas_ml m
+            LEFT JOIN conferencia_relatorio cr ON cr.nfe_numero = m.nfe_numero
+            LEFT JOIN cached_pedido_venda cpv ON cpv.nfe_parent_numero = m.nfe_numero
+            WHERE m.passou_conferencia_bipagem = true
+            ORDER BY m.bling_sync_status ASC, cr.data_hora DESC
+        `;
+        const res = await client.query(query);
+        return res.rows;
+    } finally {
+        client.release();
+    }
+}
+
+async function syncBlingConferenciaMassa(nfeList) {
+    const client = await pool.connect();
+    try {
+        let results = [];
+        
+        for (const nfeNumero of nfeList) {
+            try {
+                // 1. Pega dados para o Bling
+                const nfeDataRes = await client.query(`
+                    SELECT n.bling_account, p.bling_id as pedidoblingid 
+                    FROM cached_nfe n
+                    LEFT JOIN cached_pedido_venda p ON p.notafiscal_id = n.bling_id
+                    WHERE n.nfe_numero = $1 LIMIT 1
+                `, [nfeNumero]);
+                
+                if (nfeDataRes.rows.length === 0 || !nfeDataRes.rows[0].pedidoblingid) {
+                    throw new Error("Pedido Bling não encontrado no cache local.");
+                }
+                
+                const accountName = nfeDataRes.rows[0].bling_account || 'lucas';
+                const pedidoBlingId = nfeDataRes.rows[0].pedidoblingid;
+                
+                // 2. Chama a API do Bling
+                const accessToken = await getValidBlingToken(accountName);
+                const url = `https://api.bling.com.br/Api/v3/pedidos/vendas/${pedidoBlingId}/situacoes/24`;
+
+                await axios.patch(url, {}, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+                
+                // 3. Sucesso: Atualiza o DB
+                await client.query(`
+                    UPDATE cached_etiquetas_ml 
+                    SET bling_sync_status = 'success',
+                        bling_error_msg = null,
+                        status = 'impresso',
+                        last_processed_at = CURRENT_TIMESTAMP
+                    WHERE nfe_numero = $1
+                `, [nfeNumero]);
+                
+                results.push({ nfe: nfeNumero, success: true });
+                
+            } catch (err) {
+                let errorMsg = "Erro desconhecido ao atualizar Bling.";
+                if (err.response) {
+                    if (err.response.data && err.response.data.error) {
+                        errorMsg = err.response.data.error.message || JSON.stringify(err.response.data.error);
+                    } else {
+                        errorMsg = "O Bling rejeitou a atualização (Status " + err.response.status + ").";
+                    }
+                } else if (err.request) {
+                    errorMsg = "Sem comunicação com a API do Bling.";
+                } else {
+                    errorMsg = err.message;
+                }
+                
+                await client.query(`
+                    UPDATE cached_etiquetas_ml 
+                    SET bling_sync_status = 'error',
+                        bling_error_msg = $1
+                    WHERE nfe_numero = $2
+                `, [errorMsg, nfeNumero]);
+                
+                results.push({ nfe: nfeNumero, success: false, message: errorMsg });
+            }
+            
+            // Pausa rigorosa de 1 segundo entre as chamadas para respeitar o rate-limit do Bling
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        
+        return results;
+    } finally {
+        client.release();
+    }
+}
+
 async function obterDadosDashboardExpedicao() {
     const client = await pool.connect();
     try {
@@ -2404,6 +2507,87 @@ async function registrarBipagemExpedicaoFinal(paleteId, nfLida, carregadoresIds)
         const registroId = regRes.rows[0].id;
 
         // 3. Rateia a pontuação (1 ponto dividido pelos carregadores)
+        if (carregadoresIds && carregadoresIds.length > 0) {
+            const pontosPorPessoa = 1.00 / carregadoresIds.length;
+            for (const idCarregador of carregadoresIds) {
+                await client.query(
+                    `INSERT INTO expedicao_registro_carregadores (registro_id, carregador_id, pontos) VALUES ($1, $2, $3)`,
+                    [registroId, idCarregador, pontosPorPessoa]
+                );
+            }
+        }
+
+        await client.query('COMMIT');
+        return { success: true };
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+async function registrarProdutividadeConferencia(nfLida, carregadoresIds) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // 1. Identificar se a NF já tem registro na expedição
+        const dupCheck = await client.query(
+            `SELECT id FROM expedicao_registros WHERE nf = $1 LIMIT 1`,
+            [nfLida]
+        );
+        if (dupCheck.rows.length > 0) {
+            await client.query('ROLLBACK');
+            return { success: true, message: 'Já registrado anteriormente.' };
+        }
+
+        // 2. Determinar se é Kit
+        let isKit = false;
+        const mlCheck = await client.query(`SELECT id, skus FROM cached_etiquetas_ml WHERE nfe_numero = $1 LIMIT 1`, [nfLida]);
+        if (mlCheck.rows.length > 0) {
+            const row = mlCheck.rows[0];
+            let skuArray = [];
+            if (typeof row.skus === 'string') {
+                skuArray = row.skus.split(',').map(s => s.trim()).filter(Boolean);
+            } else if (Array.isArray(row.skus)) {
+                skuArray = row.skus.map(s => (typeof s === 'string' ? s : s.original || s.display || '')).filter(Boolean);
+            }
+
+            if (skuArray.length > 0) {
+                const prodCheck = await client.query(
+                    `SELECT volumes FROM cached_products WHERE sku = ANY($1::text[]) AND bling_account = 'lucas'`,
+                    [skuArray]
+                );
+                isKit = prodCheck.rows.some(p => parseInt(p.volumes) > 1);
+            }
+        }
+
+        // 3. Garantir que exista uma Coleta e um Palete Virtual para a Conferência
+        const rColeta = await client.query(`SELECT id FROM expedicao_coletas WHERE DATE(created_at) = CURRENT_DATE LIMIT 1`);
+        let coletaId = rColeta.rows.length > 0 ? rColeta.rows[0].id : null;
+
+        if (!coletaId) {
+            const insertC = await client.query(`INSERT INTO expedicao_coletas (identificacao, data_criacao, created_at) VALUES ('Coleta Conferência', CURRENT_DATE, CURRENT_TIMESTAMP) RETURNING id`);
+            coletaId = insertC.rows[0].id;
+        }
+
+        const rPalete = await client.query(`SELECT id FROM expedicao_paletes WHERE coleta_id = $1 LIMIT 1`, [coletaId]);
+        let paleteId = rPalete.rows.length > 0 ? rPalete.rows[0].id : null;
+
+        if (!paleteId) {
+            const insertP = await client.query(`INSERT INTO expedicao_paletes (coleta_id, identificacao, created_at) VALUES ($1, 'Palete Conferência', CURRENT_TIMESTAMP) RETURNING id`, [coletaId]);
+            paleteId = insertP.rows[0].id;
+        }
+
+        // 4. Insere em expedicao_registros
+        const regRes = await client.query(
+            `INSERT INTO expedicao_registros (palete_id, nf, is_kit, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) RETURNING id`,
+            [paleteId, nfLida, isKit]
+        );
+        const registroId = regRes.rows[0].id;
+
+        // 5. Rateia a pontuação (1 ponto dividido pelos carregadores)
         if (carregadoresIds && carregadoresIds.length > 0) {
             const pontosPorPessoa = 1.00 / carregadoresIds.length;
             for (const idCarregador of carregadoresIds) {
@@ -3774,6 +3958,7 @@ module.exports = {
     obterDadosDashboardExpedicao,
     atualizarStatusPendenciaExpedicao,
     registrarBipagemExpedicaoFinal,
+    registrarProdutividadeConferencia,
     listarCarregadoresAtivos,
     criarPalete,
     deletarPalete,
@@ -3796,5 +3981,7 @@ module.exports = {
     obterDataVirtualAtiva,
     avancarDiaVirtual,
     atualizarGlobalDashboardEmLote,
-    atualizarPaginasCorretasNoDB
+    atualizarPaginasCorretasNoDB,
+    obterDadosGestaoConferencia,
+    syncBlingConferenciaMassa
 };

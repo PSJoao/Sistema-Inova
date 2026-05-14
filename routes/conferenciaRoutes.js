@@ -62,4 +62,12 @@ router.get('/api/produtos-sem-ean', conferenciaController.getProdutosSemEanApi);
 // Atualiza informações de um produto (GTIN, Código Fábrica, Escondido)
 router.post('/api/produtos-sem-ean/update', conferenciaController.updateStructureInfo);
 
+
+// --- API: CONTROLE DE PALETES ---
+
+router.get('/api/paletes', conferenciaController.getPaletes);
+router.post('/api/paletes/save', conferenciaController.savePalete);
+router.post('/api/paletes/set-atual', conferenciaController.setPaleteAtual);
+router.post('/api/paletes/reset', conferenciaController.resetPaletes);
+
 module.exports = router;

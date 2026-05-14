@@ -250,6 +250,13 @@ async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve })
                                 INSERT INTO cached_products (bling_id, bling_account, sku, nome, preco_custo, volumes, last_updated_at) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
                                 ON CONFLICT (bling_id, bling_account) DO UPDATE SET sku = EXCLUDED.sku, nome = EXCLUDED.nome, preco_custo = EXCLUDED.preco_custo, volumes = EXCLUDED.volumes, last_updated_at = CURRENT_TIMESTAMP;
                             `, [prodDetails.id, accountTypeEncontrada, prodDetails.codigo, prodDetails.nome, prodDetails.precoCusto, prodDetails.volumes || 1]);
+
+                            // [NOVO] Sincroniza estruturas se for KIT
+                            if (accountTypeEncontrada === 'lucas') {
+                                await processAndCacheStructuresLucas(prodDetails, client);
+                            } else if (accountTypeEncontrada === 'eliane') {
+                                await processAndCacheStructuresEliane(prodDetails, client);
+                            }
                         }
                     } catch (idError) { 
                         console.error(`[OnDemandQueue] Erro ao buscar ID/Volumes do produto ${produtoCodigo}. Detalhe: ${idError.message}`); 
@@ -561,6 +568,16 @@ async function syncNFeLucasOnDemand(nfeNumbers) {
                 for (const item of itens) {
                     await upsertProduct(client, { bling_id: item.produto.id, bling_account: 'lucas', sku: item.codigo, nome: item.descricao, preco_custo: item.valor, volumes: item.volumes || 1 });
                     await upsertNfeQuantidade(client, { nfe_numero: numero, produto_codigo: item.codigo, quantidade: item.quantidade });
+                    
+                    // [NOVO] Busca detalhes para garantir que estruturas (kits) sejam carregadas no On-Demand
+                    try {
+                        const prodDetailsResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${item.produto.id}`, 'lucas');
+                        if (prodDetailsResp.data) {
+                            await processAndCacheStructuresLucas(prodDetailsResp.data, client);
+                        }
+                    } catch (e) {
+                        console.error(`[OnDemandSync] Erro ao sincronizar estruturas do produto ${item.codigo}: ${e.message}`);
+                    }
                 }
                 await client.query('COMMIT');
                 
@@ -599,10 +616,10 @@ async function processAndCacheStructuresLucas(productData, client) {
             await client.query(
                 `INSERT INTO cached_structures (
                     parent_product_bling_id, parent_product_bling_account, component_sku,
-                    component_location, structure_name, gtin, gtin_embalagem
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    component_location, structure_name, gtin, gtin_embalagem, quantidade
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 ON CONFLICT (parent_product_bling_id, parent_product_bling_account, component_sku)
-                DO NOTHING`,
+                DO UPDATE SET quantidade = EXCLUDED.quantidade`,
                 [
                     productData.id,
                     'lucas',
@@ -610,7 +627,8 @@ async function processAndCacheStructuresLucas(productData, client) {
                     componenteDetails.estoque?.localizacao,
                     componenteDetails.nome,
                     componenteDetails.gtin,
-                    componenteDetails.gtinEmbalagem
+                    componenteDetails.gtinEmbalagem,
+                    componente.quantidade || 1
                 ]
             );
         } catch (error) {
@@ -638,16 +656,19 @@ async function processAndCacheStructuresEliane(productData, client) {
             await client.query(
                 `INSERT INTO cached_structures (
                     parent_product_bling_id, parent_product_bling_account, component_sku,
-                    component_location, structure_name
-                ) VALUES ($1, $2, $3, $4, $5)
+                    component_location, structure_name, gtin, gtin_embalagem, quantidade
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 ON CONFLICT (parent_product_bling_id, parent_product_bling_account, component_sku)
-                DO NOTHING`,
+                DO UPDATE SET quantidade = EXCLUDED.quantidade`,
                 [
                     productData.id,
                     'eliane',
                     componenteDetails.codigo,
                     componenteDetails.estoque?.localizacao,
-                    componenteDetails.nome
+                    componenteDetails.nome,
+                    componenteDetails.gtin,
+                    componenteDetails.gtinEmbalagem,
+                    componente.quantidade || 1
                 ]
             );
         } catch (error) {
@@ -987,6 +1008,9 @@ async function syncNFeLucas() {
                                             await new Promise(resolve => setTimeout(resolve, 500));
                                             const prodDetailsResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${prodId}`, 'lucas');
                                             volumesUnit = parseFloat(prodDetailsResp.data.volumes || 0);
+                                            
+                                            // [NOVO] Sincroniza estruturas (kits) durante o sync de NF-e background
+                                            await processAndCacheStructuresLucas(prodDetailsResp.data, client);
                                         }
                                         
                                     } catch (productError) {
@@ -1232,6 +1256,9 @@ async function syncNFeEliane() {
                                             await new Promise(resolve => setTimeout(resolve, 500));
                                             const prodDetailsResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${prodSearchResp.data[0].id}`, 'eliane');
                                             volumesUnit = parseFloat(prodDetailsResp.data.volumes || 0);
+
+                                            // [NOVO] Sincroniza estruturas (kits) durante o sync de NF-e background Eliane
+                                            await processAndCacheStructuresEliane(prodDetailsResp.data, client);
                                         }
                                     } catch (productError) {
                                         console.error(`[ElianeSync] Erro persistente ao buscar volumes do produto ${produtoCodigo}. Detalhe: ${productError.message}`);

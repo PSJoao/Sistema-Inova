@@ -3,6 +3,7 @@
 const { Pool } = require('pg');
 const axios = require('axios');
 const { getValidBlingToken } = require('../services/blingTokenManager');
+const etiquetasService = require('../services/etiquetasService');
 
 // Conexão com o banco (usando as variáveis de ambiente do banco de monitoramento/inova)
 const pool = new Pool({
@@ -90,7 +91,77 @@ exports.searchNfeByChave = async (req, res) => {
         const nfeResult = await pool.query(nfeQuery, [chave]);
 
         if (nfeResult.rows.length === 0) {
-            return res.status(404).json({ message: 'Nota Fiscal não encontrada no sistema.' });
+            // FALLBACK INTELIGENTE: Tentar procurar na cached_etiquetas_ml
+            const fallbackQuery = `
+                SELECT 
+                    id, nfe_numero, pack_id, chave_acesso, skus, passou_conferencia_bipagem
+                FROM cached_etiquetas_ml
+                WHERE chave_acesso = $1 OR nfe_numero = $1
+            `;
+            const fallbackResult = await pool.query(fallbackQuery, [chave]);
+
+            if (fallbackResult.rows.length === 0) {
+                return res.status(404).json({ message: 'Nota Fiscal não encontrada no sistema (Nem no Bling, nem Hub).' });
+            }
+
+            const fallbackNfe = fallbackResult.rows[0];
+
+            if (fallbackNfe.passou_conferencia_bipagem) {
+                return res.status(400).json({
+                    message: `A Nota Fiscal ${fallbackNfe.nfe_numero} já foi conferida anteriormente!`,
+                    code: 'ALREADY_CHECKED',
+                    nfeNumero: fallbackNfe.nfe_numero
+                });
+            }
+
+            let skus = [];
+            if (fallbackNfe.skus) {
+                try {
+                    const parsed = JSON.parse(fallbackNfe.skus);
+                    if (Array.isArray(parsed)) {
+                        skus = parsed.map(s => s.original || s.display || s);
+                    } else if (typeof parsed === 'string') {
+                        skus = [parsed];
+                    }
+                } catch (e) {
+                    skus = fallbackNfe.skus.split(',').map(s => s.trim());
+                }
+            }
+
+            // Pega structures pelo SKU do pai (cached_products) ou do componente (cached_structures)
+            const structuresQueryFallback = `
+                SELECT 
+                    s.id, s.parent_product_bling_id, s.component_sku, s.structure_name,
+                    s.gtin, s.gtin_embalagem, s.codigo_fabrica, s.escondido, s.quantidade,
+                    p.nome as parent_name, p.sku as parent_sku
+                FROM cached_products p
+                LEFT JOIN cached_structures s ON s.parent_product_bling_id = p.bling_id
+                WHERE p.sku = ANY($1::text[])
+            `;
+
+            const structuresResultFallback = await pool.query(structuresQueryFallback, [skus]);
+
+            // Expande os volumes de acordo com a quantidade
+            let expandedVolumesFallback = [];
+            for (let row of structuresResultFallback.rows) {
+                const qtd = parseInt(row.quantidade) || 1;
+                for (let i = 0; i < qtd; i++) {
+                    // Copia o objeto, adicionando um suffix ao id para evitar duplicação real se necessário no frontend
+                    expandedVolumesFallback.push({ ...row, id: row.id ? `${row.id}_${i}` : null });
+                }
+            }
+
+            return res.json({
+                nfe: {
+                    numero: fallbackNfe.nfe_numero || '-',
+                    chave: fallbackNfe.chave_acesso || '-',
+                    cliente: 'Cliente do Hub',
+                    uf: '-',
+                    pedidoBlingId: fallbackNfe.pack_id || '-',
+                    conta: 'hub'
+                },
+                volumes: expandedVolumesFallback
+            });
         }
 
         const nfe = nfeResult.rows[0];
@@ -122,7 +193,7 @@ exports.searchNfeByChave = async (req, res) => {
         const structuresQuery = `
             SELECT 
                 s.id, s.parent_product_bling_id, s.component_sku, s.structure_name,
-                s.gtin, s.gtin_embalagem, s.codigo_fabrica, s.escondido,
+                s.gtin, s.gtin_embalagem, s.codigo_fabrica, s.escondido, s.quantidade,
                 p.nome as parent_name, p.sku as parent_sku
             FROM cached_structures s
             JOIN cached_products p ON s.parent_product_bling_id = p.bling_id
@@ -130,6 +201,15 @@ exports.searchNfeByChave = async (req, res) => {
         `;
 
         const structuresResult = await pool.query(structuresQuery, [productIds]);
+
+        // Expande os volumes de acordo com a quantidade
+        let expandedVolumes = [];
+        for (let row of structuresResult.rows) {
+            const qtd = parseInt(row.quantidade) || 1;
+            for (let i = 0; i < qtd; i++) {
+                expandedVolumes.push({ ...row, id: row.id ? `${row.id}_${i}` : null });
+            }
+        }
 
         // Retorna o objeto completo
         res.json({
@@ -141,7 +221,7 @@ exports.searchNfeByChave = async (req, res) => {
                 pedidoBlingId: pedidoBlingId,
                 conta: nfe.bling_account // Envia a conta para o frontend (opcional, mas bom para debug)
             },
-            volumes: structuresResult.rows
+            volumes: expandedVolumes
         });
 
     } catch (error) {
@@ -153,7 +233,7 @@ exports.searchNfeByChave = async (req, res) => {
 // --- API: FINALIZAÇÃO (ATUALIZAÇÃO BLING E BANCO LOCAL) ---
 
 exports.finalizeConferencia = async (req, res) => {
-    const { nfeNumero, pedidoBlingId } = req.body;
+    const { nfeNumero, pedidoBlingId, carregadores } = req.body;
 
     if (!nfeNumero || !pedidoBlingId) {
         return res.status(400).json({ message: 'Dados insuficientes para finalizar.' });
@@ -162,13 +242,6 @@ exports.finalizeConferencia = async (req, res) => {
     const client = await pool.connect();
 
     try {
-        const accountResult = await client.query(
-            'SELECT bling_account FROM cached_nfe WHERE nfe_numero = $1',
-            [nfeNumero]
-        );
-
-        const accountName = accountResult.rows.length > 0 ? accountResult.rows[0].bling_account : 'lucas';
-
         await client.query('BEGIN');
 
         // 1. Atualiza Banco Local (Marca como conferida E salva a data)
@@ -177,53 +250,18 @@ exports.finalizeConferencia = async (req, res) => {
             [nfeNumero]
         );
 
-        // 2. Atualiza Bling (Situação "Verificado")
-        try {
-            console.log(`[Conferência] Finalizando NF ${nfeNumero} na conta: ${accountName}`);
-
-            const accessToken = await getValidBlingToken(accountName);
-            const url = `https://api.bling.com.br/Api/v3/pedidos/vendas/${pedidoBlingId}/situacoes/24`;
-
-            await axios.patch(url, {}, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
-            });
-
-            console.log(`[Conferência] Pedido ${pedidoBlingId} (NF ${nfeNumero}) atualizado para 'Verificado' no Bling (${accountName}).`);
-
-        } catch (blingError) {
-            let errorMsg = "Erro desconhecido ao atualizar Bling.";
-            console.error('\n========================================');
-            console.error(`[Conferência] ERRO DETALHADO AO ATUALIZAR BLING (NF ${nfeNumero})`);
-
-            if (blingError.response) {
-                console.error('STATUS HTTP:', blingError.response.status);
-                console.error('RESPOSTA DO BLING (MOTIVO):', JSON.stringify(blingError.response.data, null, 2));
-                if (blingError.response.data && blingError.response.data.error) {
-                    errorMsg = blingError.response.data.error.message || JSON.stringify(blingError.response.data.error);
-                } else {
-                    errorMsg = "O Bling rejeitou a atualização (Status " + blingError.response.status + ").";
-                }
-            } else if (blingError.request) {
-                console.error('ERRO DE REDE: Sem resposta do servidor do Bling.');
-                errorMsg = "Sem comunicação com a API do Bling.";
-            } else {
-                console.error('ERRO INTERNO:', blingError.message);
-                errorMsg = blingError.message;
-            }
-            console.error('========================================\n');
-
-            // Lança o erro para o catch principal fazer ROLLBACK e devolver ao frontend
-            throw new Error(`Bling: ${errorMsg}`);
-        }
-
-        // 3. Integração com Expedição (Marca etiqueta como checado se não estiver expedido)
+        // 2. Integração com Expedição e Tabela de Gestão de Conferência
+        // Seta passou_conferencia_bipagem = true para a nota ir pra gestão
+        // e status = checado para seguir o fluxo de expedição
         await client.query(`
             UPDATE cached_etiquetas_ml 
-            SET status = 'checado' 
+            SET status = 'checado',
+                passou_conferencia_bipagem = true,
+                bling_sync_status = 'pending'
             WHERE nfe_numero = $1 AND status != 'expedido'
         `, [nfeNumero]);
 
-        // 4. Grava no Relatório Histórico
+        // 3. Grava no Relatório Histórico
         const username = req.session.username || 'Sistema';
         await client.query(`
             INSERT INTO conferencia_relatorio (nfe_numero, usuario)
@@ -231,16 +269,23 @@ exports.finalizeConferencia = async (req, res) => {
         `, [nfeNumero, username]);
 
         await client.query('COMMIT');
+
+        // 4. Registra Produtividade (fora da transaction da conferência para garantir modularidade)
+        if (carregadores && carregadores.length > 0) {
+            try {
+                await etiquetasService.registrarProdutividadeConferencia(nfeNumero, carregadores);
+                console.log(`[Conferência] Produtividade registrada para NF ${nfeNumero} com carregadores: ${carregadores.join(', ')}`);
+            } catch (prodErr) {
+                console.error(`[Conferência] Erro não fatal ao registrar produtividade da NF ${nfeNumero}:`, prodErr);
+                // Não retorna erro pois a conferência em si foi salva com sucesso.
+            }
+        }
+
         res.json({ success: true, message: 'Conferência finalizada com sucesso.' });
 
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('Erro ao finalizar conferência:', error);
-
-        // Se for um erro que lançamos manualmente do Bling, manda a mensagem limpa
-        if (error.message && error.message.startsWith('Bling:')) {
-            return res.status(400).json({ message: error.message.replace('Bling: ', '') });
-        }
 
         res.status(500).json({ message: 'Erro ao finalizar conferência.' });
     } finally {
@@ -399,5 +444,79 @@ exports.updateStructureInfo = async (req, res) => {
         res.status(500).json({ message: 'Erro ao atualizar dados.' });
     } finally {
         client.release();
+    }
+};
+
+// --- API: CONTROLE DE PALETES ---
+
+exports.getPaletes = async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT id, nome, count, created_at FROM conferencia_paletes ORDER BY id ASC'
+        );
+        const paleteAtualRes = await pool.query(
+            "SELECT value FROM conferencia_config WHERE key = 'palete_atual_id'"
+        );
+        const paleteAtualId = paleteAtualRes.rows.length > 0 ? parseInt(paleteAtualRes.rows[0].value) : 1;
+
+        res.json({
+            success: true,
+            paletes: result.rows,
+            paleteAtualId
+        });
+    } catch (error) {
+        console.error('Erro ao buscar paletes:', error);
+        res.status(500).json({ success: false, message: 'Erro ao buscar paletes.' });
+    }
+};
+
+exports.savePalete = async (req, res) => {
+    try {
+        const { id, nome, count } = req.body;
+        const query = `
+            INSERT INTO conferencia_paletes (id, nome, count)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (id)
+            DO UPDATE SET nome = EXCLUDED.nome, count = EXCLUDED.count, updated_at = CURRENT_TIMESTAMP
+        `;
+        await pool.query(query, [id, nome, count]);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Erro ao salvar palete:', error);
+        res.status(500).json({ success: false, message: 'Erro ao salvar palete.' });
+    }
+};
+
+exports.setPaleteAtual = async (req, res) => {
+    try {
+        const { paleteAtualId } = req.body;
+        const query = `
+            INSERT INTO conferencia_config (key, value)
+            VALUES ('palete_atual_id', $1)
+            ON CONFLICT (key)
+            DO UPDATE SET value = EXCLUDED.value
+        `;
+        await pool.query(query, [String(paleteAtualId)]);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Erro ao definir palete atual:', error);
+        res.status(500).json({ success: false, message: 'Erro ao definir palete atual.' });
+    }
+};
+
+exports.resetPaletes = async (req, res) => {
+    try {
+        await pool.query('DELETE FROM conferencia_paletes');
+        await pool.query(`
+            INSERT INTO conferencia_paletes (id, nome, count) VALUES (1, 'Palete 1', 0)
+        `);
+        await pool.query(`
+            INSERT INTO conferencia_config (key, value) VALUES ('palete_atual_id', '1')
+            ON CONFLICT (key) DO UPDATE SET value = '1'
+        `);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Erro ao resetar paletes:', error);
+        res.status(500).json({ success: false, message: 'Erro ao resetar paletes.' });
     }
 };

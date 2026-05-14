@@ -4,7 +4,7 @@
     <div class="bipagem-wrapper">
 
         <div class="bipagem-header">
-            <h1>{{title}}</h1>
+            <h1 class="d-none d-md-block">{{title}}</h1>
         </div>
 
         <div class="bipagem-grid">
@@ -34,10 +34,14 @@
                                 style="font-size: 1.3rem; font-weight: bold; color: var(--accent-orange); display: flex; align-items: center; gap: 8px;">
                                 <i class="fas fa-file-invoice"></i> NF <span id="active-nfe-number">---</span>
                             </span>
-                            <button class="btn-bip danger" id="btn-close-active-note"
-                                title="Pausar e Voltar para Pendentes"
+                            <button class="btn-bip danger" id="btn-close-active-note" title="Pausar / Limpar Nota"
                                 style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px;">
-                                <i class="fas fa-pause"></i> Pausar
+                                <i class="fas fa-pause" id="btn-close-icon"></i> <span id="btn-close-text">Pausar</span>
+                            </button>
+                            <button class="btn-bip success" id="btn-finalize-active-note" title="Finalizar Nota"
+                                style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px; display: none;">
+                                <i class="fas fa-check" id="btn-finalize-icon"></i> <span
+                                    id="btn-finalize-text">Finalizar</span>
                             </button>
                             {{!--<span id="active-nfe-cliente"
                                 style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 4px;"></span>--}}
@@ -53,6 +57,18 @@
                             <div id="active-progress-text"
                                 style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.85rem; color: white; text-shadow: 1px 1px 2px rgba(0,0,0,0.8); pointer-events: none;">
                                 0/0 (0%)</div>
+                        </div>
+
+                        <div class="bip-status-box"
+                            style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                            <h6
+                                style="color: var(--text-secondary); margin-top: 0; margin-bottom: 10px; font-size: 0.9rem;">
+                                Carregadores</h6>
+                            <ul id="lista-carregadores-bipados" class="carregadores-list"
+                                style="list-style: none; padding: 0; margin: 0 0 10px 0; max-height: 100px; overflow-y: auto;">
+                                <li style="background: transparent; padding: 0;"><span class="text-muted"
+                                        style="font-size: 0.9rem;">Nenhum bipado.</span></li>
+                            </ul>
                         </div>
 
                         <div
@@ -105,19 +121,118 @@
                 </div>
             </div>
 
+            <style>
+                /* Estilos apenas para garantir a responsividade sem quebrar o HTML existente */
+                .bip-status-grid {
+                    display: flex;
+                    justify-content: center;
+                    /* Centraliza a caixa inteira em telas grandes/pequenas */
+                    width: 100%;
+                }
+
+                .bip-status-box {
+                    width: 100%;
+                    max-width: 1200px;
+                    /* Impede que fique absurdamente esticado em telas ultrawide */
+                }
+
+                @media (max-width: 480px) {
+                    .bip-responsive-item {
+                        flex-basis: 100% !important;
+                        /* Força os itens a caírem um sobre o outro no mobile */
+                    }
+
+                    .bip-status-box h6 {
+                        text-align: center !important;
+                        /* Centraliza o título no mobile */
+                    }
+                }
+            </style>
+
+            <div class="bip-status-grid" style="margin-bottom: 15px;">
+                <div class="bip-status-box"
+                    style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.05); padding: 10px 15px; border-radius: 8px;">
+                    <h6 style="color: var(--text-secondary); margin-top: 0; margin-bottom: 10px; font-size: 0.85rem;">
+                        Configurações Globais</h6>
+
+                    <!-- Adicionado apenas justify-content: center no style abaixo -->
+                    <div
+                        style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: center;">
+
+                        <!-- Adicionada apenas a classe bip-responsive-item -->
+                        <div id="ml-mode-container" class="bip-responsive-item"
+                            style="flex: 1; min-width: 200px; display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.2); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); transition: all 0.3s;">
+                            <span id="ml-mode-text"
+                                style="color: var(--text-muted); font-size: 0.85rem; font-weight: bold; transition: color 0.3s;">Modo
+                                Mercado Livre</span>
+                            <label class="switch"
+                                style="position: relative; display: inline-block; width: 34px; height: 18px; margin: 0;">
+                                <input type="checkbox" id="toggle-modo-ml" style="opacity: 0; width: 0; height: 0;">
+                                <span class="slider round"
+                                    style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px;"></span>
+                            </label>
+                        </div>
+
+                        <!-- Adicionada apenas a classe bip-responsive-item -->
+                        <label class="bip-responsive-item"
+                            style="flex: 1; min-width: 200px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; margin-bottom: 0; background: rgba(0,0,0,0.2); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                            <span id="label-modo-carregador"
+                                style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); transition: color 0.3s;">Com
+                                Carregador</span>
+                            <div style="position: relative; display: inline-block; width: 40px; height: 20px;">
+                                <input type="checkbox" id="chk-sem-carregador" style="opacity: 0; width: 0; height: 0;"
+                                    onchange="
+                                    const lbl = document.getElementById('label-modo-carregador');
+                                    if(this.checked) {
+                                        lbl.innerText = 'Sem Carregador';
+                                        lbl.style.color = 'var(--accent-orange)';
+                                        this.nextElementSibling.style.backgroundColor = 'var(--accent-orange)';
+                                        this.nextElementSibling.style.borderColor = 'var(--accent-orange)';
+                                        this.nextElementSibling.nextElementSibling.style.transform = 'translateX(20px)';
+                                        this.nextElementSibling.nextElementSibling.style.backgroundColor = '#1e1e2f';
+                                    } else {
+                                        lbl.innerText = 'Com Carregador';
+                                        lbl.style.color = 'var(--text-secondary)';
+                                        this.nextElementSibling.style.backgroundColor = 'rgba(255,255,255,0.05)';
+                                        this.nextElementSibling.style.borderColor = 'rgba(255,255,255,0.1)';
+                                        this.nextElementSibling.nextElementSibling.style.transform = 'translateX(0)';
+                                        this.nextElementSibling.nextElementSibling.style.backgroundColor = '#888';
+                                    }
+                                ">
+                                <span
+                                    style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(255,255,255,0.05); transition: 0.3s; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1);"></span>
+                                <span
+                                    style="position: absolute; height: 12px; width: 12px; left: 4px; bottom: 4px; background-color: #888; transition: 0.3s; border-radius: 50%; pointer-events: none;"></span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+            </div>
         </div>
 
-        {{!-- BOTÃO FLUTUANTE (FAB) PARA FINALIZAR --}}
-        <div id="fab-finalizar-container"
-            style="position: fixed; bottom: 90px; right: 30px; display: none; z-index: 1000;">
-            <button id="btn-sync-completed"
-                style="background: var(--accent-orange); color: white; border: none; border-radius: 30px; padding: 12px 24px; font-size: 1.1rem; font-weight: bold; box-shadow: 0 4px 15px rgba(255, 107, 0, 0.4); cursor: pointer; transition: all 0.3s; display: flex; align-items: center; gap: 10px;">
-                <i class="fas fa-paper-plane"></i> Finalizar
-                <span id="badge-sync-count"
-                    style="background: rgba(0,0,0,0.2); padding: 2px 8px; border-radius: 12px; font-size: 0.9rem;">0</span>
+
+
+    </div>
+
+    {{!-- BOTÕES FLUTUANTES: CONTROLE DE PALETES --}}
+    <div id="fab-paletes-container"
+        style="position: fixed; bottom: 100px; right: 20px; z-index: 998; display: flex; flex-direction: column; align-items: center; gap: 10px;">
+        {{!-- Botão menor: Novo Palete (+) --}}
+        <button id="fab-novo-palete" title="Criar novo palete"
+            style="width: 40px; height: 40px; border-radius: 50%; border: none; background: linear-gradient(135deg, #ff8c00, #ff6b00); color: white; font-size: 1.2rem; font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(255, 107, 0, 0.4); display: flex; align-items: center; justify-content: center; transition: transform 0.2s, box-shadow 0.2s;">
+            <i class="fas fa-plus"></i>
+        </button>
+        {{!-- Botão maior: Palete Atual --}}
+        <div style="position: relative;">
+            <button id="fab-palete-atual" title="Ver paletes"
+                style="width: 56px; height: 56px; border-radius: 50%; border: none; background: linear-gradient(135deg, #ff8c00, #e65100); color: white; font-size: 1.1rem; font-weight: 900; cursor: pointer; box-shadow: 0 4px 20px rgba(255, 107, 0, 0.5); display: flex; align-items: center; justify-content: center; transition: transform 0.2s, box-shadow 0.2s; letter-spacing: -0.5px;">
+                P1
             </button>
+            <span id="fab-palete-count"
+                style="position: absolute; top: -6px; right: -6px; background: #28a745; color: white; font-size: 0.7rem; font-weight: bold; min-width: 20px; height: 20px; border-radius: 10px; display: flex; align-items: center; justify-content: center; padding: 0 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.4);">
+                0
+            </span>
         </div>
-
     </div>
 
     {{!-- FOOTER: INPUT FIXO DE BIPAGEM --}}
@@ -139,6 +254,76 @@
     <script src="/public/scripts/toastSystem.js"></script>
     <script src="/public/scripts/conferenciaManager.js"></script>
     <style>
+        /* Estilo do toggle switch */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 40px;
+            height: 20px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #555;
+            -webkit-transition: .4s;
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 14px;
+            width: 14px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            -webkit-transition: .4s;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked+.slider {
+            background-color: var(--accent-orange);
+        }
+
+        input:focus+.slider {
+            box-shadow: 0 0 1px var(--accent-orange);
+        }
+
+        input:checked+.slider:before {
+            -webkit-transform: translateX(20px);
+            -ms-transform: translateX(20px);
+            transform: translateX(20px);
+        }
+
+        .carregador-badge {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 8px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: var(--text-secondary);
+        }
+
+        .carregador-badge.selected {
+            background: var(--accent-orange);
+            border-color: var(--accent-orange);
+            color: white;
+        }
+
         /* Ajustes extras para garantir o comportamento escuro dentro do wrapper sem afetar o layout raiz */
         body {
             padding-bottom: 80px;
@@ -194,11 +379,6 @@
             box-shadow: 0 0 0 2px rgba(255, 107, 0, 0.2);
         }
 
-        #btn-sync-completed:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(255, 107, 0, 0.6);
-        }
-
         /* --- RESPONSIVIDADE ESTRITA PARA CELULARES --- */
         @media (max-width: 768px) {
             .bipagem-grid {
@@ -213,6 +393,16 @@
 
             #empty-state-panel {
                 padding: 2rem 1rem !important;
+            }
+
+            /* Esconde painel vazio em telas pequenas para não atrapalhar */
+            #empty-state-panel:not(.force-show) {
+                display: none !important;
+                min-height: 0 !important;
+            }
+
+            .bipagem-panel {
+                min-height: auto !important;
             }
 
             .nota-ativa-titulo {
@@ -256,14 +446,53 @@
             .badge-progresso {
                 font-size: 0.7rem;
             }
+        }
 
-            #fab-finalizar-container {
-                bottom: 80px !important;
-                right: 15px !important;
+        /* Item sem EAN - efeito hover clicável */
+        .volume-item[data-manual-check-idx]:not(.conferido):hover {
+            background: rgba(220, 53, 69, 0.1) !important;
+            border-color: rgba(220, 53, 69, 0.3) !important;
+            transition: all 0.2s;
+        }
+
+        .btn-copy-sku:hover {
+            color: var(--accent-orange) !important;
+        }
+
+        /* Botões flutuantes de paletes */
+        #fab-palete-atual:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 25px rgba(255, 107, 0, 0.6);
+        }
+
+        #fab-palete-atual:active {
+            transform: scale(0.95);
+        }
+
+        #fab-novo-palete:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 18px rgba(255, 107, 0, 0.5);
+        }
+
+        #fab-novo-palete:active {
+            transform: scale(0.9);
+        }
+
+        @media (max-width: 768px) {
+            #fab-paletes-container {
+                right: 10px !important;
+                bottom: 100px !important;
             }
 
-            #btn-sync-completed {
-                padding: 10px 18px !important;
+            #fab-palete-atual {
+                width: 48px !important;
+                height: 48px !important;
+                font-size: 0.95rem !important;
+            }
+
+            #fab-novo-palete {
+                width: 34px !important;
+                height: 34px !important;
                 font-size: 1rem !important;
             }
         }

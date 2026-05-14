@@ -495,12 +495,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
 
                 ModalSystem.confirm(
-                    "Deseja salvar o progresso da bipagem antes de sair?",
+                    `Deseja salvar o progresso da bipagem antes de sair?`,
                     "Salvar Progresso?",
                     async () => { // onConfirm (Salvar e Sair)
                         // Esta parte continua como está
                         ModalSystem.showLoading("Salvando...");
                         try {
+                            transportadoraApelido = transportadoraApelido === 'ATUAL' ? 'ATUAL CARGAS' : transportadoraApelido;
                             await fetch(`/api/relacoes/${transportadoraApelido}/save-state`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ barcodes: barcodesToSave }) });
                             window.location.href = targetUrl;
                         } catch (error) {
@@ -512,6 +513,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     async () => { // onCancel (Sair sem Salvar) - AGORA É ASSÍNCRONO
                         ModalSystem.showLoading("Descartando alterações...");
                         try {
+                            transportadoraApelido = transportadoraApelido === 'ATUAL' ? 'ATUAL CARGAS' : transportadoraApelido;
                             // Chama a nova rota DELETE para limpar o estado no banco
                             await fetch(`/api/relacoes/${transportadoraApelido}/clear-state`, { method: 'DELETE' });
                             // Só navega DEPOIS que o estado foi limpo com sucesso

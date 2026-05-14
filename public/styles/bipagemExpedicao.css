@@ -67,7 +67,7 @@
     margin-bottom: 1.5rem;
     display: flex;
     align-items: center;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     padding-bottom: 1rem;
 }
 
@@ -100,7 +100,7 @@
     flex: 1;
     background-color: var(--bg-tertiary);
     color: var(--text-primary);
-    border: 1px solid rgba(255,255,255,0.1);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: var(--border-radius-md);
     padding: 0.75rem 1rem;
     font-size: 1rem;
@@ -122,7 +122,7 @@
 /* Botões de Ação Menores */
 .btn-bip {
     background: var(--bg-tertiary);
-    border: 1px solid rgba(255,255,255,0.1);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     color: var(--text-primary);
     border-radius: var(--border-radius-md);
     padding: 0 1rem;
@@ -194,9 +194,18 @@
 }
 
 @keyframes pulse {
-    0% { opacity: 0.8; }
-    50% { opacity: 1; text-shadow: 0 0 10px rgba(240,124,0,0.5); }
-    100% { opacity: 0.8; }
+    0% {
+        opacity: 0.8;
+    }
+
+    50% {
+        opacity: 1;
+        text-shadow: 0 0 10px rgba(240, 124, 0, 0.5);
+    }
+
+    100% {
+        opacity: 0.8;
+    }
 }
 
 .scanner-input {
@@ -236,7 +245,7 @@
     background: var(--bg-tertiary);
     border-radius: var(--border-radius-md);
     padding: 1.25rem;
-    border: 1px solid rgba(255,255,255,0.02);
+    border: 1px solid rgba(255, 255, 255, 0.02);
     display: flex;
     flex-direction: column;
     box-sizing: border-box;
@@ -310,7 +319,7 @@
 .hierarchy-panel {
     background: var(--bg-secondary);
     border-radius: var(--border-radius-lg);
-    border: 1px solid rgba(255,255,255,0.05);
+    border: 1px solid rgba(255, 255, 255, 0.05);
     margin-top: 2rem;
     overflow: hidden;
 }
@@ -348,7 +357,7 @@
 /* Árvore de Coleta (Sanfona customizada) */
 .h-coleta-card {
     background: var(--bg-tertiary);
-    border: 1px solid rgba(255,255,255,0.05);
+    border: 1px solid rgba(255, 255, 255, 0.05);
     border-radius: var(--border-radius-md);
     margin-bottom: 1rem;
     overflow: hidden;
@@ -360,12 +369,12 @@
     align-items: center;
     justify-content: space-between;
     cursor: pointer;
-    background: rgba(255,255,255,0.02);
+    background: rgba(255, 255, 255, 0.02);
     transition: background var(--transition-fast);
 }
 
 .h-coleta-header:hover {
-    background: rgba(255,255,255,0.05);
+    background: rgba(255, 255, 255, 0.05);
 }
 
 .h-coleta-title {
@@ -385,8 +394,9 @@
 
 .h-coleta-content {
     padding: 1rem;
-    border-top: 1px solid rgba(255,255,255,0.05);
-    display: none; /* Controle via JS */
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    display: none;
+    /* Controle via JS */
 }
 
 .h-coleta-content.open {
@@ -395,7 +405,7 @@
 
 /* Árvore de Palete */
 .h-palete-box {
-    background: rgba(0,0,0,0.2);
+    background: rgba(0, 0, 0, 0.2);
     border-left: 3px solid var(--text-muted);
     padding: 1rem;
     border-radius: 0 var(--border-radius-md) var(--border-radius-md) 0;
@@ -419,7 +429,7 @@
 
 .h-nf-tag {
     background: var(--bg-primary);
-    border: 1px solid rgba(255,255,255,0.1);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     color: var(--text-secondary);
     padding: 4px 10px;
     border-radius: 4px;
@@ -487,7 +497,7 @@
     .bipagem-header {
         display: none;
     }
-    
+
     .bipagem-header h1 {
         font-size: 1.3rem;
     }
@@ -502,7 +512,8 @@
     }
 
     .bip-input-group {
-        flex-direction: row; /* Mantém na mesma linha mas reduz botões */
+        flex-direction: row;
+        /* Mantém na mesma linha mas reduz botões */
     }
 
     .bip-select {
@@ -547,5 +558,44 @@
     .btn-bip-encerrar {
         padding: 0.85rem;
         font-size: 0.95rem;
+    }
+}
+
+/* Container que segura os dois cards internos */
+.responsive-flex-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
+    /* Centraliza itens em telas menores */
+}
+
+/* Estilo individual de cada seletor (Modo ML e Carregador) */
+.status-item {
+    flex: 1;
+    /* Faz os itens crescerem igualmente em telas grandes */
+    min-width: 250px;
+    /* Impede que fiquem espremidos demais */
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 10px 15px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    transition: all 0.3s;
+}
+
+/* Ajuste para telas muito pequenas (mobile) */
+@media (max-width: 480px) {
+    .status-item {
+        min-width: 100%;
+        /* Ocupa a largura total no celular */
+    }
+
+    .bip-status-box h6 {
+        text-align: center;
+        /* Centraliza o título no mobile */
     }
 }

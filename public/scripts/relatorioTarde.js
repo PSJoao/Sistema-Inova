@@ -128,8 +128,8 @@ async function carregarHistoricoTarde() {
                         <td class="align-middle font-weight-bold" style="color: var(--accent-orange);">${rel.nome}</td>
                         <td class="align-middle" style="color: var(--text-secondary);">${dataFormatada}</td>
                         <td class="text-center">
-                            <a href="/api/relatorio-tarde/download/${rel.id}" class="btn btn-sm btn-success mr-2" title="Baixar Excel">
-                                <i class="fas fa-file-excel mr-1"></i> Baixar
+                            <a href="/api/relatorio-tarde/download/${rel.id}" class="btn btn-sm btn-success mr-2" title="Baixar PDF" target="_blank">
+                                <i class="fas fa-file-pdf mr-1"></i> Baixar
                             </a>
                             <button class="btn btn-sm btn-outline-danger" onclick="excluirRelatorioTarde(${rel.id})" title="Excluir">
                                 <i class="fas fa-trash"></i>

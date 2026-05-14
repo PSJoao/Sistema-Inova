@@ -2,6 +2,7 @@
 
 let tabelaPendencias; // Variável global para armazenar a instância do DataTables
 let tabelaBipagemPdfs; // Tabela de PDFs gerados pela bipagem
+let tabelaGestaoConferencia; // Tabela de Gestão de Conferência
 
 let selectedNFs = new Set();
 let isMassaMode = false;
@@ -13,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     carregarHistoricoExpedicoes();
     initExportButtons();
     setupMassaModeListeners(); // Novo painel
+    initGestaoConferenciaListeners(); // Gestão de conferência
 });
 
 /**
@@ -272,6 +274,23 @@ function initTabelas() {
         ]
     });
 
+    // Tabela de Gestão de Conferência em Massa
+    tabelaGestaoConferencia = $('#tabela-gestao-conferencia').DataTable({
+        language: dataTablesLangBR,
+        pageLength: 5,
+        ordering: true,
+        order: [[3, "desc"]], // Ordenar por data
+        columns: [
+            { data: 'nfe' },
+            { data: 'pedido' },
+            { data: 'conferente' },
+            { data: 'data_hora' },
+            { data: 'status_local' },
+            { data: 'status_bling' },
+            { data: 'erro_bling' }
+        ]
+    });
+
     // Tabela de Pendências
     tabelaPendencias = $('#tabela-pendencias').DataTable({
         language: dataTablesLangBR,
@@ -436,7 +455,11 @@ function updateMassaPanelCount() {
  */
 function initDashboardRealTime() {
     carregarDadosDashboard();
-    setInterval(carregarDadosDashboard, 30000); // Atualiza a cada 30 segundos
+    carregarGestaoConferencia();
+    setInterval(() => {
+        carregarDadosDashboard();
+        carregarGestaoConferencia();
+    }, 30000); // Atualiza a cada 30 segundos
 }
 
 /**
@@ -559,6 +582,106 @@ async function carregarBipagemPdfs() {
         }
     } catch (err) {
         console.warn('Falha ao carregar PDFs de bipagem:', err);
+    }
+}
+
+// ==========================================
+// GESTÃO DE CONFERÊNCIA
+// ==========================================
+
+async function carregarGestaoConferencia() {
+    try {
+        const response = await fetch('/api/expedicao/conferencia-gestao');
+        const data = await response.json();
+        
+        if (tabelaGestaoConferencia) {
+            const formatado = data.map(item => {
+                const isPendingSync = item.bling_sync_status === 'pending';
+                const isErrorSync = item.bling_sync_status === 'error';
+                const isSuccessSync = item.bling_sync_status === 'success';
+
+                let syncBadge = '';
+                if (isPendingSync) syncBadge = '<span class="badge badge-warning text-dark">Pendente Envio</span>';
+                else if (isErrorSync) syncBadge = '<span class="badge badge-danger">Erro no Envio</span>';
+                else if (isSuccessSync) syncBadge = '<span class="badge badge-success">Enviado</span>';
+                else syncBadge = `<span class="badge badge-secondary">${item.bling_sync_status || 'N/A'}</span>`;
+
+                let localStatus = '';
+                if (item.status_ml === 'checado') localStatus = '<span class="badge badge-info">Checado</span>';
+                else if (item.status_ml === 'impresso') localStatus = '<span class="badge badge-success">Expedido</span>';
+                else localStatus = `<span class="badge badge-secondary">${item.status_ml || 'Desconhecido'}</span>`;
+
+                return {
+                    nfe: `<strong>${item.nfe_numero || '-'}</strong>`,
+                    pedido: item.pedido_numero || '-',
+                    conferente: item.conferente || 'N/A',
+                    data_hora: item.conferido_em ? new Date(item.conferido_em).toLocaleString('pt-BR') : '-',
+                    status_local: localStatus,
+                    status_bling: syncBadge,
+                    erro_bling: isErrorSync && item.bling_error_msg ? `<span class="text-danger small" style="word-break: break-word;" title="${item.bling_error_msg}">${item.bling_error_msg}</span>` : '-',
+                    _rawItem: item // guardamos pra puxar dps
+                };
+            });
+            tabelaGestaoConferencia.clear().rows.add(formatado).draw(false);
+        }
+    } catch (error) {
+        console.error('Falha ao atualizar gestão de conferência:', error);
+    }
+}
+
+function initGestaoConferenciaListeners() {
+    const btnSync = document.getElementById('btn-sync-conferencia-bling');
+    if (btnSync) {
+        btnSync.addEventListener('click', async () => {
+            if (!tabelaGestaoConferencia) return;
+            
+            // Pega apenas as linhas que estão pendentes ou com erro
+            const todasLinhas = tabelaGestaoConferencia.rows().data().toArray();
+            const notasParaSincronizar = todasLinhas
+                .map(row => row._rawItem)
+                .filter(i => i.bling_sync_status === 'pending' || i.bling_sync_status === 'error')
+                .map(i => i.nfe_numero);
+
+            if (notasParaSincronizar.length === 0) {
+                ToastSystem.info('Não há notas pendentes ou com erro para sincronizar com o Bling.');
+                return;
+            }
+
+            ModalSystem.confirm(`Deseja enviar/tentar enviar ${notasParaSincronizar.length} nota(s) para o Bling?`, 'Sincronizar com Bling', async () => {
+                ModalSystem.showLoading('Enviando dados para o Bling... Isso pode demorar devido ao limite de taxa (1 requisição por segundo).', 'Aguarde');
+                
+                try {
+                    const res = await fetch('/api/expedicao/conferencia-sync-bling', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ nfeList: notasParaSincronizar })
+                    });
+                    
+                    const data = await res.json();
+                    ModalSystem.hideLoading();
+                    
+                    if (res.ok) {
+                        const falhas = data.resultados.filter(r => !r.success).length;
+                        const sucessos = data.resultados.filter(r => r.success).length;
+                        
+                        if (falhas > 0) {
+                            ToastSystem.warning(`${sucessos} com sucesso, ${falhas} com erro.`);
+                        } else {
+                            ToastSystem.success(`${sucessos} notas sincronizadas com sucesso!`);
+                        }
+                    } else {
+                        ToastSystem.error(data.error || 'Erro ao sincronizar.');
+                    }
+                } catch (error) {
+                    ModalSystem.hideLoading();
+                    ToastSystem.error('Erro de rede ao tentar sincronizar.');
+                }
+                
+                // Recarrega as tabelas para refletir o status
+                carregarGestaoConferencia();
+                carregarDadosDashboard();
+            });
+        });
     }
 }
 
