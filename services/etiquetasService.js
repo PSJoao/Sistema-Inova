@@ -2577,25 +2577,83 @@ async function registrarProdutividadeConferencia(nfLida, carregadoresIds) {
             return { success: true, message: 'Já registrado anteriormente.' };
         }
 
-        // 2. Determinar se é Kit
+        // 2. Determinar se é Kit (Mais de 1 item a ser bipado na nota)
         let isKit = false;
-        const mlCheck = await client.query(`SELECT id, skus FROM cached_etiquetas_ml WHERE nfe_numero = $1 LIMIT 1`, [nfLida]);
-        if (mlCheck.rows.length > 0) {
-            const row = mlCheck.rows[0];
-            let skuArray = [];
-            if (typeof row.skus === 'string') {
-                skuArray = row.skus.split(',').map(s => s.trim()).filter(Boolean);
-            } else if (Array.isArray(row.skus)) {
-                skuArray = row.skus.map(s => (typeof s === 'string' ? s : s.original || s.display || '')).filter(Boolean);
+        try {
+            // 2.1. Busca itens da nota (Tenta nfe_quantidade_produto primeiro)
+            let itemsRes = await client.query(
+                `SELECT produto_codigo, quantidade FROM nfe_quantidade_produto WHERE nfe_numero = $1`,
+                [nfLida]
+            );
+            let items = itemsRes.rows;
+
+            // 2.2. Fallback: Se não achar itens, busca na cached_etiquetas_ml (Notas do HUB)
+            if (items.length === 0) {
+                const mlRes = await client.query(
+                    `SELECT skus, quantidade_total FROM cached_etiquetas_ml WHERE nfe_numero = $1 LIMIT 1`,
+                    [nfLida]
+                );
+                if (mlRes.rows.length > 0) {
+                    const row = mlRes.rows[0];
+                    let parsedSkus = [];
+                    try {
+                        if (typeof row.skus === 'string') parsedSkus = JSON.parse(row.skus);
+                        else if (Array.isArray(row.skus)) parsedSkus = row.skus;
+                    } catch (e) {
+                        parsedSkus = (row.skus || '').split(',').map(s => ({ original: s.trim() }));
+                    }
+
+                    items = parsedSkus.map(s => {
+                        const skuStr = (typeof s === 'string' ? s : (s.original || s.sku || '')).trim();
+                        return {
+                            produto_codigo: skuStr,
+                            // Se houver apenas 1 SKU, assume a quantidade_total da etiqueta
+                            quantidade: parsedSkus.length === 1 ? (parseInt(row.quantidade_total) || 1) : 1
+                        };
+                    }).filter(it => it.produto_codigo);
+                }
             }
 
-            if (skuArray.length > 0) {
-                const prodCheck = await client.query(
-                    `SELECT volumes FROM cached_products WHERE sku = ANY($1::text[]) AND bling_account = 'lucas'`,
-                    [skuArray]
+            // 2.3. Cálculo do total de volumes (bips)
+            let totalVolumes = 0;
+            for (const item of items) {
+                const sku = item.produto_codigo;
+                const qtdNoPedido = parseInt(item.quantidade) || 1;
+
+                // Busca bling_id do produto (Case-insensitive)
+                const prodRes = await client.query(
+                    `SELECT bling_id FROM cached_products WHERE UPPER(sku) = UPPER($1) AND bling_account = 'lucas' LIMIT 1`,
+                    [sku]
                 );
-                isKit = prodCheck.rows.some(p => parseInt(p.volumes) > 1);
+
+                if (prodRes.rows.length > 0) {
+                    const parentBlingId = prodRes.rows[0].bling_id;
+
+                    // Busca soma das estruturas
+                    const structRes = await client.query(
+                        `SELECT SUM(quantidade) as total FROM cached_structures WHERE parent_product_bling_id = $1`,
+                        [parentBlingId]
+                    );
+
+                    const structuresSum = parseInt(structRes.rows[0]?.total || 0);
+                    if (structuresSum > 0) {
+                        totalVolumes += (structuresSum * qtdNoPedido);
+                    } else {
+                        totalVolumes += qtdNoPedido;
+                    }
+                } else {
+                    // Produto não encontrado no cache de produtos, assume a quantidade informada na nota
+                    totalVolumes += qtdNoPedido;
+                }
             }
+
+            if (totalVolumes > 1) {
+                isKit = true;
+            }
+            console.log(`[Produtividade] NF ${nfLida} - Final: ${totalVolumes} volumes (isKit: ${isKit})`);
+
+        } catch (kitErr) {
+            console.error(`[Produtividade] Erro crítico ao calcular Kit para NF ${nfLida}:`, kitErr);
         }
 
         // 3. Garantir que exista uma Coleta e um Palete Virtual para a Conferência

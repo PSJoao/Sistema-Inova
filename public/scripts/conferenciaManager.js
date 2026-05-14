@@ -410,9 +410,6 @@ document.addEventListener('DOMContentLoaded', () => {
             volumes[matchIndex].checked = true;
             sounds.success.play().catch(e => console.log('Erro som', e));
 
-            // Incrementa o contador do palete atual
-            incrementarPaleteAtual();
-
             checkCompletion();
             saveState();
             renderUI();
@@ -446,12 +443,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (state.modoMercadoLivre) {
             // Em modo ML, a ação é de "Limpar", não pausar. Pede confirmação e exclui.
             ModalSystem.confirm("Atenção! No Modo ML isso irá DESCARTE a conferência desta nota. Deseja prosseguir?", "Limpar Nota", () => {
-                // [PALETE] Antes de limpar, remove a contagem do palete
-                const checkedCount = state.activeNfe.volumes.filter(v => v.checked).length;
-                if (checkedCount > 0) {
-                    decrementarPaleteAtual(checkedCount);
-                }
-
                 state.activeNfe = null;
                 saveState();
                 renderUI();
@@ -468,13 +459,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function removePendingNote(nfeNumero) {
         const index = state.pending.findIndex(n => n.numero == nfeNumero);
         if (index !== -1) {
-            const nfe = state.pending[index];
-            // [PALETE] Remove a contagem do palete se houver itens bipados
-            const checkedCount = nfe.volumes.filter(v => v.checked).length;
-            if (checkedCount > 0) {
-                decrementarPaleteAtual(checkedCount);
-            }
-
             state.pending.splice(index, 1); // Remove do array
             saveState(); // Salva o novo estado no banco
             renderUI();  // Atualiza a tela
@@ -591,6 +575,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 state.completed.unshift(nfe);
                 state.activeNfe = null;
                 state.carregadoresBipados = []; // Limpa carregadores para a próxima NF
+
+                // [PALETE] Incrementa o contador do palete pois a NOTA foi finalizada
+                await incrementarPaleteAtual();
 
                 saveState();
                 renderUI();
@@ -718,7 +705,6 @@ document.addEventListener('DOMContentLoaded', () => {
                                 'Confirmar Bipagem Manual',
                                 () => {
                                     vol.checked = true;
-                                    incrementarPaleteAtual();
                                     sounds.success.play().catch(() => {});
                                     ToastSystem.success(`${vol.component_sku} marcado como conferido!`);
                                     saveState();
