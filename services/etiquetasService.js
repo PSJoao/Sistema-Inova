@@ -986,58 +986,93 @@ async function gerarPdfOrganizado(etiquetasOrdenadas, estoqueMapa = {}) {
                 font: boldFont, size: 9,
             });
 
+            // QR Codes
             const qrCodeSize = 30; // Tamanho exato para encaixar no espaço restante do canhoto
-            const qrYPos = currentY - 28; // Ajuste vertical para centralizar com a linha do texto
-            let currentQrX = padding + 50; // Posição X logo ao lado do "Seq: "
+            const qrYPos = currentY - 21; // Ajuste vertical para bater com o montarPaginaZpl (currentY - 19.5 ~ 21)
+            const baseQrX = padding + 50; // Posição X base logo ao lado do "Seq: "
 
-            // 1. QR Code da DANFE
+            // 1. QR Code da DANFE (Esquerda)
             if (etiqueta.chaveAcesso) {
-                const qrDanfeBytes = await bwip.toBuffer({
-                    bcid: 'qrcode',
-                    text: etiqueta.chaveAcesso,
-                    scale: 3
-                });
-                const qrDanfeImg = await finalPdfDoc.embedPng(qrDanfeBytes);
+                try {
+                    const qrDanfeBytes = await bwip.toBuffer({
+                        bcid: 'qrcode',
+                        text: etiqueta.chaveAcesso,
+                        scale: 3
+                    });
+                    const qrDanfeImg = await finalPdfDoc.embedPng(qrDanfeBytes);
 
-                page.drawImage(qrDanfeImg, {
-                    x: currentQrX,
-                    y: qrYPos,
-                    width: qrCodeSize,
-                    height: qrCodeSize
-                });
+                    page.drawImage(qrDanfeImg, {
+                        x: baseQrX,
+                        y: qrYPos,
+                        width: qrCodeSize,
+                        height: qrCodeSize
+                    });
 
-                // Mini legenda
-                page.drawText('DANFE', {
-                    x: currentQrX + 6,
-                    y: qrYPos + 32,
-                    font: font, size: 5
-                });
+                    // Mini legenda
+                    page.drawText('DANFE', {
+                        x: baseQrX + 6,
+                        y: qrYPos + 32,
+                        font: font, size: 5
+                    });
+                } catch (qrErr) {
+                    console.warn(`[PDF Organizado] Erro ao gerar QR DANFE 1: ${qrErr.message}`);
+                }
             }
 
-            // 2. QR Code do Checkout
+            // 2. QR Code do Checkout (Centro)
             if (etiqueta.pedidoInterno) {
-                const qrCheckoutBytes = await bwip.toBuffer({
-                    bcid: 'qrcode',
-                    text: String(etiqueta.pedidoInterno),
-                    scale: 3
-                });
-                const qrCheckoutImg = await finalPdfDoc.embedPng(qrCheckoutBytes);
+                try {
+                    const qrCheckoutBytes = await bwip.toBuffer({
+                        bcid: 'qrcode',
+                        text: String(etiqueta.pedidoInterno),
+                        scale: 3
+                    });
+                    const qrCheckoutImg = await finalPdfDoc.embedPng(qrCheckoutBytes);
 
-                page.drawImage(qrCheckoutImg, {
-                    x: currentQrX + 90,
-                    y: qrYPos,
-                    width: qrCodeSize,
-                    height: qrCodeSize
-                });
+                    page.drawImage(qrCheckoutImg, {
+                        x: baseQrX + 90,
+                        y: qrYPos,
+                        width: qrCodeSize,
+                        height: qrCodeSize
+                    });
 
-                // Mini legenda
-                page.drawText('Check', {
-                    x: currentQrX + 97.5,
-                    y: qrYPos + 32,
-                    font: font, size: 5
-                });
+                    // Mini legenda
+                    page.drawText('Check', {
+                        x: baseQrX + 97.5,
+                        y: qrYPos + 32,
+                        font: font, size: 5
+                    });
+                } catch (qrErr) {
+                    console.warn(`[PDF Organizado] Erro ao gerar QR Checkout: ${qrErr.message}`);
+                }
+            }
 
-                currentQrX += qrCodeSize + 15; // Move o eixo X para o próximo QR Code
+            // 3. Segundo QR Code da DANFE (Direita - Número da NF)
+            if (etiqueta.nfeNumero) {
+                try {
+                    const qrDanfeBytes = await bwip.toBuffer({
+                        bcid: 'qrcode',
+                        text: String(etiqueta.nfeNumero),
+                        scale: 3
+                    });
+                    const qrDanfeImg = await finalPdfDoc.embedPng(qrDanfeBytes);
+
+                    page.drawImage(qrDanfeImg, {
+                        x: baseQrX + 180,
+                        y: qrYPos,
+                        width: qrCodeSize,
+                        height: qrCodeSize
+                    });
+
+                    // Mini legenda
+                    page.drawText('DANFE', {
+                        x: baseQrX + 186,
+                        y: qrYPos + 32,
+                        font: font, size: 5
+                    });
+                } catch (qrErr) {
+                    console.warn(`[PDF Organizado] Erro ao gerar QR DANFE 2 (Número): ${qrErr.message}`);
+                }
             }
 
             /*page.drawText('DANFE', {
@@ -2113,7 +2148,7 @@ async function syncBlingConferenciaMassa(nfeList) {
     const client = await pool.connect();
     try {
         let results = [];
-        
+
         for (const nfeNumero of nfeList) {
             try {
                 // 1. Pega dados para o Bling
@@ -2123,14 +2158,14 @@ async function syncBlingConferenciaMassa(nfeList) {
                     LEFT JOIN cached_pedido_venda p ON p.notafiscal_id = n.bling_id
                     WHERE n.nfe_numero = $1 LIMIT 1
                 `, [nfeNumero]);
-                
+
                 if (nfeDataRes.rows.length === 0 || !nfeDataRes.rows[0].pedidoblingid) {
                     throw new Error("Pedido Bling não encontrado no cache local.");
                 }
-                
+
                 const accountName = nfeDataRes.rows[0].bling_account || 'lucas';
                 const pedidoBlingId = nfeDataRes.rows[0].pedidoblingid;
-                
+
                 // 2. Chama a API do Bling
                 const accessToken = await getValidBlingToken(accountName);
                 const url = `https://api.bling.com.br/Api/v3/pedidos/vendas/${pedidoBlingId}/situacoes/24`;
@@ -2138,7 +2173,7 @@ async function syncBlingConferenciaMassa(nfeList) {
                 await axios.patch(url, {}, {
                     headers: { 'Authorization': `Bearer ${accessToken}` }
                 });
-                
+
                 // 3. Sucesso: Atualiza o DB
                 await client.query(`
                     UPDATE cached_etiquetas_ml 
@@ -2148,9 +2183,9 @@ async function syncBlingConferenciaMassa(nfeList) {
                         last_processed_at = CURRENT_TIMESTAMP
                     WHERE nfe_numero = $1
                 `, [nfeNumero]);
-                
+
                 results.push({ nfe: nfeNumero, success: true });
-                
+
             } catch (err) {
                 let errorMsg = "Erro desconhecido ao atualizar Bling.";
                 if (err.response) {
@@ -2164,21 +2199,21 @@ async function syncBlingConferenciaMassa(nfeList) {
                 } else {
                     errorMsg = err.message;
                 }
-                
+
                 await client.query(`
                     UPDATE cached_etiquetas_ml 
                     SET bling_sync_status = 'error',
                         bling_error_msg = $1
                     WHERE nfe_numero = $2
                 `, [errorMsg, nfeNumero]);
-                
+
                 results.push({ nfe: nfeNumero, success: false, message: errorMsg });
             }
-            
+
             // Pausa rigorosa de 1 segundo entre as chamadas para respeitar o rate-limit do Bling
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
-        
+
         return results;
     } finally {
         client.release();
@@ -3728,11 +3763,12 @@ async function montarPaginaZpl(pdfDoc, etiqueta, font, boldFont, pageNum) {
         }
     }
 
-    if (etiqueta._chaveAcesso) {
+    // QR DANFE (Número da NF)
+    if (etiqueta.nfeNumero) {
         try {
             const qrDanfeBytes = await bwip.toBuffer({
                 bcid: 'qrcode',
-                text: etiqueta._chaveAcesso,
+                text: String(etiqueta.nfeNumero),
                 scale: 3
             });
             const qrDanfeImg = await pdfDoc.embedPng(qrDanfeBytes);
@@ -3745,7 +3781,7 @@ async function montarPaginaZpl(pdfDoc, etiqueta, font, boldFont, pageNum) {
                 font: font, size: 5
             });
         } catch (qrErr) {
-            console.warn(`[ZPL Canhoto] Erro ao gerar QR DANFE: ${qrErr.message}`);
+            console.warn(`[ZPL Canhoto] Erro ao gerar QR DANFE 2 (Número): ${qrErr.message}`);
         }
     }
 
