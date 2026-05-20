@@ -251,7 +251,7 @@ function initTabelas() {
         columns: [
             {
                 data: 'name',
-                render: function(data) {
+                render: function (data) {
                     // Exibe nome mais curto (sem extensão)
                     const shortName = data.replace('.pdf', '').replace('Bipagem-Finalizada-', 'Bip-');
                     return `<span title="${data}" style="font-size: 0.85rem; font-weight: 500;">${shortName}</span>`;
@@ -259,7 +259,7 @@ function initTabelas() {
             },
             {
                 data: 'hora',
-                render: function(data) {
+                render: function (data) {
                     return `<span style="color: var(--accent-orange, #f07c00); font-weight: 600;">${data}</span>`;
                 }
             },
@@ -267,7 +267,7 @@ function initTabelas() {
             {
                 data: 'url',
                 className: 'text-center',
-                render: function(data) {
+                render: function (data) {
                     return `<a href="${data}" target="_blank" class="btn-action btn-action-print" style="display:inline-flex;text-decoration:none;" title="Baixar PDF"><i class="fas fa-download"></i></a>`;
                 }
             }
@@ -494,7 +494,8 @@ async function carregarDadosDashboard() {
 
             let statusBadge = '';
             if (item.status === 'pendente') statusBadge = '<span class="badge badge-orange">Pendente</span>';
-            else if (item.status === 'sem_nota') statusBadge = '<span class="badge" style="background-color: #6c757d; color: #fff;">Sem Nota</span>';
+            else if (item.status === 'hub') statusBadge = '<span class="badge" style="background-color: #7f00ff; color: #fff; font-weight: bold;">Hub</span>';
+            else if (item.status === 'sem_nota' || item.status === 'bip_sem_etiq') statusBadge = '<span class="badge" style="background-color: #6c757d; color: #fff;">Pego, Sem Etiquetar</span>';
             else if (item.status === 'checado') statusBadge = '<span class="badge" style="background-color: #0dcaf0; color: #1e1e2f;">Checado</span>';
             else if (item.status === 'sem_estoque') statusBadge = '<span class="badge" style="background-color: var(--color-warning); color: #1e1e2f;">Sem Estoque</span>';
             else if (item.status === 'cancelado') statusBadge = '<span class="badge" style="background-color: var(--color-danger); color: #fff;">Cancelado</span>';
@@ -509,8 +510,8 @@ async function carregarDadosDashboard() {
             const acoes = `
                 <div style="display:flex;gap:4px;align-items:center;justify-content:center;">
                 ${item.status !== 'impresso' ? `
-                    ${item.status !== 'pendente'
-                        ? `<button class="btn-action btn-action-accent" onclick="alterarStatusEtiqueta(${item.id}, 'pendente')" title="Retomar / Despausar"><i class="fas fa-play"></i></button>`
+                    ${(item.status !== 'pendente' && item.status !== 'hub')
+                        ? `<button class="btn-action btn-action-accent" onclick="alterarStatusEtiqueta(${item.id}, '${item.origem === 'hub' ? 'hub' : 'pendente'}')" title="Retomar / Despausar"><i class="fas fa-play"></i></button>`
                         : `<button class="btn-action btn-action-warning" onclick="alterarStatusEtiqueta(${item.id}, 'sem_estoque')" title="Pausar (Sem Estoque)"><i class="fas fa-pause"></i></button>`
                     }
                     <button class="btn-action btn-action-danger" onclick="confirmarCancelamento(${item.id})" title="Cancelar"><i class="fas fa-times"></i></button>
@@ -593,7 +594,7 @@ async function carregarGestaoConferencia() {
     try {
         const response = await fetch('/api/expedicao/conferencia-gestao');
         const data = await response.json();
-        
+
         if (tabelaGestaoConferencia) {
             const formatado = data.map(item => {
                 const isPendingSync = item.bling_sync_status === 'pending';
@@ -634,7 +635,7 @@ function initGestaoConferenciaListeners() {
     if (btnSync) {
         btnSync.addEventListener('click', async () => {
             if (!tabelaGestaoConferencia) return;
-            
+
             // Pega apenas as linhas que estão pendentes ou com erro
             const todasLinhas = tabelaGestaoConferencia.rows().data().toArray();
             const notasParaSincronizar = todasLinhas
@@ -649,21 +650,21 @@ function initGestaoConferenciaListeners() {
 
             ModalSystem.confirm(`Deseja enviar/tentar enviar ${notasParaSincronizar.length} nota(s) para o Bling?`, 'Sincronizar com Bling', async () => {
                 ModalSystem.showLoading('Enviando dados para o Bling... Isso pode demorar devido ao limite de taxa (1 requisição por segundo).', 'Aguarde');
-                
+
                 try {
                     const res = await fetch('/api/expedicao/conferencia-sync-bling', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ nfeList: notasParaSincronizar })
                     });
-                    
+
                     const data = await res.json();
                     ModalSystem.hideLoading();
-                    
+
                     if (res.ok) {
                         const falhas = data.resultados.filter(r => !r.success).length;
                         const sucessos = data.resultados.filter(r => r.success).length;
-                        
+
                         if (falhas > 0) {
                             ToastSystem.warning(`${sucessos} com sucesso, ${falhas} com erro.`);
                         } else {
@@ -676,7 +677,7 @@ function initGestaoConferenciaListeners() {
                     ModalSystem.hideLoading();
                     ToastSystem.error('Erro de rede ao tentar sincronizar.');
                 }
-                
+
                 // Recarrega as tabelas para refletir o status
                 carregarGestaoConferencia();
                 carregarDadosDashboard();
@@ -850,7 +851,7 @@ async function solicitarPlanilhaDinamica(type) {
     const payloadExtraido = dadosVisiveis.map(row => {
         let pureSkus = row.sku;
         let skuArray = [];
-        
+
         if (row.skusOriginal) {
             if (Array.isArray(row.skusOriginal)) {
                 skuArray = row.skusOriginal.map(s => s.original || s.display || s);
@@ -871,7 +872,7 @@ async function solicitarPlanilhaDinamica(type) {
                 }
             }
         } else {
-             skuArray = [row.sku];
+            skuArray = [row.sku];
         }
 
         return {
@@ -912,8 +913,8 @@ async function solicitarPlanilhaDinamica(type) {
                     ModalSystem.confirm(
                         mensagem,
                         'Usar Relatório de Gôndola?',
-                        function() { resolve(String(ultimoGondola.id)); },
-                        function() { resolve(null); },
+                        function () { resolve(String(ultimoGondola.id)); },
+                        function () { resolve(null); },
                         { confirmText: 'Sim, subtrair gôndola', cancelText: 'Não, ignorar' }
                     );
                 });

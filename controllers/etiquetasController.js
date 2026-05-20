@@ -241,7 +241,7 @@ exports.apiAtualizarStatusPendencia = async (req, res) => {
     try {
         const { id, status } = req.body;
         // Validação de segurança para não aceitarem status malucos
-        if (!['pendente', 'sem_estoque', 'cancelado'].includes(status)) {
+        if (!['pendente', 'hub', 'sem_estoque', 'cancelado', 'bip_sem_etiq'].includes(status)) {
             return res.status(400).json({ error: 'Status inválido.' });
         }
 

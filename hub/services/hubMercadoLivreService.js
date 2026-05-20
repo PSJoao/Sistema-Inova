@@ -284,7 +284,7 @@ class HubMercadoLivreService {
                     offset += limit;
                 }
 
-                if (offset > 500) {
+                if (offset > 1500) {
                     console.log('[HUB ML] Limite de segurança de paginação atingido (10k pedidos). Parando.');
                     continuarBuscando = false;
                 }
@@ -313,7 +313,7 @@ class HubMercadoLivreService {
                 WHERE p.status_pedido NOT IN ('cancelled')
                 AND p.status_envio NOT IN ('cancelled', 'delivered')
                 AND p.status_envio IN ('pending', 'ready_to_ship')
-                --AND p.conta_id NOT IN (6, 7)
+                AND p.conta_id NOT IN (6, 7)
             `;
             const result = await client.query(query);
             const pedidosParaChecar = result.rows;

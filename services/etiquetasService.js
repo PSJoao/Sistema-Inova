@@ -2226,11 +2226,11 @@ async function obterDadosDashboardExpedicao() {
         const statsQuery = `
             SELECT 
                 COUNT(*) FILTER (WHERE status = 'checado') as checados,
-                COUNT(*) FILTER (WHERE DATE(created_at) < data_virtual_expedicao() AND status = 'pendente') as heranca,
-                COUNT(*) FILTER (WHERE DATE(created_at) = data_virtual_expedicao() AND status = 'pendente') as novos_hoje,
-                COUNT(*) FILTER (WHERE status = 'sem_nota') as sem_nota,
+                COUNT(*) FILTER (WHERE DATE(created_at) < data_virtual_expedicao() AND (status = 'pendente' OR status = 'hub')) as heranca,
+                COUNT(*) FILTER (WHERE DATE(created_at) = data_virtual_expedicao() AND (status = 'pendente' OR status = 'hub')) as novos_hoje,
+                COUNT(*) FILTER (WHERE status = 'bip_sem_etiq') as sem_nota,
                 COUNT(*) FILTER (WHERE status IN ('sem_estoque')) as subtracoes,
-                COUNT(*) FILTER (WHERE status IN ('pendente', 'checado')) as saldo_real
+                COUNT(*) FILTER (WHERE status IN ('pendente', 'checado', 'hub')) as saldo_real
             FROM cached_etiquetas_ml
             WHERE status != 'impresso'
         `;
@@ -2253,6 +2253,7 @@ async function obterDadosDashboardExpedicao() {
                 m.id, 
                 m.nfe_numero, 
                 m.situacao,
+                m.origem,
                 COALESCE(m.pack_id, m.numero_loja) AS numero_loja_calc, 
                 cpv.numero AS pedido_numero, 
                 m.skus, 
@@ -2947,8 +2948,12 @@ async function movimentarNfHierarquia(dados) {
             await client.query(`DELETE FROM expedicao_registro_carregadores WHERE registro_id = $1`, [registroId]);
             // Remove o registro da expedição
             await client.query(`DELETE FROM expedicao_registros WHERE id = $1`, [registroId]);
-            // Volta o status para pendente
-            await client.query(`UPDATE cached_etiquetas_ml SET status = 'pendente' WHERE nfe_numero = $1`, [nf]);
+            // Volta o status para pendente (ou hub se for do hub)
+            await client.query(`
+                UPDATE cached_etiquetas_ml 
+                SET status = CASE WHEN origem = 'hub' THEN 'hub' ELSE 'pendente' END 
+                WHERE nfe_numero = $1
+            `, [nf]);
 
         } else if (action === 'mover_existente') {
             if (!targetPaleteId) throw new Error('Palete de destino não informado.');

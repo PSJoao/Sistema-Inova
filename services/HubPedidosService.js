@@ -159,10 +159,13 @@ async function processarPacote(clientMon, pacote) {
     if (!pacote.etiqueta_zpl) return null;
 
     // Ignorar pacotes cancelados/entregues/enviados
-    if (pacote.status_envio === 'cancelled' || pacote.status_envio === 'delivered' ||
+    if (pacote.status_envio === 'cancelled' || pacote.status_envio === 'delivered' || pacote.status_envio === 'shipped' ||
         pacote.status_pedido_geral === 'cancelled') {
         if (pacote.status_envio === 'cancelled' || pacote.status_pedido_geral === 'cancelled') {
             return await marcarCanceladoSeExiste(clientMon, pacote);
+        }
+        if (pacote.status_envio === 'shipped' || pacote.status_pedido_geral === 'shipped' || pacote.status_envio === 'delivered') {
+            return await marcarEnviadoSeExiste(clientMon, pacote);
         }
         return null;
     }
@@ -339,6 +342,36 @@ async function marcarCanceladoSeExiste(clientMon, pacote) {
     return null;
 }
 
+
+async function marcarEnviadoSeExiste(clientMon, pacote) {
+    const numeroLoja = pacote.ids_pedidos_originais?.[0] ? String(pacote.ids_pedidos_originais[0]) : null;
+    const nfeNumero = pacote.nfe_numero || null;
+    if (!numeroLoja && !nfeNumero) return null;
+
+    let res = { rows: [] };
+
+    // Busca hierárquica
+    if (nfeNumero) {
+        res = await clientMon.query('SELECT id, status FROM cached_etiquetas_ml WHERE nfe_numero = $1 LIMIT 1', [nfeNumero]);
+    }
+    if (res.rows.length === 0 && numeroLoja) {
+        res = await clientMon.query('SELECT id, status FROM cached_etiquetas_ml WHERE numero_loja = $1 LIMIT 1', [numeroLoja]);
+    }
+    if (res.rows.length === 0 && numeroLoja) {
+        res = await clientMon.query('SELECT id, status FROM cached_etiquetas_ml WHERE pack_id = $1 LIMIT 1', [numeroLoja]);
+    }
+
+    if (res.rows.length > 0 && res.rows[0].status !== 'impresso') {
+        await clientMon.query(
+            `UPDATE cached_etiquetas_ml SET status = 'impresso', last_processed_at = timestamp_virtual_expedicao() WHERE id = $1`,
+            [res.rows[0].id]
+        );
+        console.log(`[HubPedidos] Pedido ${numeroLoja || nfeNumero} impresso.`);
+        return 'impresso';
+    }
+    return null;
+}
+
 /**
  * Insere um novo pedido do Hub na cached_etiquetas_ml e na skus_pedido.
  * Usa numero_loja e pack_id (que são o id_pedido_ml do Hub).
@@ -346,8 +379,7 @@ async function marcarCanceladoSeExiste(clientMon, pacote) {
 async function inserirNovoPedido(clientMon, pacote, numeroLoja) {
     const nfeNumero = pacote.nfe_numero || null;
     const chaveAcesso = pacote.chave_acesso || null;
-    const temNota = !!nfeNumero;
-    const statusInicial = temNota ? 'pendente' : 'sem_nota';
+    const statusInicial = 'hub';
 
     // Limpar etiqueta ZPL de null bytes
     const etiquetaLimpa = pacote.etiqueta_zpl

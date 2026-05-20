@@ -17,12 +17,14 @@
                 <h4 style="color: #0dcaf0;">Checados</h4>
                 <div class="stat-value" id="dash-checados" style="color: #0dcaf0;">0</div>
             </div>
-            <div class="stat-card pendentes" style="background: rgba(255, 152, 0, 0.1); border-color: rgba(255, 152, 0, 0.3);">
+            <div class="stat-card pendentes"
+                style="background: rgba(255, 152, 0, 0.1); border-color: rgba(255, 152, 0, 0.3);">
                 <h4 style="color: #ff9800;">Pendentes</h4>
                 <div class="stat-value" id="dash-pendentes" style="color: #ff9800;">0</div>
             </div>
-            <div class="stat-card" style="background: rgba(108, 117, 125, 0.1); border-color: rgba(108, 117, 125, 0.3);">
-                <h4 style="color: #6c757d;">Sem Nota</h4>
+            <div class="stat-card"
+                style="background: rgba(108, 117, 125, 0.1); border-color: rgba(108, 117, 125, 0.3);">
+                <h4 style="color: #6c757d;">Pego, Sem Etiquetar</h4>
                 <div class="stat-value" id="dash-sem-nota" style="color: #6c757d;">0</div>
             </div>
             <div class="stat-card subtracoes">
@@ -114,12 +116,13 @@
                     <select id="filtro-status-tabela" class="form-control-dark">
                         <option value="">Todos os Status</option>
                         <option value="Pendente">Pendentes</option>
+                        <option value="Hub">Hub</option>
                         <option value="Checado">Checados</option>
                         <option value="Sem Estoque">Sem Estoque</option>
                         <option value="Cancelado">Cancelados</option>
                         <option value="Expedido">Expedidos</option>
                         <option value="Etiq. Impressa">Etiq. Impressa (Bipagem)</option>
-                        <option value="Sem Nota">Sem Nota</option>
+                        <option value="Pego, Sem Etiquetar">Pego, Sem Etiquetar</option>
                     </select>
                 </div>
             </div>
@@ -139,10 +142,12 @@
                 <label style="color: var(--text-secondary); margin: 0; font-size: 0.9rem;">Mudar para:</label>
                 <select id="massa-acao-status" class="form-control-dark" style="min-width: 150px; font-size: 0.85rem;">
                     <option value="pendente">Pendente</option>
+                    <option value="hub">Hub</option>
                     <option value="checado">Checado</option>
                     <option value="impresso">Expedido</option>
                     <option value="sem_estoque">Sem Estoque</option>
                     <option value="cancelado">Cancelado</option>
+                    <option value="bip_sem_etiq">Pego, Sem Etiquetar</option>
                 </select>
                 <button id="btn-massa-aplicar" class="btn-premium orange"
                     style="padding: 0.4rem 1.2rem; font-size: 0.9rem; border-radius: 6px;">
@@ -177,7 +182,7 @@
             style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; gap: 10px;">
             <h4 class="panel-title mb-0" style="border: none; padding: 0;"><i class="fas fa-tasks"></i>
                 Gestão de Conferência (Envio em Lote)</h4>
-            
+
             <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
                 <button id="btn-sync-conferencia-bling" class="btn-premium orange"
                     style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px;">

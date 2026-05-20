@@ -10,8 +10,8 @@ class HubProdutosService {
         console.log('[HUB PRODUTOS] Iniciando sincronização de anúncios...');
         try {
             // Busca contas ativas no banco principal do HUB
-            const contasResult = await poolHub.query('SELECT * FROM hub_ml_contas WHERE ativo = TRUE');
-            
+            const contasResult = await poolHub.query('SELECT * FROM hub_ml_contas WHERE ativo = TRUE AND id NOT IN (7, 6)');
+
             for (const conta of contasResult.rows) {
                 await this.processarContaProdutos(conta);
             }
@@ -22,7 +22,7 @@ class HubProdutosService {
 
     async processarContaProdutos(conta) {
         console.log(`[HUB PRODUTOS] Processando anúncios da conta: ${conta.nickname}`);
-        
+
         let accessToken;
         try {
             accessToken = await hubTokenService.getValidAccessToken(conta);
@@ -38,7 +38,7 @@ class HubProdutosService {
         while (continuarBuscando) {
             try {
                 // 1. Busca a lista de IDs usando o modo de varredura (Scan) puxando APENAS ativos
-                let searchUrl = `${ML_API_URL}/users/${conta.seller_id}/items/search?search_type=scan&status=active&limit=${limit}`;
+                let searchUrl = `${ML_API_URL}/users/${conta.seller_id}/items/search?search_type=scan&limit=${limit}`;
 
                 if (scrollId) {
                     searchUrl += `&scroll_id=${scrollId}`;
@@ -51,7 +51,7 @@ class HubProdutosService {
                 scrollId = searchResponse.data.scroll_id;
 
                 const idsAnuncios = searchResponse.data.results || [];
-                
+
                 if (idsAnuncios.length === 0) {
                     continuarBuscando = false;
                     break;
@@ -60,184 +60,42 @@ class HubProdutosService {
                 console.log(`Qtd. de anúncios encontrada: ${idsAnuncios.length}`);
                 console.log(`Iniciando a busca aprofundada...`);
 
-                let qtdAnuncios = 0;
-                // 2. Itera sobre cada anúncio para pegar os detalhes
-                for (const idAnuncio of idsAnuncios) {
-                    await delay(300); // Evitar rate limit
-                    
-                    try {
-                        const itemUrl = `${ML_API_URL}/items?ids=${idAnuncio}`;
-                        const itemResponse = await axios.get(itemUrl, {
-                            headers: { 'Authorization': `Bearer ${accessToken}` }
-                        });
-                        
-                        const itemData = itemResponse.data[0].body;
-
-                        //console.log(JSON.stringify(itemData, null, 2));
-
-                        // Extração de Atributos
-                        let sku = null, peso = null, altura = null, largura = null, comprimento = null;
-                        
-                        if (itemData.attributes) {
-                            for (const attr of itemData.attributes) {
-                                if (attr.id === 'SELLER_SKU') sku = attr.value_name;
-                                if (attr.id === 'SELLER_PACKAGE_WEIGHT') peso = attr.value_name;
-                                if (attr.id === 'SELLER_PACKAGE_HEIGHT') altura = attr.value_name;
-                                if (attr.id === 'SELLER_PACKAGE_WIDTH') largura = attr.value_name;
-                                if (attr.id === 'SELLER_PACKAGE_LENGTH') comprimento = attr.value_name;
-                            }
-                        }
-
-                        // Dados para buscar a tarifa e o frete
-                        const price = itemData.price;
-                        const categoryId = itemData.category_id;
-                        const listingTypeId = itemData.listing_type_id;
-                        const mode = itemData.shipping?.mode || 'me2';
-                        const logisticType = itemData.shipping?.logistic_type || 'cross_docking';
-                        
-                        // Novos campos capturados para o frete
-                        const condition = itemData.condition || 'new';
-                        const freeShipping = itemData.shipping?.free_shipping || false;
-                        const sellerId = itemData.seller_id;
-                        const stateId = itemData.seller_address?.state?.id || '';
-                        const cityId = itemData.seller_address?.city?.id || '';
-                        const zipCode = itemData.seller_address?.zip_code || '';
-
-                        // 3. Buscar Tarifa
-                        let tarifa = 0;
-                        let taxa_fixa = 0;
-                        try {
-                            const tarifaUrl = `${ML_API_URL}/sites/MLB/listing_prices?category_id=${categoryId}&price=${price}&logistic_type=${logisticType}&shipping_modes=${mode}&listing_type_id=${listingTypeId}`;
-                            const tarifaResponse = await axios.get(tarifaUrl, {
-                                headers: { 'Authorization': `Bearer ${accessToken}` }
-                            });
-                            
-                            tarifa = tarifaResponse.data.sale_fee_details?.percentage_fee || 0;
-                            taxa_fixa = tarifaResponse.data.sale_fee_details?.fixed_fee || 0;
-                        } catch (errTarifa) {
-                            console.warn(`[HUB PRODUTOS] Não foi possível obter tarifa para ${idAnuncio}`);
-                        }
-
-                        // 4. Buscar Frete
-                        let frete = 0;
-                        // O frete só pode ser calculado se tivermos as dimensões
-                        if (altura && largura && comprimento && peso) {
-                            // Limpa os textos "cm" e "g" e pega só o número
-                            const h = parseInt(altura) || 0;
-                            const w = parseInt(largura) || 0;
-                            const l = parseInt(comprimento) || 0;
-                            const p = parseInt(peso) || 0;
-                            const dimensionsStr = `${h}x${w}x${l},${p}`;
-
-                            try {
-                                const freteUrl = `${ML_API_URL}/users/${sellerId}/shipping_options/free?dimensions=${dimensionsStr}&item_price=${price}&listing_type_id=${listingTypeId}&mode=${mode}&condition=${condition}&logistic_type=${logisticType}&free_shipping=${freeShipping}&currency_id=BRL&state_id=${stateId}&city_id=${cityId}&zip_code=${zipCode}`;
-                                
-                                const freteResponse = await axios.get(freteUrl, {
-                                    headers: { 'Authorization': `Bearer ${accessToken}` }
-                                });
-                                
-                                frete = freteResponse.data?.coverage?.all_country?.list_cost || 0;
-                            } catch (errFrete) {
-                                console.warn(`[HUB PRODUTOS] Não foi possível obter frete para ${idAnuncio}:`, errFrete.response?.data?.message || errFrete.message);
-                            }
-                        }
-
-                        // 5. Buscar Publicidade (Product Ads)
-                        let tem_publicidade = false;
-                        let preco_publicidade = null;
-                        let cliques_publicidade = null;
-
-                        try {
-                            const adsUrl = `${ML_API_URL}/advertising/MLB/product_ads/ads/${idAnuncio}`;
-                            const adsResponse = await axios.get(adsUrl, {
-                                headers: { 'Authorization': `Bearer ${accessToken}` }
-                            });
-                            
-                            // Se a requisição deu sucesso, ele faz parte de uma campanha
-                            tem_publicidade = true;
-                            preco_publicidade = adsResponse.data.metrics_summary?.cost || 0; // O valor investido na publicidade
-                            cliques_publicidade = adsResponse.data.metrics_summary?.clicks || 0;
-
-                        } catch (errAds) {
-                            // Se retornar erro (geralmente 404 Not Found), significa que não tem publicidade.
-                            // Deixamos o catch silencioso para manter false e null.
-                        }
-
-                        // 6. Buscar Custos do Produto baseado no SKU
-                        let custo = 0;
-                        let custo_real = 0;
-                        let cleanSku = sku ? sku.trim() : null; // Apara os espaços em branco no JS
-
-                        if (cleanSku) {
-                            try {
-                                // TRIM(sku) no SQL garante que os espaços no banco também sejam ignorados no match
-                                const custoQuery = `SELECT preco_custo, preco_custo_real FROM produto_custos WHERE TRIM(sku) = $1 LIMIT 1`;
-                                const custoResult = await poolProdutos.query(custoQuery, [cleanSku]);
-                                
-                                if (custoResult.rows.length > 0) {
-                                    custo = custoResult.rows[0].preco_custo || 0;
-                                    custo_real = custoResult.rows[0].preco_custo_real || 0;
-                                }
-                            } catch (errCusto) {
-                                console.warn(`[HUB PRODUTOS] Erro ao buscar custo para o SKU ${cleanSku}:`, errCusto.message);
-                            }
-                        }
-
-                        // 7. Cálculo da Margem de Lucro (%)
-                        let margem = 0;
-                        
-                        // Garantindo que todos os valores sejam tratados como números para a matemática não falhar
-                        const numPreco = Number(price) || 0;
-                        const numTarifa = Number(tarifa) || 0;
-                        const numTaxaFixa = Number(taxa_fixa) || 0;
-                        const numFrete = Number(frete) || 0;
-                        const numCusto = Number(custo) || 0;
-
-                        if (numPreco > 0 && numCusto > 0.01) {
-                            const valorTarifaEmReais = numPreco * (numTarifa / 100);
-                            const despesasTotais = valorTarifaEmReais + numTaxaFixa + numFrete + numCusto;
-                            const lucroLiquido = numPreco - despesasTotais;
-                            
-                            // Calcula a porcentagem e limita a 2 casas decimais
-                            margem = Number(((lucroLiquido / numPreco) * 100).toFixed(2));
-                        } else {
-                            margem = 0;
-                        }
-
-                        // 8. Salvar no novo Banco de Dados (PRODUTOS_HUB)
-                        await this.salvarProduto({
-                            sku: cleanSku,
-                            descricao: itemData.title,
-                            id_anuncio: itemData.id,
-                            status: itemData.status,
-                            empresa: conta.nickname,
-                            tipo: listingTypeId,
-                            tarifa,
-                            taxa_fixa,
-                            preco: price,      
-                            tipo_logistica: logisticType, 
-                            tipo_envio: mode,
-                            frete,
-                            tem_publicidade,     
-                            preco_publicidade,     
-                            cliques_publicidade,
-                            custo,           
-                            custo_real,
-                            margem,
-                            peso,
-                            altura,
-                            largura,
-                            profundidade: comprimento
-                        });
-
-                        qtdAnuncios++;
-
-                    } catch (errItem) {
-                        console.error(`[HUB PRODUTOS] Erro ao detalhar anúncio ${idAnuncio}:`, errItem.message);
-                    }
+                // 2. Divide os IDs em pedaços de no máximo 2 (para evitar erro 400)
+                const chunkSize = 2;
+                const idChunks = [];
+                for (let i = 0; i < idsAnuncios.length; i += chunkSize) {
+                    idChunks.push(idsAnuncios.slice(i, i + chunkSize));
                 }
 
-                console.log(`Fim da busca aprofundada! Anúncios inseridos com sucesso: ${qtdAnuncios}`);
+                // 3. Busca e processa os detalhes de todos os blocos concorrentemente
+                const results = await Promise.all(idChunks.map(async (chunk) => {
+                    try {
+                        const idsBatch = chunk.join(',');
+                        const itemsUrl = `${ML_API_URL}/items?ids=${idsBatch}`;
+                        const itemsResponse = await axios.get(itemsUrl, {
+                            headers: { 'Authorization': `Bearer ${accessToken}` }
+                        });
+
+                        const itemsResults = itemsResponse.data || [];
+
+                        // Processa cada item do bloco
+                        return await Promise.all(itemsResults.map(async (res) => {
+                            if (res.code !== 200) {
+                                console.error(`[HUB PRODUTOS] Erro ao detalhar anúncio:`, res.body);
+                                return false;
+                            }
+                            const itemData = res.body;
+                            return await this.processarItemCompleto(itemData, conta, accessToken);
+                        }));
+                    } catch (errChunk) {
+                        console.error(`[HUB PRODUTOS] Erro ao buscar bloco ${chunk.join(',')}:`, errChunk.message);
+                        return [];
+                    }
+                }));
+
+                const qtdAnuncios = results.flat().filter(r => r === true).length;
+
+                console.log(`Fim da busca aprofundada! Anúncios inseridos com sucesso nesta leva: ${qtdAnuncios}`);
 
                 if (idsAnuncios.length < limit) {
                     continuarBuscando = false;
@@ -247,6 +105,176 @@ class HubProdutosService {
                 console.error(`[HUB PRODUTOS] Erro na paginação da conta ${conta.nickname}:`, errSearch.message);
                 continuarBuscando = false;
             }
+        }
+    }
+
+    async processarItemCompleto(itemData, conta, accessToken) {
+        const idAnuncio = itemData.id;
+        try {
+            // Extração de Atributos
+            let sku = null, peso = null, altura = null, largura = null, comprimento = null;
+
+            if (itemData.attributes) {
+                for (const attr of itemData.attributes) {
+                    if (attr.id === 'SELLER_SKU') sku = attr.value_name;
+                    if (attr.id === 'SELLER_PACKAGE_WEIGHT') peso = attr.value_name;
+                    if (attr.id === 'SELLER_PACKAGE_HEIGHT') altura = attr.value_name;
+                    if (attr.id === 'SELLER_PACKAGE_WIDTH') largura = attr.value_name;
+                    if (attr.id === 'SELLER_PACKAGE_LENGTH') comprimento = attr.value_name;
+                }
+            }
+
+            // Dados para buscar a tarifa e o frete
+            const price = itemData.price;
+            const categoryId = itemData.category_id;
+            const listingTypeId = itemData.listing_type_id;
+            const mode = itemData.shipping?.mode || 'me2';
+            const logisticType = itemData.shipping?.logistic_type || 'cross_docking';
+
+            // Novos campos capturados para o frete
+            const condition = itemData.condition || 'new';
+            const freeShipping = itemData.shipping?.free_shipping || false;
+            const sellerId = itemData.seller_id;
+            const stateId = itemData.seller_address?.state?.id || '';
+            const cityId = itemData.seller_address?.city?.id || '';
+            const zipCode = itemData.seller_address?.zip_code || '';
+
+            // Promise.all para buscas paralelas dentro do item (Tarifa, Ads)
+            // O Frete depende de condições, mas podemos tentar paralelizar o que for possível
+            const [tarifaResult, adsResult] = await Promise.all([
+                this.buscarTarifa(categoryId, price, logisticType, mode, listingTypeId, accessToken, idAnuncio),
+                this.buscarAds(idAnuncio, accessToken)
+            ]);
+
+            const { tarifa, taxa_fixa } = tarifaResult;
+            const { tem_publicidade, preco_publicidade, cliques_publicidade } = adsResult;
+
+            // Buscar Frete (separado pois tem lógica condicional)
+            let frete = 0;
+            if (altura && largura && comprimento && peso) {
+                frete = await this.buscarFrete(sellerId, price, listingTypeId, mode, condition, logisticType, freeShipping, stateId, cityId, zipCode, altura, largura, comprimento, peso, accessToken, idAnuncio);
+            }
+
+            // Buscar Custos do Produto baseado no SKU
+            let custo = 0;
+            let custo_real = 0;
+            let cleanSku = sku ? sku.trim() : null;
+
+            if (cleanSku) {
+                try {
+                    const custoQuery = `SELECT preco_custo, preco_custo_real FROM produto_custos WHERE TRIM(sku) = $1 LIMIT 1`;
+                    const custoResult = await poolProdutos.query(custoQuery, [cleanSku]);
+
+                    if (custoResult.rows.length > 0) {
+                        custo = custoResult.rows[0].preco_custo || 0;
+                        custo_real = custoResult.rows[0].preco_custo_real || 0;
+                    }
+                } catch (errCusto) {
+                    console.warn(`[HUB PRODUTOS] Erro ao buscar custo para o SKU ${cleanSku}:`, errCusto.message);
+                }
+            }
+
+            // Cálculo da Margem de Lucro (%)
+            let margem = 0;
+            const numPreco = Number(price) || 0;
+            const numTarifa = Number(tarifa) || 0;
+            const numTaxaFixa = Number(taxa_fixa) || 0;
+            const numFrete = Number(frete) || 0;
+            const numCusto = Number(custo) || 0;
+
+            if (numPreco > 0 && numCusto > 0.01) {
+                const valorTarifaEmReais = numPreco * (numTarifa / 100);
+                const despesasTotais = valorTarifaEmReais + numTaxaFixa + numFrete + numCusto;
+                const lucroLiquido = numPreco - despesasTotais;
+                margem = Number(((lucroLiquido / numPreco) * 100).toFixed(2));
+            }
+
+            // Salvar no Banco de Dados
+            await this.salvarProduto({
+                sku: cleanSku,
+                descricao: itemData.title,
+                id_anuncio: itemData.id,
+                status: itemData.status,
+                empresa: conta.nickname,
+                tipo: listingTypeId,
+                tarifa,
+                taxa_fixa,
+                preco: price,
+                tipo_logistica: logisticType,
+                tipo_envio: mode,
+                frete,
+                tem_publicidade,
+                preco_publicidade,
+                cliques_publicidade,
+                custo,
+                custo_real,
+                margem,
+                peso,
+                altura,
+                largura,
+                profundidade: comprimento
+            });
+
+            return true;
+        } catch (err) {
+            console.error(`[HUB PRODUTOS] Erro ao processar item ${idAnuncio}:`, err.message);
+            return false;
+        }
+    }
+
+    async buscarTarifa(categoryId, price, logisticType, mode, listingTypeId, accessToken, idAnuncio) {
+        try {
+            const tarifaUrl = `${ML_API_URL}/sites/MLB/listing_prices?category_id=${categoryId}&price=${price}&logistic_type=${logisticType}&shipping_modes=${mode}&listing_type_id=${listingTypeId}`;
+            const response = await axios.get(tarifaUrl, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+            return {
+                tarifa: response.data.sale_fee_details?.percentage_fee || 0,
+                taxa_fixa: response.data.sale_fee_details?.fixed_fee || 0
+            };
+        } catch (err) {
+            console.warn(`[HUB PRODUTOS] Não foi possível obter tarifa para ${idAnuncio}`);
+            return { tarifa: 0, taxa_fixa: 0 };
+        }
+    }
+
+    async buscarFrete(sellerId, price, listingTypeId, mode, condition, logisticType, freeShipping, stateId, cityId, zipCode, altura, largura, comprimento, peso, accessToken, idAnuncio) {
+        try {
+            const h = parseInt(altura) || 0;
+            const w = parseInt(largura) || 0;
+            const l = parseInt(comprimento) || 0;
+            const p = parseInt(peso) || 0;
+            const dimensionsStr = `${h}x${w}x${l},${p}`;
+
+            const freteUrl = `${ML_API_URL}/users/${sellerId}/shipping_options/free?dimensions=${dimensionsStr}&item_price=${price}&listing_type_id=${listingTypeId}&mode=${mode}&condition=${condition}&logistic_type=${logisticType}&free_shipping=${freeShipping}&currency_id=BRL&state_id=${stateId}&city_id=${cityId}&zip_code=${zipCode}`;
+
+            const response = await axios.get(freteUrl, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+            return response.data?.coverage?.all_country?.list_cost || 0;
+        } catch (err) {
+            console.warn(`[HUB PRODUTOS] Não foi possível obter frete para ${idAnuncio}:`, err.response?.data?.message || err.message);
+            return 0;
+        }
+    }
+
+    async buscarAds(idAnuncio, accessToken) {
+        try {
+            const adsUrl = `${ML_API_URL}/advertising/MLB/product_ads/ads/${idAnuncio}`;
+            const response = await axios.get(adsUrl, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+            return {
+                tem_publicidade: true,
+                preco_publicidade: response.data.metrics_summary?.cost || 0,
+                cliques_publicidade: response.data.metrics_summary?.clicks || 0
+            };
+        } catch (err) {
+            return {
+                tem_publicidade: false,
+                preco_publicidade: null,
+                cliques_publicidade: null
+            };
         }
     }
 
@@ -281,8 +309,8 @@ class HubProdutosService {
         `;
 
         const values = [
-            dados.sku, dados.descricao, dados.id_anuncio, dados.status, 
-            dados.empresa, dados.tipo, dados.tarifa, dados.taxa_fixa, 
+            dados.sku, dados.descricao, dados.id_anuncio, dados.status,
+            dados.empresa, dados.tipo, dados.tarifa, dados.taxa_fixa,
             dados.preco, dados.tipo_logistica, dados.tipo_envio, dados.frete,
             dados.tem_publicidade, dados.preco_publicidade, dados.cliques_publicidade,
             dados.custo, dados.custo_real, dados.margem,

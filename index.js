@@ -373,8 +373,8 @@ const dataHora = new Date().toLocaleString('pt-BR');
 // ===========================================================
 let isHubPedidosSyncRunning = false;
 
-//cron.schedule('*/1 * * * *', async () => {
-/*    if (isHubPedidosSyncRunning) {
+cron.schedule('*/1 * * * *', async () => {
+    if (isHubPedidosSyncRunning) {
         console.log('[HubPedidos CRON] Sincronização anterior ainda em andamento. Pulando.');
         return;
     }
@@ -389,7 +389,7 @@ let isHubPedidosSyncRunning = false;
 }, {
     scheduled: true,
     timezone: "America/Sao_Paulo"
-});*/
+});
 
 // Rota para lidar com páginas não encontradas
 app.use((req, res) => {
