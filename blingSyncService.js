@@ -235,12 +235,12 @@ async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve })
                 } else {
                     // Se não estava no cache, busca no Bling (lógica que já existia)
                     try {
-                        await new Promise(resolve => setTimeout(resolve, 500)); // Rate limit
+                        await new Promise(resolve => setTimeout(resolve, 50)); // Rate limit
                         const prodSearchResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos?codigos[]=${produtoCodigo}`, accountTypeEncontrada);
                         
                         if (prodSearchResp.data?.[0]?.id) {
                             productId = prodSearchResp.data[0].id;
-                            await new Promise(resolve => setTimeout(resolve, 500)); // Rate limit
+                            await new Promise(resolve => setTimeout(resolve, 50)); // Rate limit
                             const prodDetails = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${productId}`, accountTypeEncontrada)).data;
                             
                             volumesUnit = parseFloat(prodDetails.volumes || 0); // Pega o volume unitário
@@ -610,7 +610,7 @@ async function processAndCacheStructuresLucas(productData, client) {
             const componenteId = componente.produto?.id;
             if (!componenteId) continue;
 
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 50));
             const componenteDetails = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${componenteId}`, 'lucas')).data;
             console.log(componenteDetails);
             await client.query(
@@ -650,7 +650,7 @@ async function processAndCacheStructuresEliane(productData, client) {
             const componenteId = componente.produto?.id;
             if (!componenteId) continue;
 
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 50));
             const componenteDetails = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${componenteId}`, 'eliane')).data;
 
             await client.query(
@@ -689,7 +689,7 @@ async function syncBlingProductsLucas() {
     shouldStopNFeEliane = true;
     while (isNFeLucasRunning || isNFeElianeRunning) {
         console.log('[LucasSync] Aguardando encerramento das sincronizações de NF-e...');
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 50));
     }
 
     isProductSyncRunning = true;
@@ -711,7 +711,7 @@ async function syncBlingProductsLucas() {
 
                 for (const produto of response.data) {
                     try {
-                        await new Promise(resolve => setTimeout(resolve, 500));
+                        await new Promise(resolve => setTimeout(resolve, 50));
                         const produtoDetalhes = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${produto.id}`, 'lucas')).data;
 
                         await client.query(
@@ -773,7 +773,7 @@ async function syncBlingProductsEliane() {
     shouldStopNFeEliane = true;
     while (isNFeLucasRunning || isNFeElianeRunning) {
         console.log('[ElianeSync] Aguardando encerramento das sincronizações de NF-e...');
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 50));
     }
 
     isProductSyncRunning = true;
@@ -795,7 +795,7 @@ async function syncBlingProductsEliane() {
 
                 for (const produto of response.data) {
                     try {
-                        await new Promise(resolve => setTimeout(resolve, 500));
+                        await new Promise(resolve => setTimeout(resolve, 50));
                         const produtoDetalhes = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${produto.id}`, 'eliane')).data;
 
                         await client.query(
@@ -908,7 +908,7 @@ async function syncNFeLucas() {
                         }
 
                         // Lógica original para buscar detalhes da NF-e e do Pedido
-                        await new Promise(resolve => setTimeout(resolve, 500));
+                        await new Promise(resolve => setTimeout(resolve, 50));
                         const nfeDetalhes = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe/${nfeResumo.id}`, 'lucas')).data;
                         if (nfeDetalhes.numeroPedidoLoja) {
                             try {
@@ -999,13 +999,13 @@ async function syncNFeLucas() {
                                 } else {
                                     // 2. PRODUTO NÃO ESTÁ NO CACHE
                                     try {
-                                        await new Promise(resolve => setTimeout(resolve, 500));
+                                        await new Promise(resolve => setTimeout(resolve, 50));
                                         const prodSearchResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos?codigos[]=${produtoCodigo}`, 'lucas');
                                         
                                         prodId = prodSearchResp.data?.[0]?.id; // Armazena o ID
 
                                         if (prodId) { 
-                                            await new Promise(resolve => setTimeout(resolve, 500));
+                                            await new Promise(resolve => setTimeout(resolve, 50));
                                             const prodDetailsResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${prodId}`, 'lucas');
                                             volumesUnit = parseFloat(prodDetailsResp.data.volumes || 0);
                                             
@@ -1084,7 +1084,7 @@ async function syncNFeLucas() {
             }
 
             // Lógica para verificação de notas canceladas (executada a cada página)
-            /*await new Promise(resolve => setTimeout(resolve, 500));
+            /*await new Promise(resolve => setTimeout(resolve, 50));
             try {
                 const canceladasResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe?pagina=${pagina}&limite=100&tipo=1&situacao=2`, 'lucas');
                 for (const cancelada of canceladasResp.data || []) {
@@ -1163,14 +1163,14 @@ async function syncNFeEliane() {
                         }
 
                         // Lógica original para buscar detalhes da NF-e e do Pedido
-                        await new Promise(resolve => setTimeout(resolve, 500));
+                        await new Promise(resolve => setTimeout(resolve, 50));
                         const nfeDetalhes = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe/${nfeResumo.id}`, 'eliane')).data;
                         if (nfeDetalhes.numeroPedidoLoja) {
                             try {
                                 const pedidoSearchResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas?numerosLojas[]=${nfeDetalhes.numeroPedidoLoja}`, 'eliane');
                                 
                                 if (pedidoSearchResponse.data && pedidoSearchResponse.data.length > 0) {
-                                    await new Promise(resolve => setTimeout(resolve, 500));
+                                    await new Promise(resolve => setTimeout(resolve, 50));
                                     const pedidoId = pedidoSearchResponse.data[0].id;
                                     const pedidoDetalhes = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas/${pedidoId}`, 'eliane')).data;
                                     
@@ -1250,10 +1250,10 @@ async function syncNFeEliane() {
                                     volumesUnit = parseFloat(cachedProductsMap.get(produtoCodigo).volumes || 0);
                                 } else {
                                     try {
-                                        await new Promise(resolve => setTimeout(resolve, 500));
+                                        await new Promise(resolve => setTimeout(resolve, 50));
                                         const prodSearchResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos?codigos[]=${produtoCodigo}`, 'eliane');
                                         if (prodSearchResp.data?.[0]?.id) {
-                                            await new Promise(resolve => setTimeout(resolve, 500));
+                                            await new Promise(resolve => setTimeout(resolve, 50));
                                             const prodDetailsResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${prodSearchResp.data[0].id}`, 'eliane');
                                             volumesUnit = parseFloat(prodDetailsResp.data.volumes || 0);
 
@@ -1267,7 +1267,7 @@ async function syncNFeEliane() {
                                 totalVolumesCalculado += volumesUnit * quantidadeTotal;
                                 
                                 try {
-                                    await new Promise(resolve => setTimeout(resolve, 500));
+                                    await new Promise(resolve => setTimeout(resolve, 50));
                                     const prodSearchResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos?codigos[]=${produtoCodigo}`, 'eliane');
                                     if (prodSearchResp.data?.[0]?.id) {
                                         idsBlingProduto.push(String(prodSearchResp.data[0].id).substring(0, 100));
@@ -1335,7 +1335,7 @@ async function syncNFeEliane() {
             }
         
             // Lógica para verificação de notas canceladas (executada a cada página)
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 50));
             try {
                 const canceladasResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe?pagina=${pagina}&limite=100&tipo=1&situacao=2`, 'eliane');
                 for (const cancelada of canceladasResp.data || []) {
@@ -1391,6 +1391,34 @@ function getElianeStatus() {
     return isNFeElianeRunning;
 }
 
+async function syncSingleProductAndStructuresLucas(sku, client) {
+    try {
+        console.log(`[ProductSync] Sincronizando produto SKU ${sku} na conta Lucas...`);
+        const url = `${BLING_API_BASE_URL}/produtos?codigos[]=${encodeURIComponent(sku)}`;
+        const res = await apiRequestWithRetry(url, 'lucas');
+        if (res.data && res.data.length > 0) {
+            const prodId = res.data[0].id;
+            const detailsRes = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${prodId}`, 'lucas');
+            const prodDetails = detailsRes.data;
+
+            await client.query(`
+                INSERT INTO cached_products (bling_id, bling_account, sku, nome, preco_custo, volumes, last_updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+                ON CONFLICT (bling_id, bling_account) DO UPDATE SET
+                    sku = EXCLUDED.sku, nome = EXCLUDED.nome, preco_custo = EXCLUDED.preco_custo,
+                    volumes = EXCLUDED.volumes, last_updated_at = CURRENT_TIMESTAMP;
+            `, [prodDetails.id, 'lucas', prodDetails.codigo, prodDetails.nome, prodDetails.precoCusto, prodDetails.volumes || 1]);
+
+            await processAndCacheStructuresLucas(prodDetails, client);
+            console.log(`[ProductSync] Produto SKU ${sku} e suas estruturas sincronizados no Lucas.`);
+            return prodDetails.id;
+        }
+    } catch (e) {
+        console.error(`[ProductSync] Erro ao sincronizar produto SKU ${sku} no Lucas:`, e.message);
+    }
+    return null;
+}
+
 module.exports = {
     syncNFeLucas,
     syncNFeEliane,
@@ -1404,5 +1432,6 @@ module.exports = {
     findAndCachePedidoByLojaNumber: exports.findAndCachePedidoByLojaNumber,
     syncPedidosVendaFull,
     getLucasStatus, 
-    getElianeStatus
+    getElianeStatus,
+    syncSingleProductAndStructuresLucas
 };

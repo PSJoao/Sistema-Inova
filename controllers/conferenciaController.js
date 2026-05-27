@@ -4,6 +4,7 @@ const { Pool } = require('pg');
 const axios = require('axios');
 const { getValidBlingToken } = require('../services/blingTokenManager');
 const etiquetasService = require('../services/etiquetasService');
+const blingSyncService = require('../blingSyncService');
 
 // Conexão com o banco (usando as variáveis de ambiente do banco de monitoramento/inova)
 const pool = new Pool({
@@ -136,7 +137,7 @@ exports.searchNfeByChave = async (req, res) => {
                     p.nome as parent_name, p.sku as parent_sku
                 FROM cached_products p
                 LEFT JOIN cached_structures s ON s.parent_product_bling_id = p.bling_id
-                WHERE p.sku = ANY($1::text[])
+                WHERE p.sku = ANY($1::text[]) AND p.bling_account = 'lucas'
             `;
 
             const structuresResultFallback = await pool.query(structuresQueryFallback, [skus]);
@@ -182,25 +183,72 @@ exports.searchNfeByChave = async (req, res) => {
         );
         const pedidoBlingId = pedidoResult.rows.length > 0 ? pedidoResult.rows[0].bling_id : null;
 
-        // 4. Identifica os Produtos Pais
-        if (!nfe.product_ids_list) {
-            return res.status(400).json({ message: 'Nota Fiscal sem produtos vinculados.' });
+        // 4. Identifica os Produtos Pais (Mapeando sempre para a conta do Lucas para conferência consistente)
+        let structuresResult;
+        let resolvedFromLucas = false;
+
+        // Tenta obter os SKUs diretamente da tabela nfe_quantidade_produto
+        const prodsResult = await pool.query(
+            'SELECT produto_codigo FROM nfe_quantidade_produto WHERE nfe_numero = $1',
+            [nfe.nfe_numero]
+        );
+
+        if (prodsResult.rows.length > 0) {
+            const skus = prodsResult.rows.map(r => r.produto_codigo);
+            const skusUpper = skus.map(s => s.toUpperCase());
+
+            // Garante que cada SKU esteja cacheado na conta do Lucas
+            for (const sku of skus) {
+                const skuUpper = sku.toUpperCase();
+                const checkRes = await pool.query(
+                    "SELECT bling_id FROM cached_products WHERE UPPER(sku) = $1 AND bling_account = 'lucas' LIMIT 1",
+                    [skuUpper]
+                );
+                if (checkRes.rows.length === 0) {
+                    console.log(`[Conferência] SKU ${sku} não encontrado no cache do Lucas. Sincronizando sob demanda...`);
+                    await blingSyncService.syncSingleProductAndStructuresLucas(sku, pool);
+                }
+            }
+
+            // Busca os IDs correspondentes na conta do Lucas
+            const lucasProdsResult = await pool.query(
+                "SELECT bling_id FROM cached_products WHERE UPPER(sku) = ANY($1::text[]) AND bling_account = 'lucas'",
+                [skusUpper]
+            );
+
+            if (lucasProdsResult.rows.length > 0) {
+                const lucasProductIds = lucasProdsResult.rows.map(r => r.bling_id);
+                const structuresQuery = `
+                    SELECT 
+                        s.id, s.parent_product_bling_id, s.component_sku, s.structure_name,
+                        s.gtin, s.gtin_embalagem, s.codigo_fabrica, s.escondido, s.quantidade,
+                        p.nome as parent_name, p.sku as parent_sku
+                    FROM cached_structures s
+                    JOIN cached_products p ON s.parent_product_bling_id = p.bling_id AND p.bling_account = 'lucas'
+                    WHERE s.parent_product_bling_id = ANY($1::bigint[])
+                `;
+                structuresResult = await pool.query(structuresQuery, [lucasProductIds]);
+                resolvedFromLucas = true;
+            }
         }
 
-        const productIds = nfe.product_ids_list.split(';').map(id => id.trim()).filter(id => id);
-
-        // 5. Busca as Estruturas (Volumes)
-        const structuresQuery = `
-            SELECT 
-                s.id, s.parent_product_bling_id, s.component_sku, s.structure_name,
-                s.gtin, s.gtin_embalagem, s.codigo_fabrica, s.escondido, s.quantidade,
-                p.nome as parent_name, p.sku as parent_sku
-            FROM cached_structures s
-            JOIN cached_products p ON s.parent_product_bling_id = p.bling_id
-            WHERE s.parent_product_bling_id = ANY($1::bigint[])
-        `;
-
-        const structuresResult = await pool.query(structuresQuery, [productIds]);
+        if (!resolvedFromLucas) {
+            // Fallback: busca via product_ids_list original
+            if (!nfe.product_ids_list) {
+                return res.status(400).json({ message: 'Nota Fiscal sem produtos vinculados.' });
+            }
+            const productIds = nfe.product_ids_list.split(';').map(id => id.trim()).filter(id => id);
+            const structuresQuery = `
+                SELECT 
+                    s.id, s.parent_product_bling_id, s.component_sku, s.structure_name,
+                    s.gtin, s.gtin_embalagem, s.codigo_fabrica, s.escondido, s.quantidade,
+                    p.nome as parent_name, p.sku as parent_sku
+                FROM cached_structures s
+                JOIN cached_products p ON s.parent_product_bling_id = p.bling_id
+                WHERE s.parent_product_bling_id = ANY($1::bigint[])
+            `;
+            structuresResult = await pool.query(structuresQuery, [productIds]);
+        }
 
         // Expande os volumes de acordo com a quantidade
         let expandedVolumes = [];

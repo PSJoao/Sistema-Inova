@@ -1190,6 +1190,36 @@ exports.salvarRelatorioGondola = async (req, res) => {
         client.release();
     }
 };
+
+exports.atualizarRelatorioGondola = async (req, res) => {
+    const { id } = req.params;
+    const { state_json } = req.body;
+
+    if (!state_json || !state_json.itens || state_json.itens.length === 0) {
+        return res.status(400).json({ success: false, message: 'Nenhum item bipado para salvar.' });
+    }
+    const client = await pool.connect();
+    try {
+        const query = `
+            UPDATE relatorios_gondola 
+            SET state_json = $1
+            WHERE id = $2
+            RETURNING id, nome, created_at;
+        `;
+        
+        const result = await client.query(query, [state_json, id]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Relatório não encontrado.' });
+        }
+        res.json({ success: true, relatorio: result.rows[0] });
+    } catch (error) {
+        console.error('[Gôndola] Erro ao atualizar relatório:', error);
+        res.status(500).json({ success: false, message: 'Erro ao atualizar relatório de gôndola.' });
+    } finally {
+        client.release();
+    }
+};
+
 /*exports.salvarRelatorioGondola = async (req, res) => {
     const { state_json } = req.body;
     

@@ -103,6 +103,7 @@ router.get('/api/etiquetas/exportar-sku-qtd', etiquetasController.exportMlSkuQua
 router.get('/etiquetas/gondola', etiquetasController.renderGondolaPage);
 router.post('/api/gondola/buscar-estrutura', etiquetasController.buscarEstruturaGondola);
 router.post('/api/gondola/salvar', etiquetasController.salvarRelatorioGondola);
+router.put('/api/gondola/:id', etiquetasController.atualizarRelatorioGondola);
 router.get('/api/gondola/listar', etiquetasController.listarRelatoriosGondola);
 router.delete('/api/gondola/:id', etiquetasController.excluirRelatorioGondola);
 

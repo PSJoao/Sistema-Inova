@@ -149,32 +149,33 @@ let isHubDevolucoesSyncRunning = false;
 let isHubSyncRunning = false;
 
 //Agendamento do hub
-//cron.schedule('*/1 * * * *', async () => {
-// 1. Verifica se já está rodando
-/*if (isHubSyncRunning) {
-    console.log(`[HUB Cron] Sincronização anterior ainda em andamento. Pulando este ciclo...`);
-    return; // Sai da função e espera o próximo minuto
-}
+cron.schedule('*/1 * * * *', async () => {
+    // 1. Verifica se já está rodando
+    if (isHubSyncRunning) {
+        console.log(`[HUB Cron] Sincronização anterior ainda em andamento. Pulando este ciclo...`);
+        return; // Sai da função e espera o próximo minuto
+    }
 
-// 2. Ativa a trava
-isHubSyncRunning = true;
-console.log('[HUB Cron] Iniciando ciclo de sincronização...');
+    // 2. Ativa a trava
+    isHubSyncRunning = true;
+    console.log('[HUB Cron] Iniciando ciclo de sincronização...');
 
-try {
-    // 3. Executa as tarefas críticas
-    //await hubMlService.capturarNovosPedidos();
-    await hubMlService.monitorarPedidosExistentes();
-    console.log('[HUB Cron] Ciclo finalizado com sucesso.');
+    try {
+        // 3. Executa as tarefas críticas
+        //await hubMlService.capturarNovosPedidos();
+        await hubMlService.monitorarPedidosDiferentes();
+        await hubMlService.monitorarPedidosExistentes();
+        console.log('[HUB Cron] Ciclo finalizado com sucesso.');
 
-} catch (error) {
-    // 4. Tratamento de erro para não derrubar o servidor
-    console.error('[HUB Cron] Erro durante a sincronização:', error);
+    } catch (error) {
+        // 4. Tratamento de erro para não derrubar o servidor
+        console.error('[HUB Cron] Erro durante a sincronização:', error);
 
-} finally {
-    // 5. IMPORTANTE: Solta a trava independente de sucesso ou erro
-    isHubSyncRunning = false;
-}
-});*/
+    } finally {
+        // 5. IMPORTANTE: Solta a trava independente de sucesso ou erro
+        isHubSyncRunning = false;
+    }
+});
 
 let isHubProdutosSyncRunning = false;
 
@@ -373,8 +374,8 @@ const dataHora = new Date().toLocaleString('pt-BR');
 // ===========================================================
 let isHubPedidosSyncRunning = false;
 
-cron.schedule('*/1 * * * *', async () => {
-    if (isHubPedidosSyncRunning) {
+//cron.schedule('*/1 * * * *', async () => {
+/*    if (isHubPedidosSyncRunning) {
         console.log('[HubPedidos CRON] Sincronização anterior ainda em andamento. Pulando.');
         return;
     }
@@ -389,7 +390,7 @@ cron.schedule('*/1 * * * *', async () => {
 }, {
     scheduled: true,
     timezone: "America/Sao_Paulo"
-});
+});*/
 
 // Rota para lidar com páginas não encontradas
 app.use((req, res) => {

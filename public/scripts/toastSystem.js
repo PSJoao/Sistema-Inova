@@ -23,6 +23,17 @@ const ToastSystem = {
                     container: 'toast-custom-container' 
                 }
             });
+
+            // Toca som de acordo com o tipo
+            try {
+                if (type === 'success') {
+                    const audio = new Audio('/public/sounds/notification.mp3');
+                    audio.play().catch(e => console.log('Áudio bloqueado pelo navegador', e));
+                } else if (type === 'error' || type === 'warning') {
+                    const audio = new Audio('/public/sounds/error.mp3');
+                    audio.play().catch(e => console.log('Áudio bloqueado pelo navegador', e));
+                }
+            } catch (err) {}
         } else {
             console.warn('SweetAlert2 não está carregado. Fallback para alert.');
             alert(msg);

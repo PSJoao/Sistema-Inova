@@ -1,33 +1,40 @@
-<link rel="stylesheet" href="/public/styles/etiquetas.css">
+{{#section "head" }}
+<link href="/public/styles/dashboardExpedicao.css" rel="stylesheet">
+{{/section}}
 
-<div class="content-card">
-    <div class="page-header-actions mb-4">
-        <h1 class="page-title"><i class="fas fa-boxes text-muted mr-2"></i> Estoque de Transição: Gôndola</h1>
+<div class="dashboard-wrapper">
+    <div class="dashboard-header mb-4">
+        <h1 class="page-title-dark"><i class="fas fa-boxes text-muted mr-2"></i> Estoque de Transição: Gôndola</h1>
     </div>
 
     <div class="row">
         <div class="col-lg-5 mb-4">
             
-            <div class="gondola-card mb-4">
-                <div class="gondola-card-header">
-                    <i class="fas fa-barcode"></i> Nova Gôndola (Bipagem)
+            <div class="dashboard-panel mb-4">
+                <div class="panel-title d-flex align-items-center" style="border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 15px; padding-bottom: 10px;">
+                    <i class="fas fa-barcode mr-2"></i> <span id="titulo-painel-bipagem">Nova Gôndola (Bipagem)</span>
+                    <span id="badge-editando" class="badge badge-warning ml-auto" style="display: none; color: #212529;"><i class="fas fa-edit"></i> <span id="nome-relatorio-editando">Editando</span></span>
                 </div>
-                <div class="gondola-card-body">
+                <div>
                     <form id="form-bipagem-gondola" class="mb-3">
                         <div class="form-group">
-                            <label for="codigo-bipagem" class="form-label">Bipe o GTIN, GTIN Embalagem ou SKU:</label>
-                            <input type="text" id="codigo-bipagem" class="form-control form-control-lg" autocomplete="off" autofocus placeholder="Aguardando leitor...">
+                            <label for="codigo-bipagem" style="color: var(--text-secondary); margin-bottom: 8px;">Bipe o GTIN, GTIN Embalagem ou SKU:</label>
+                            <input type="text" id="codigo-bipagem" class="form-control-dark" autocomplete="off" autofocus placeholder="Aguardando leitor...">
                         </div>
                     </form>
                     <hr class="custom-hr">
-                    
-                    <div class="table-responsive gondola-table-wrapper" style="max-height: 350px; overflow-y: auto; border: none;">
-                        <table class="table mb-0" id="tabela-bipagem-atual">
+                    <div style="max-height: 350px; overflow-y: auto; margin-top: 12px;">
+                        <table class="table dataTable mb-0" id="tabela-bipagem-atual" style="table-layout: fixed; width: 100%;">
+                            <colgroup>
+                                <col style="width: 28%;">
+                                <col style="width: 54%;">
+                                <col style="width: 18%;">
+                            </colgroup>
                             <thead>
                                 <tr>
-                                    <th style="width: 30%;">SKU</th>
-                                    <th style="width: 60%;">Nome</th>
-                                    <th style="width: 80px; text-align: center;">Qtd</th>
+                                    <th style="font-size: 0.8rem;">SKU</th>
+                                    <th style="font-size: 0.8rem;">Nome</th>
+                                    <th style="font-size: 0.8rem; text-align: center;">Qtd</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -36,27 +43,34 @@
                         </table>
                     </div>
                 </div>
-                <div class="gondola-card-footer d-flex justify-content-between">
-                    <button id="btn-limpar-gondola" class="btn btn-outline-danger"><i class="fas fa-trash-alt mr-1"></i> Limpar</button>
-                    <button id="btn-salvar-gondola" class="btn btn-primary font-weight-bold"><i class="fas fa-save mr-1"></i> Finalizar Relatório</button>
+                <div class="mt-4 pt-3" style="border-top: 1px solid rgba(255,255,255,0.05); display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; gap: 10px;">
+                        <button id="btn-limpar-gondola" class="btn-premium outline btn-sm" style="border-color: #dc3545; color: #dc3545;"><i class="fas fa-trash-alt"></i> Limpar</button>
+                        <button id="btn-cancelar-edicao" class="btn-premium outline btn-sm" style="display: none;"><i class="fas fa-times"></i> Cancelar</button>
+                    </div>
+                    <button id="btn-salvar-gondola" class="btn-premium orange btn-sm"><i class="fas fa-save"></i> <span>Finalizar</span></button>
                 </div>
             </div>
 
             <br><br>
             
             <div class="col-lg-7 mb-4">
-                <div class="gondola-card h-100">
-                    <div class="gondola-card-header">
-                        <i class="fas fa-history"></i> Histórico de Relatórios Gôndola
-                    </div>
-                    <div class="gondola-card-body p-0 d-flex flex-column" style="height: calc(100% - 50px);">
-                        <div class="table-responsive gondola-table-wrapper" style="flex: 1; border: none;">
-                            <table class="table table-hover mb-0" id="tabela-historico-gondola">
+                <div class="dashboard-panel h-100 d-flex flex-column">
+                    <h4 class="panel-title"><i class="fas fa-history"></i> Histórico de Relatórios Gôndola</h4>
+                    
+                    <div class="d-flex flex-column" style="flex: 1;">
+                        <div style="flex: 1; overflow-x: hidden;">
+                            <table class="table dataTable mb-0" id="tabela-historico-gondola" style="table-layout: fixed; width: 100%;">
+                                <colgroup>
+                                    <col style="width: 50%;">
+                                    <col style="width: 30%;">
+                                    <col style="width: 20%;">
+                                </colgroup>
                                 <thead>
                                     <tr>
-                                        <th>Nome do Relatório</th>
-                                        <th>Data/Hora Criação</th>
-                                        <th style="width: 180px; text-align: center;">Ações</th>
+                                        <th style="font-size: 0.8rem;">Relatório</th>
+                                        <th style="font-size: 0.8rem;">Data/Hora</th>
+                                        <th style="font-size: 0.8rem; text-align: center;">Ações</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -73,11 +87,10 @@
             
             <br><br>
 
-            <div class="gondola-card mt-4">
-                <div class="gondola-card-header" style="border-bottom-color: #28a745;">
-                    <i class="fas fa-file-excel text-success"></i> Importar Já Separados (Excel)
-                </div>
-                <div class="gondola-card-body">
+            <div class="dashboard-panel mt-4">
+                <h4 class="panel-title" style="color: #28a745;"><i class="fas fa-file-excel"></i> Importar Já Separados (Excel)</h4>
+                
+                <div>
                     <form id="form-excel-separados">
                         <div class="form-group mb-3">
                             <label for="excel-separados-file" class="form-label">Selecione a planilha (.xlsx):</label>
@@ -89,7 +102,7 @@
                             </div>
                             <small id="nome-arquivo-excel" class="form-text text-center font-weight-bold mt-3" style="color: var(--accent-orange);"></small>
                         </div>
-                        <button type="submit" class="btn btn-success w-100 font-weight-bold" id="btn-enviar-excel">
+                        <button type="submit" class="btn-premium outline w-100" style="border-color: #28a745; color: #28a745;" id="btn-enviar-excel">
                             <i class="fas fa-cloud-upload-alt mr-2"></i> Subir Planilha
                         </button>
                     </form>
@@ -106,5 +119,8 @@
     </div>
 </div>
 
+{{#section "scripts"}}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="/public/scripts/toastSystem.js"></script>
 <script src="/public/scripts/gondolaManager.js"></script>
+{{/section}}

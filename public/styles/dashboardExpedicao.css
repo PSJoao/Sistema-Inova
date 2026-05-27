@@ -180,6 +180,14 @@
     transform: translateY(-2px);
 }
 
+.btn-premium.btn-sm {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+}
+
+.gap-2 { gap: 0.5rem !important; }
+.gap-3 { gap: 1rem !important; }
+
 /* ==========================================================================
    REFORMULAÇÃO TOTAL DO DATATABLES
    ========================================================================== */
@@ -190,7 +198,7 @@
 }
 
 /* Ajustes estruturais da Tabela */
-table.dataTable {
+table.dataTable, .dashboard-wrapper .table {
     width: 100% !important;
     border-collapse: collapse !important; /* Resolve colunas separadas/fantasmas */
     margin: 1.5rem 0 !important;
@@ -198,7 +206,9 @@ table.dataTable {
 }
 
 table.dataTable thead th, 
-table.dataTable tbody td {
+table.dataTable tbody td,
+.dashboard-wrapper .table thead th,
+.dashboard-wrapper .table tbody td {
     box-sizing: border-box; /* Previne que o padding quebre as larguras */
     padding: 1rem 1.2rem;
     border: none;
@@ -206,7 +216,8 @@ table.dataTable tbody td {
 }
 
 /* Cabeçalho */
-table.dataTable thead th {
+table.dataTable thead th,
+.dashboard-wrapper .table thead th {
     background-color: rgba(255, 255, 255, 0.03);
     border-bottom: 2px solid var(--accent-orange, #f07c00) !important;
     color: var(--text-primary, #fff);
@@ -219,13 +230,15 @@ table.dataTable thead th {
 }
 
 /* Linhas do Corpo */
-table.dataTable tbody tr {
+table.dataTable tbody tr,
+.dashboard-wrapper .table tbody tr {
     background-color: transparent !important;
     border-bottom: 1px solid rgba(255, 255, 255, 0.03);
     transition: background 0.2s ease;
 }
 
-table.dataTable tbody tr:hover {
+table.dataTable tbody tr:hover,
+.dashboard-wrapper .table tbody tr:hover {
     background-color: rgba(240, 124, 0, 0.05) !important;
 }
 
@@ -414,6 +427,17 @@ table.dataTable tbody tr:hover {
     background: #dc3545;
     color: #fff;
     box-shadow: 0 4px 12px rgba(220, 53, 69, 0.35);
+}
+
+/* Variante: Success (Exportar) */
+.btn-action-success {
+    background: rgba(40, 167, 69, 0.15);
+    color: #28a745;
+}
+.btn-action-success:hover {
+    background: #28a745;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.35);
 }
 
 /* Variante: Print (Imprimir) */

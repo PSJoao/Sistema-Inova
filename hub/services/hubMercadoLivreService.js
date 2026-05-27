@@ -88,6 +88,7 @@ class HubMercadoLivreService {
                     break;
                 }
 
+                let pedidosParaProcessar = [];
                 for (const pedidoData of pedidos) {
                     const dataPedido = new Date(pedidoData.date_created);
 
@@ -97,184 +98,192 @@ class HubMercadoLivreService {
                         continuarBuscando = false; // Desliga o loop While
                         break; // Sai do loop For imediatamente
                     }
+                    pedidosParaProcessar.push(pedidoData);
+                }
 
-                    // Verificação de existência para não duplicar (Idempotência)
-                    const exists = await this.verificarSePedidoExiste(pedidoData.id);
-                    if (exists) {
-                        //console.log(`[HUB ML] Pedido ${pedidoData.id} já existe. Pulando...`);
-                        continue;
-                    }
+                const chunkSize = 20;
+                for (let i = 0; i < pedidosParaProcessar.length; i += chunkSize) {
+                    const chunk = pedidosParaProcessar.slice(i, i + chunkSize);
+                    await Promise.all(chunk.map(async (pedidoData) => {
 
-                    const itensMapeados = (pedidoData.order_items || []).map(itemWrapper => {
-                        const item = itemWrapper.item;
-                        return {
-                            id_item: item.id,
-                            sku: item.seller_sku || null, // O SKU que você quer
-                            titulo: item.title,           // A descrição
-                            quantidade: itemWrapper.quantity,
-                            preco_unitario: itemWrapper.unit_price,
-                            taxa_venda: itemWrapper.sale_fee
+                        // Verificação de existência para não duplicar (Idempotência)
+                        const exists = await this.verificarSePedidoExiste(pedidoData.id);
+                        if (exists) {
+                            //console.log(`[HUB ML] Pedido ${pedidoData.id} já existe. Pulando...`);
+                            return;
+                        }
+
+                        const itensMapeados = (pedidoData.order_items || []).map(itemWrapper => {
+                            const item = itemWrapper.item;
+                            return {
+                                id_item: item.id,
+                                sku: item.seller_sku || null, // O SKU que você quer
+                                titulo: item.title,           // A descrição
+                                quantidade: itemWrapper.quantity,
+                                preco_unitario: itemWrapper.unit_price,
+                                taxa_venda: itemWrapper.sale_fee
+                            };
+                        });
+
+                        // Objeto base para salvar
+                        const novoPedido = {
+                            conta_id: conta.id,
+                            id_pedido_ml: pedidoData.id,
+                            date_created: pedidoData.date_created,
+                            status_pedido: pedidoData.status,
+                            data_limite_envio: null,
+                            id_envio_ml: null,
+                            status_envio: null,
+                            etiqueta_zpl: null,
+                            itens_pedido: JSON.stringify(itensMapeados),
+                            comprador_nickname: pedidoData.buyer?.nickname || null,
+                            tem_dev: false,
+                            tem_med: false,
+                            status_dev: null,
+                            status_med: null,
+                            id_envio_dev: null,
+                            status_envio_dev: null,
+                            frete_envio: null,
+                            nfe_numero: null,
+                            chave_acesso: null
                         };
-                    });
 
-                    // Objeto base para salvar
-                    const novoPedido = {
-                        conta_id: conta.id,
-                        id_pedido_ml: pedidoData.id,
-                        date_created: pedidoData.date_created,
-                        status_pedido: pedidoData.status,
-                        data_limite_envio: null,
-                        id_envio_ml: null,
-                        status_envio: null,
-                        etiqueta_zpl: null,
-                        itens_pedido: JSON.stringify(itensMapeados),
-                        comprador_nickname: pedidoData.buyer?.nickname || null,
-                        tem_dev: false,
-                        tem_med: false,
-                        status_dev: null,
-                        status_med: null,
-                        id_envio_dev: null,
-                        status_envio_dev: null,
-                        frete_envio: null,
-                        nfe_numero: null,
-                        chave_acesso: null
-                    };
+                        // Captura a data limite de envio
+                        if (pedidoData.shipping_option?.estimated_handling_limit?.date) {
+                            novoPedido.data_limite_envio = pedidoData.shipping_option.estimated_handling_limit.date;
+                        }
 
-                    // Captura a data limite de envio
-                    if (pedidoData.shipping_option?.estimated_handling_limit?.date) {
-                        novoPedido.data_limite_envio = pedidoData.shipping_option.estimated_handling_limit.date;
-                    }
+                        if (pedidoData.shipping?.id) {
+                            try {
+                                await delay(200);
+                                const envioUrl = `${ML_API_URL}/shipments/${pedidoData.shipping.id}`;
+                                const envioResponse = await axios.get(envioUrl, {
+                                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                                });
 
-                    if (pedidoData.shipping?.id) {
-                        try {
-                            await delay(200);
-                            const envioUrl = `${ML_API_URL}/shipments/${pedidoData.shipping.id}`;
-                            const envioResponse = await axios.get(envioUrl, {
-                                headers: { 'Authorization': `Bearer ${accessToken}` }
-                            });
+                                const envioData = envioResponse.data;
 
-                            const envioData = envioResponse.data;
+                                if (envioData) {
+                                    novoPedido.id_envio_ml = envioData.id;
+                                    novoPedido.status_envio = envioData.status;
 
-                            if (envioData) {
-                                novoPedido.id_envio_ml = envioData.id;
-                                novoPedido.status_envio = envioData.status;
-
-                                // --- CAPTURA ISOLADA DE CUSTO (FRETE) ---
-                                try {
-                                    const freteUrl = `${ML_API_URL}/shipments/${envioData.id}/costs`;
-                                    const freteRes = await axios.get(freteUrl, {
-                                        headers: { 'Authorization': `Bearer ${accessToken}` }
-                                    });
-                                    novoPedido.frete_envio = freteRes.data?.senders?.[0]?.cost || 0;
-                                } catch (freteError) {
-                                    // Silencioso: Se falhar, fica como null
-                                }
-
-                                // --- CAPTURA ISOLADA DE SLA ---
-                                try {
-                                    const limiteEnvioUrl = `${ML_API_URL}/shipments/${envioData.id}/sla`;
-                                    const limiteEnvio = await axios.get(limiteEnvioUrl, {
-                                        headers: { 'Authorization': `Bearer ${accessToken}` }
-                                    });
-                                    const limiteEnvioData = Array.isArray(limiteEnvio.data) ? limiteEnvio.data[0] : limiteEnvio.data;
-
-                                    if (limiteEnvioData.expected_date) {
-                                        novoPedido.data_limite_envio = limiteEnvioData.expected_date;
-                                    }
-                                } catch (slaError) {
-                                    // Silencioso: Se falhar, usará a data do handling_limit ou null
-                                }
-
-                                const shippingOption = envioData.shipping_option || {};
-                                const statusHistory = envioData.status_history || {};
-
-                                // 1. Data de Envio Agendado
-                                if (shippingOption.buffering?.date) {
-                                    const dataBuffering = new Date(shippingOption.buffering.date);
-                                    const hoje = new Date();
-                                    hoje.setHours(0, 0, 0, 0);
-                                    dataBuffering.setHours(0, 0, 0, 0);
-
-                                    if (dataBuffering > hoje) {
-                                        novoPedido.data_envio_agendado = shippingOption.buffering.date;
-                                    } else {
-                                        novoPedido.data_envio_agendado = null;
-                                    }
-                                }
-
-                                // 2. Data de Envio Disponível
-                                if (statusHistory.date_ready_to_ship) {
-                                    novoPedido.data_envio_disponivel = statusHistory.date_ready_to_ship;
-                                }
-
-                                // 3. Data Previsão de Entrega
-                                if (shippingOption.estimated_delivery_time?.date) {
-                                    novoPedido.data_previsao_entrega = shippingOption.estimated_delivery_time.date;
-                                }
-
-                                // --- CAPTURA DA ETIQUETA (ZPL) ---
-                                const deveBaixarEtiqueta = envioData.logistic_type !== 'fulfillment' &&
-                                    (envioData.status === 'ready_to_ship' || envioData.status === 'shipped');
-
-                                if (deveBaixarEtiqueta) {
-                                    await delay(300);
-                                    const zplUrl = `${ML_API_URL}/shipment_labels?shipment_ids=${novoPedido.id_envio_ml}&response_type=zpl2`;
-
+                                    // --- CAPTURA ISOLADA DE CUSTO (FRETE) ---
                                     try {
-                                        const zplResponse = await axios.get(zplUrl, {
-                                            headers: { 'Authorization': `Bearer ${accessToken}` },
-                                            responseType: 'arraybuffer'
+                                        const freteUrl = `${ML_API_URL}/shipments/${envioData.id}/costs`;
+                                        const freteRes = await axios.get(freteUrl, {
+                                            headers: { 'Authorization': `Bearer ${accessToken}` }
                                         });
+                                        novoPedido.frete_envio = freteRes.data?.senders?.[0]?.cost || 0;
+                                    } catch (freteError) {
+                                        // Silencioso: Se falhar, fica como null
+                                    }
 
-                                        let conteudoEtiqueta = zplResponse.data;
+                                    // --- CAPTURA ISOLADA DE SLA ---
+                                    try {
+                                        const limiteEnvioUrl = `${ML_API_URL}/shipments/${envioData.id}/sla`;
+                                        const limiteEnvio = await axios.get(limiteEnvioUrl, {
+                                            headers: { 'Authorization': `Bearer ${accessToken}` }
+                                        });
+                                        const limiteEnvioData = Array.isArray(limiteEnvio.data) ? limiteEnvio.data[0] : limiteEnvio.data;
 
-                                        if (conteudoEtiqueta && conteudoEtiqueta[0] === 0x50 && conteudoEtiqueta[1] === 0x4B) {
-                                            try {
-                                                const zip = new AdmZip(conteudoEtiqueta);
-                                                const zipEntries = zip.getEntries();
-                                                const textoEntry = zipEntries.find(entry =>
-                                                    entry.entryName.toLowerCase().endsWith('.txt') ||
-                                                    entry.entryName.toLowerCase().endsWith('.zpl')
-                                                );
+                                        if (limiteEnvioData.expected_date) {
+                                            novoPedido.data_limite_envio = limiteEnvioData.expected_date;
+                                        }
+                                    } catch (slaError) {
+                                        // Silencioso: Se falhar, usará a data do handling_limit ou null
+                                    }
 
-                                                if (textoEntry) {
-                                                    conteudoEtiqueta = zip.readAsText(textoEntry, 'utf8');
-                                                } else {
+                                    const shippingOption = envioData.shipping_option || {};
+                                    const statusHistory = envioData.status_history || {};
+
+                                    // 1. Data de Envio Agendado
+                                    if (shippingOption.buffering?.date) {
+                                        const dataBuffering = new Date(shippingOption.buffering.date);
+                                        const hoje = new Date();
+                                        hoje.setHours(0, 0, 0, 0);
+                                        dataBuffering.setHours(0, 0, 0, 0);
+
+                                        if (dataBuffering > hoje) {
+                                            novoPedido.data_envio_agendado = shippingOption.buffering.date;
+                                        } else {
+                                            novoPedido.data_envio_agendado = null;
+                                        }
+                                    }
+
+                                    // 2. Data de Envio Disponível
+                                    if (statusHistory.date_ready_to_ship) {
+                                        novoPedido.data_envio_disponivel = statusHistory.date_ready_to_ship;
+                                    }
+
+                                    // 3. Data Previsão de Entrega
+                                    if (shippingOption.estimated_delivery_time?.date) {
+                                        novoPedido.data_previsao_entrega = shippingOption.estimated_delivery_time.date;
+                                    }
+
+                                    // --- CAPTURA DA ETIQUETA (ZPL) ---
+                                    const deveBaixarEtiqueta = envioData.logistic_type !== 'fulfillment' &&
+                                        (envioData.status === 'ready_to_ship' || envioData.status === 'shipped');
+
+                                    if (deveBaixarEtiqueta) {
+                                        await delay(300);
+                                        const zplUrl = `${ML_API_URL}/shipment_labels?shipment_ids=${novoPedido.id_envio_ml}&response_type=zpl2`;
+
+                                        try {
+                                            const zplResponse = await axios.get(zplUrl, {
+                                                headers: { 'Authorization': `Bearer ${accessToken}` },
+                                                responseType: 'arraybuffer'
+                                            });
+
+                                            let conteudoEtiqueta = zplResponse.data;
+
+                                            if (conteudoEtiqueta && conteudoEtiqueta[0] === 0x50 && conteudoEtiqueta[1] === 0x4B) {
+                                                try {
+                                                    const zip = new AdmZip(conteudoEtiqueta);
+                                                    const zipEntries = zip.getEntries();
+                                                    const textoEntry = zipEntries.find(entry =>
+                                                        entry.entryName.toLowerCase().endsWith('.txt') ||
+                                                        entry.entryName.toLowerCase().endsWith('.zpl')
+                                                    );
+
+                                                    if (textoEntry) {
+                                                        conteudoEtiqueta = zip.readAsText(textoEntry, 'utf8');
+                                                    } else {
+                                                        conteudoEtiqueta = conteudoEtiqueta.toString('utf8');
+                                                    }
+                                                } catch (zipErr) {
+                                                    console.error('[HUB ML] Erro ao descompactar ZIP:', zipErr.message);
                                                     conteudoEtiqueta = conteudoEtiqueta.toString('utf8');
                                                 }
-                                            } catch (zipErr) {
-                                                console.error('[HUB ML] Erro ao descompactar ZIP:', zipErr.message);
+                                            } else {
                                                 conteudoEtiqueta = conteudoEtiqueta.toString('utf8');
                                             }
-                                        } else {
-                                            conteudoEtiqueta = conteudoEtiqueta.toString('utf8');
+
+                                            novoPedido.etiqueta_zpl = conteudoEtiqueta;
+
+                                        } catch (zplError) {
+                                            console.warn(`[HUB ML] Falha ZPL pedido ${novoPedido.id_pedido_ml}: ${zplError.message}`);
                                         }
-
-                                        novoPedido.etiqueta_zpl = conteudoEtiqueta;
-
-                                    } catch (zplError) {
-                                        console.warn(`[HUB ML] Falha ZPL pedido ${novoPedido.id_pedido_ml}: ${zplError.message}`);
                                     }
                                 }
+                            } catch (envioError) {
+                                console.warn(`[HUB ML] Envio inacessível para o pedido ${novoPedido.id_pedido_ml}. Prosseguindo sem dados adicionais de logística.`);
                             }
-                        } catch (envioError) {
-                            console.warn(`[HUB ML] Envio inacessível para o pedido ${novoPedido.id_pedido_ml}. Prosseguindo sem dados adicionais de logística.`);
                         }
-                    }
 
-                    // Busca devoluções e mediações para pedidos novos
-                    const detalhesReclamacao = await this.buscarDetalhesReclamacao(novoPedido.id_pedido_ml, accessToken);
-                    Object.assign(novoPedido, detalhesReclamacao); // Mescla os resultados no objeto
+                        // Busca devoluções e mediações para pedidos novos
+                        const detalhesReclamacao = await this.buscarDetalhesReclamacao(novoPedido.id_pedido_ml, accessToken);
+                        Object.assign(novoPedido, detalhesReclamacao); // Mescla os resultados no objeto
 
-                    // --- CAPTURA ISOLADA DE NOTA FISCAL ---
-                    const nfData = await this.buscarNotaFiscal(novoPedido.id_pedido_ml, conta.seller_id, accessToken);
-                    if (nfData) {
-                        novoPedido.nfe_numero = nfData.invoiceNumber;
-                        novoPedido.chave_acesso = nfData.invoiceKey;
-                    }
+                        // --- CAPTURA ISOLADA DE NOTA FISCAL ---
+                        const nfData = await this.buscarNotaFiscal(novoPedido.id_pedido_ml, conta.seller_id, accessToken);
+                        if (nfData) {
+                            novoPedido.nfe_numero = nfData.invoiceNumber;
+                            novoPedido.chave_acesso = nfData.invoiceKey;
+                        }
 
-                    // Salvar no banco
-                    await this.salvarPedidoNoBanco(novoPedido);
+                        // Salvar no banco
+                        await this.salvarPedidoNoBanco(novoPedido);
+                    }));
                 }
 
                 // Lógica de controle do loop
@@ -284,7 +293,7 @@ class HubMercadoLivreService {
                     offset += limit;
                 }
 
-                if (offset > 1500) {
+                if (offset > 500) {
                     console.log('[HUB ML] Limite de segurança de paginação atingido (10k pedidos). Parando.');
                     continuarBuscando = false;
                 }
@@ -320,234 +329,495 @@ class HubMercadoLivreService {
 
             console.log(`[HUB ML] Processando lote de ${pedidosParaChecar.length} pedidos mais antigos...`);
 
-            for (const pedido of pedidosParaChecar) {
+            const chunkSize = 20;
+            for (let i = 0; i < pedidosParaChecar.length; i += chunkSize) {
+                const chunk = pedidosParaChecar.slice(i, i + chunkSize);
+                await Promise.all(chunk.map(async (pedido) => {
 
-                const contaMock = {
-                    id: pedido.conta_id_real,
-                    nickname: pedido.nickname,
-                    refresh_token: pedido.refresh_token,
-                    token_expiration: pedido.token_expiration,
-                    access_token: pedido.access_token
-                };
-
-                let accessToken;
-                try {
-                    accessToken = await hubTokenService.getValidAccessToken(contaMock);
-                } catch (e) {
-                    console.error(`[HUB ML] Erro de token ao monitorar pedido ${pedido.id_pedido_ml}. Pulando.`);
-                    continue;
-                }
-
-                try {
-                    await delay(150);
-                    let dadosAtualizados = null;
-
-                    try {
-                        // TENTATIVA 1: Rota direta
-                        const checkOrderUrl = `${ML_API_URL}/orders/${pedido.id_pedido_ml}`;
-                        const orderRes = await axios.get(checkOrderUrl, {
-                            headers: { 'Authorization': `Bearer ${accessToken}` }
-                        });
-                        dadosAtualizados = orderRes.data;
-
-                    } catch (error) {
-                        // TENTATIVA 2: Fallback em caso de pedido "Fantasma" (404) ou vazamento de escopo (403)
-                        if (error.response && (error.response.status === 404 || error.response.status === 403)) {
-                            console.warn(`[HUB ML] Pedido ${pedido.id_pedido_ml} retornou ${error.response.status}. Iniciando fallback de busca...`);
-
-                            try {
-                                const searchUrl = `${ML_API_URL}/orders/search?seller=${pedido.seller_id}&q=${pedido.id_pedido_ml}`;
-                                const searchRes = await axios.get(searchUrl, {
-                                    headers: { 'Authorization': `Bearer ${accessToken}` }
-                                });
-
-                                if (searchRes.data.results && searchRes.data.results.length > 0) {
-                                    dadosAtualizados = searchRes.data.results[0];
-                                    console.log(`[HUB ML] Sucesso! Pedido ${pedido.id_pedido_ml} resgatado pelo fallback.`);
-                                } else {
-                                    console.error(`[HUB ML] Pedido ${pedido.id_pedido_ml} expurgado do ML. Pulando.`);
-                                    continue; // Pula para o próximo pedido
-                                }
-                            } catch (searchError) {
-                                console.error(`[HUB ML] Erro no fallback de busca do pedido ${pedido.id_pedido_ml}:`, searchError.message);
-                                continue;
-                            }
-                        } else {
-                            // Erros 500 ou instabilidades da API
-                            console.error(`[HUB ML] Erro inesperado ao buscar pedido ${pedido.id_pedido_ml}:`, error.message);
-                            continue;
-                        }
-                    }
-
-                    // Se por algum motivo bizarro chegou aqui sem dados, interrompe o fluxo deste pedido
-                    if (!dadosAtualizados) continue;
-
-                    // Recriamos o objeto completo para garantir UPDATE total
-                    const pedidoAtualizado = {
-                        conta_id: pedido.conta_id_real,
-                        id_pedido_ml: dadosAtualizados.id,
-                        date_created: dadosAtualizados.date_created,
-                        status_pedido: dadosAtualizados.status,
-                        data_limite_envio: null,
-                        id_envio_ml: null,
-                        status_envio: null,
-                        etiqueta_zpl: pedido.etiqueta_zpl,
-                        comprador_nickname: dadosAtualizados.buyer?.nickname || null,
-                        frete_envio: null,
-                        // Mantém os dados antigos por precaução até a nova verificação
-                        tem_dev: pedido.tem_dev || false,
-                        tem_med: pedido.tem_med || false,
-                        status_dev: pedido.status_dev || null,
-                        status_med: pedido.status_med || null,
-                        id_envio_dev: pedido.id_envio_dev || null,
-                        status_envio_dev: pedido.status_envio_dev || null
+                    const contaMock = {
+                        id: pedido.conta_id_real,
+                        nickname: pedido.nickname,
+                        refresh_token: pedido.refresh_token,
+                        token_expiration: pedido.token_expiration,
+                        access_token: pedido.access_token
                     };
 
-                    // Re-mapeamento de Itens (Caso tenha mudado algo)
-                    const itensMapeados = (dadosAtualizados.order_items || []).map(itemWrapper => {
-                        const item = itemWrapper.item;
-                        return {
-                            id_item: item.id,
-                            sku: item.seller_sku || null,
-                            titulo: item.title,
-                            quantidade: itemWrapper.quantity,
-                            preco_unitario: itemWrapper.unit_price,
-                            taxa_venda: itemWrapper.sale_fee
-                        };
-                    });
-                    pedidoAtualizado.itens_pedido = JSON.stringify(itensMapeados);
+                    let accessToken;
+                    try {
+                        accessToken = await hubTokenService.getValidAccessToken(contaMock);
+                    } catch (e) {
+                        console.error(`[HUB ML] Erro de token ao monitorar pedido ${pedido.id_pedido_ml}. Pulando.`);
+                        return;
+                    }
 
-                    // Captura de Envio e Datas
-                    if (dadosAtualizados.shipping?.id) {
+                    try {
+                        await delay(150);
+                        let dadosAtualizados = null;
+
                         try {
-                            const envioUrl = `${ML_API_URL}/shipments/${dadosAtualizados.shipping.id}`;
-                            const envioRes = await axios.get(envioUrl, {
+                            // TENTATIVA 1: Rota direta
+                            const checkOrderUrl = `${ML_API_URL}/orders/${pedido.id_pedido_ml}`;
+                            const orderRes = await axios.get(checkOrderUrl, {
                                 headers: { 'Authorization': `Bearer ${accessToken}` }
                             });
-                            const envioData = envioRes.data;
+                            dadosAtualizados = orderRes.data;
 
-                            if (envioData) {
-                                pedidoAtualizado.id_envio_ml = envioData.id;
-                                pedidoAtualizado.status_envio = envioData.status;
+                        } catch (error) {
+                            // TENTATIVA 2: Fallback em caso de pedido "Fantasma" (404) ou vazamento de escopo (403)
+                            if (error.response && (error.response.status === 404 || error.response.status === 403)) {
+                                console.warn(`[HUB ML] Pedido ${pedido.id_pedido_ml} retornou ${error.response.status}. Iniciando fallback de busca...`);
 
                                 try {
-                                    const freteUrl = `${ML_API_URL}/shipments/${envioData.id}/costs`;
-                                    const freteRes = await axios.get(freteUrl, {
+                                    const searchUrl = `${ML_API_URL}/orders/search?seller=${pedido.seller_id}&q=${pedido.id_pedido_ml}`;
+                                    const searchRes = await axios.get(searchUrl, {
                                         headers: { 'Authorization': `Bearer ${accessToken}` }
                                     });
-                                    pedidoAtualizado.frete_envio = freteRes.data?.senders?.[0]?.cost || 0;
-                                } catch (freteError) {
-                                    // Silencioso: Se falhar, fica como null
-                                }
 
-                                // Isola a busca de SLA, pois pode dar 404 independentemente
-                                try {
-                                    const limiteEnvioUrl = `${ML_API_URL}/shipments/${envioData.id}/sla`;
-                                    const limiteEnvio = await axios.get(limiteEnvioUrl, {
-                                        headers: { 'Authorization': `Bearer ${accessToken}` }
-                                    });
-                                    const limiteEnvioData = Array.isArray(limiteEnvio.data) ? limiteEnvio.data[0] : limiteEnvio.data;
-
-                                    if (limiteEnvioData.expected_date) {
-                                        pedidoAtualizado.data_limite_envio = limiteEnvioData.expected_date;
-                                    }
-                                } catch (slaError) {
-                                    // Silencioso, apenas não preenche o SLA
-                                }
-
-                                const shippingOption = envioData.shipping_option || {};
-                                const statusHistory = envioData.status_history || {};
-
-                                // 1. Data de Envio Agendado
-                                if (shippingOption.buffering?.date) {
-                                    const dataBuffering = new Date(shippingOption.buffering.date);
-                                    const hoje = new Date();
-                                    hoje.setHours(0, 0, 0, 0);
-                                    dataBuffering.setHours(0, 0, 0, 0);
-
-                                    if (dataBuffering > hoje) {
-                                        pedidoAtualizado.data_envio_agendado = shippingOption.buffering.date;
+                                    if (searchRes.data.results && searchRes.data.results.length > 0) {
+                                        dadosAtualizados = searchRes.data.results[0];
+                                        console.log(`[HUB ML] Sucesso! Pedido ${pedido.id_pedido_ml} resgatado pelo fallback.`);
                                     } else {
-                                        pedidoAtualizado.data_envio_agendado = null;
+                                        console.error(`[HUB ML] Pedido ${pedido.id_pedido_ml} expurgado do ML. Pulando.`);
+                                        return; // Pula para o próximo pedido
                                     }
+                                } catch (searchError) {
+                                    console.error(`[HUB ML] Erro no fallback de busca do pedido ${pedido.id_pedido_ml}:`, searchError.message);
+                                    return;
                                 }
+                            } else {
+                                // Erros 500 ou instabilidades da API
+                                console.error(`[HUB ML] Erro inesperado ao buscar pedido ${pedido.id_pedido_ml}:`, error.message);
+                                return;
+                            }
+                        }
 
-                                // 2. Data de Envio Disponível (Quando ficou 'ready_to_ship')
-                                if (statusHistory.date_ready_to_ship) {
-                                    pedidoAtualizado.data_envio_disponivel = statusHistory.date_ready_to_ship;
-                                }
+                        // Se por algum motivo bizarro chegou aqui sem dados, interrompe o fluxo deste pedido
+                        if (!dadosAtualizados) return;
 
-                                // 4. Data Previsão de Entrega (Para o cliente final)
-                                if (shippingOption.estimated_delivery_time?.date) {
-                                    pedidoAtualizado.data_previsao_entrega = shippingOption.estimated_delivery_time.date;
-                                }
+                        // Recriamos o objeto completo para garantir UPDATE total
+                        const pedidoAtualizado = {
+                            conta_id: pedido.conta_id_real,
+                            id_pedido_ml: dadosAtualizados.id,
+                            date_created: dadosAtualizados.date_created,
+                            status_pedido: dadosAtualizados.status,
+                            data_limite_envio: null,
+                            id_envio_ml: null,
+                            status_envio: null,
+                            etiqueta_zpl: pedido.etiqueta_zpl,
+                            comprador_nickname: dadosAtualizados.buyer?.nickname || null,
+                            frete_envio: null,
+                            // Mantém os dados antigos por precaução até a nova verificação
+                            tem_dev: pedido.tem_dev || false,
+                            tem_med: pedido.tem_med || false,
+                            status_dev: pedido.status_dev || null,
+                            status_med: pedido.status_med || null,
+                            id_envio_dev: pedido.id_envio_dev || null,
+                            status_envio_dev: pedido.status_envio_dev || null
+                        };
 
-                                // --- CAPTURA DE ETIQUETA NO MONITORAMENTO ---
-                                // Tenta baixar se não tiver ou se o status mudou para pronto
-                                const deveBaixarEtiqueta = !pedido.etiqueta_zpl &&
-                                    envioData.logistic_type !== 'fulfillment' &&
-                                    (envioData.status === 'ready_to_ship' || envioData.status === 'shipped');
+                        // Re-mapeamento de Itens (Caso tenha mudado algo)
+                        const itensMapeados = (dadosAtualizados.order_items || []).map(itemWrapper => {
+                            const item = itemWrapper.item;
+                            return {
+                                id_item: item.id,
+                                sku: item.seller_sku || null,
+                                titulo: item.title,
+                                quantidade: itemWrapper.quantity,
+                                preco_unitario: itemWrapper.unit_price,
+                                taxa_venda: itemWrapper.sale_fee
+                            };
+                        });
+                        pedidoAtualizado.itens_pedido = JSON.stringify(itensMapeados);
 
-                                if (deveBaixarEtiqueta) {
-                                    await delay(300);
+                        // Captura de Envio e Datas
+                        if (dadosAtualizados.shipping?.id) {
+                            try {
+                                const envioUrl = `${ML_API_URL}/shipments/${dadosAtualizados.shipping.id}`;
+                                const envioRes = await axios.get(envioUrl, {
+                                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                                });
+                                const envioData = envioRes.data;
+
+                                if (envioData) {
+                                    pedidoAtualizado.id_envio_ml = envioData.id;
+                                    pedidoAtualizado.status_envio = envioData.status;
+
                                     try {
-                                        const zplUrl = `${ML_API_URL}/shipment_labels?shipment_ids=${pedidoAtualizado.id_envio_ml}&response_type=zpl2`;
-                                        const zplResponse = await axios.get(zplUrl, {
-                                            headers: { 'Authorization': `Bearer ${accessToken}` },
-                                            responseType: 'arraybuffer'
+                                        const freteUrl = `${ML_API_URL}/shipments/${envioData.id}/costs`;
+                                        const freteRes = await axios.get(freteUrl, {
+                                            headers: { 'Authorization': `Bearer ${accessToken}` }
                                         });
+                                        pedidoAtualizado.frete_envio = freteRes.data?.senders?.[0]?.cost || 0;
+                                    } catch (freteError) {
+                                        // Silencioso: Se falhar, fica como null
+                                    }
 
-                                        let conteudoEtiqueta = zplResponse.data;
-                                        // Tratamento ZIP
-                                        if (conteudoEtiqueta && conteudoEtiqueta[0] === 0x50 && conteudoEtiqueta[1] === 0x4B) {
-                                            const zip = new AdmZip(conteudoEtiqueta);
-                                            const zipEntries = zip.getEntries();
-                                            const textoEntry = zipEntries.find(entry => entry.entryName.toLowerCase().endsWith('.txt') || entry.entryName.toLowerCase().endsWith('.zpl'));
-                                            if (textoEntry) {
-                                                conteudoEtiqueta = zip.readAsText(textoEntry, 'utf8');
+                                    // Isola a busca de SLA, pois pode dar 404 independentemente
+                                    try {
+                                        const limiteEnvioUrl = `${ML_API_URL}/shipments/${envioData.id}/sla`;
+                                        const limiteEnvio = await axios.get(limiteEnvioUrl, {
+                                            headers: { 'Authorization': `Bearer ${accessToken}` }
+                                        });
+                                        const limiteEnvioData = Array.isArray(limiteEnvio.data) ? limiteEnvio.data[0] : limiteEnvio.data;
+
+                                        if (limiteEnvioData.expected_date) {
+                                            pedidoAtualizado.data_limite_envio = limiteEnvioData.expected_date;
+                                        }
+                                    } catch (slaError) {
+                                        // Silencioso, apenas não preenche o SLA
+                                    }
+
+                                    const shippingOption = envioData.shipping_option || {};
+                                    const statusHistory = envioData.status_history || {};
+
+                                    // 1. Data de Envio Agendado
+                                    if (shippingOption.buffering?.date) {
+                                        const dataBuffering = new Date(shippingOption.buffering.date);
+                                        const hoje = new Date();
+                                        hoje.setHours(0, 0, 0, 0);
+                                        dataBuffering.setHours(0, 0, 0, 0);
+
+                                        if (dataBuffering > hoje) {
+                                            pedidoAtualizado.data_envio_agendado = shippingOption.buffering.date;
+                                        } else {
+                                            pedidoAtualizado.data_envio_agendado = null;
+                                        }
+                                    }
+
+                                    // 2. Data de Envio Disponível (Quando ficou 'ready_to_ship')
+                                    if (statusHistory.date_ready_to_ship) {
+                                        pedidoAtualizado.data_envio_disponivel = statusHistory.date_ready_to_ship;
+                                    }
+
+                                    // 4. Data Previsão de Entrega (Para o cliente final)
+                                    if (shippingOption.estimated_delivery_time?.date) {
+                                        pedidoAtualizado.data_previsao_entrega = shippingOption.estimated_delivery_time.date;
+                                    }
+
+                                    // --- CAPTURA DE ETIQUETA NO MONITORAMENTO ---
+                                    // Tenta baixar se não tiver ou se o status mudou para pronto
+                                    const deveBaixarEtiqueta = !pedido.etiqueta_zpl &&
+                                        envioData.logistic_type !== 'fulfillment' &&
+                                        (envioData.status === 'ready_to_ship' || envioData.status === 'shipped');
+
+                                    if (deveBaixarEtiqueta) {
+                                        await delay(300);
+                                        try {
+                                            const zplUrl = `${ML_API_URL}/shipment_labels?shipment_ids=${pedidoAtualizado.id_envio_ml}&response_type=zpl2`;
+                                            const zplResponse = await axios.get(zplUrl, {
+                                                headers: { 'Authorization': `Bearer ${accessToken}` },
+                                                responseType: 'arraybuffer'
+                                            });
+
+                                            let conteudoEtiqueta = zplResponse.data;
+                                            // Tratamento ZIP
+                                            if (conteudoEtiqueta && conteudoEtiqueta[0] === 0x50 && conteudoEtiqueta[1] === 0x4B) {
+                                                const zip = new AdmZip(conteudoEtiqueta);
+                                                const zipEntries = zip.getEntries();
+                                                const textoEntry = zipEntries.find(entry => entry.entryName.toLowerCase().endsWith('.txt') || entry.entryName.toLowerCase().endsWith('.zpl'));
+                                                if (textoEntry) {
+                                                    conteudoEtiqueta = zip.readAsText(textoEntry, 'utf8');
+                                                } else {
+                                                    conteudoEtiqueta = conteudoEtiqueta.toString('utf8');
+                                                }
                                             } else {
                                                 conteudoEtiqueta = conteudoEtiqueta.toString('utf8');
                                             }
-                                        } else {
-                                            conteudoEtiqueta = conteudoEtiqueta.toString('utf8');
+                                            pedidoAtualizado.etiqueta_zpl = conteudoEtiqueta;
+                                            console.log(`[HUB ML] Etiqueta capturada tardiamente para ${pedidoAtualizado.id_pedido_ml}`);
+                                        } catch (errLabel) {
+                                            // Silencioso se der erro, tenta na próxima
                                         }
-                                        pedidoAtualizado.etiqueta_zpl = conteudoEtiqueta;
-                                        console.log(`[HUB ML] Etiqueta capturada tardiamente para ${pedidoAtualizado.id_pedido_ml}`);
-                                    } catch (errLabel) {
-                                        // Silencioso se der erro, tenta na próxima
                                     }
                                 }
+                            } catch (envioError) {
+                                console.warn(`[HUB ML] Envio inacessível para o pedido ${pedidoAtualizado.id_pedido_ml} (Provavelmente expurgado). Prosseguindo com dados básicos.`);
                             }
-                        } catch (envioError) {
-                            console.warn(`[HUB ML] Envio inacessível para o pedido ${pedidoAtualizado.id_pedido_ml} (Provavelmente expurgado). Prosseguindo com dados básicos.`);
                         }
+
+                        // --- CAPTURA DE DEVOLUÇÕES NO MONITORAMENTO ---
+                        /*const detalhesReclamacaoMonitoramento = await this.buscarDetalhesReclamacao(pedidoAtualizado.id_pedido_ml, accessToken);
+                        Object.assign(pedidoAtualizado, detalhesReclamacaoMonitoramento);*/
+
+                        // --- CAPTURA DE NOTA FISCAL NO MONITORAMENTO ---
+                        // Se o pedido ainda não possui NF, tenta buscar novamente
+                        if (!pedido.nfe_numero) {
+                            const nfData = await this.buscarNotaFiscal(pedidoAtualizado.id_pedido_ml, pedido.seller_id, accessToken);
+                            if (nfData) {
+                                pedidoAtualizado.nfe_numero = nfData.invoiceNumber;
+                                pedidoAtualizado.chave_acesso = nfData.invoiceKey;
+                                console.log(`[HUB ML] NF capturada tardiamente para pedido ${pedidoAtualizado.id_pedido_ml}: NF ${nfData.invoiceNumber}`);
+                            }
+                        } else {
+                            // Preserva os dados de NF existentes
+                            pedidoAtualizado.nfe_numero = pedido.nfe_numero;
+                            pedidoAtualizado.chave_acesso = pedido.chave_acesso;
+                        }
+
+                        // Salva TUDO (Atualiza datas, itens, etiquetas, status e DEVOLUÇÕES)
+                        await this.salvarPedidoNoBanco(pedidoAtualizado);
+
+                    } catch (err) {
+                        console.error(`[HUB ML] Erro ao monitorar/atualizar pedido ${pedido.id_pedido_ml}:`, err.message);
+                    }
+                }));
+            }
+        } catch (error) {
+            console.error('[HUB ML] Erro no monitoramento:', error);
+        } finally {
+            client.release();
+        }
+    }
+
+    async monitorarPedidosDiferentes() {
+        console.log('[HUB ML] Iniciando monitoramento (Pedidos Diferentes)...');
+        const client = await poolHub.connect();
+
+        try {
+            const query = `
+                SELECT p.*, c.access_token, c.refresh_token, c.token_expiration, c.id as conta_id_real, c.seller_id, c.nickname
+                FROM pedidos_mercado_livre p
+                JOIN hub_ml_contas c ON p.conta_id = c.id
+                WHERE p.status_envio IS NULL AND p.status_pedido = 'paid'
+                AND p.conta_id NOT IN (6, 7)
+            `;
+            const result = await client.query(query);
+            const pedidosParaChecar = result.rows;
+
+            console.log(`[HUB ML] Processando lote de ${pedidosParaChecar.length} pedidos diferentes...`);
+
+            const chunkSize = 20;
+            for (let i = 0; i < pedidosParaChecar.length; i += chunkSize) {
+                const chunk = pedidosParaChecar.slice(i, i + chunkSize);
+                await Promise.all(chunk.map(async (pedido) => {
+
+                    const contaMock = {
+                        id: pedido.conta_id_real,
+                        nickname: pedido.nickname,
+                        refresh_token: pedido.refresh_token,
+                        token_expiration: pedido.token_expiration,
+                        access_token: pedido.access_token
+                    };
+
+                    let accessToken;
+                    try {
+                        accessToken = await hubTokenService.getValidAccessToken(contaMock);
+                    } catch (e) {
+                        console.error(`[HUB ML] Erro de token ao monitorar pedido ${pedido.id_pedido_ml}. Pulando.`);
+                        return;
                     }
 
-                    // --- CAPTURA DE DEVOLUÇÕES NO MONITORAMENTO ---
-                    /*const detalhesReclamacaoMonitoramento = await this.buscarDetalhesReclamacao(pedidoAtualizado.id_pedido_ml, accessToken);
-                    Object.assign(pedidoAtualizado, detalhesReclamacaoMonitoramento);*/
+                    try {
+                        await delay(150);
+                        let dadosAtualizados = null;
 
-                    // --- CAPTURA DE NOTA FISCAL NO MONITORAMENTO ---
-                    // Se o pedido ainda não possui NF, tenta buscar novamente
-                    if (!pedido.nfe_numero) {
-                        const nfData = await this.buscarNotaFiscal(pedidoAtualizado.id_pedido_ml, pedido.seller_id, accessToken);
-                        if (nfData) {
-                            pedidoAtualizado.nfe_numero = nfData.invoiceNumber;
-                            pedidoAtualizado.chave_acesso = nfData.invoiceKey;
-                            console.log(`[HUB ML] NF capturada tardiamente para pedido ${pedidoAtualizado.id_pedido_ml}: NF ${nfData.invoiceNumber}`);
+                        try {
+                            // TENTATIVA 1: Rota direta
+                            const checkOrderUrl = `${ML_API_URL}/orders/${pedido.id_pedido_ml}`;
+                            const orderRes = await axios.get(checkOrderUrl, {
+                                headers: { 'Authorization': `Bearer ${accessToken}` }
+                            });
+                            dadosAtualizados = orderRes.data;
+
+                        } catch (error) {
+                            // TENTATIVA 2: Fallback em caso de pedido "Fantasma" (404) ou vazamento de escopo (403)
+                            if (error.response && (error.response.status === 404 || error.response.status === 403)) {
+                                console.warn(`[HUB ML] Pedido ${pedido.id_pedido_ml} retornou ${error.response.status}. Iniciando fallback de busca...`);
+
+                                try {
+                                    const searchUrl = `${ML_API_URL}/orders/search?seller=${pedido.seller_id}&q=${pedido.id_pedido_ml}`;
+                                    const searchRes = await axios.get(searchUrl, {
+                                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                                    });
+
+                                    if (searchRes.data.results && searchRes.data.results.length > 0) {
+                                        dadosAtualizados = searchRes.data.results[0];
+                                        console.log(`[HUB ML] Sucesso! Pedido ${pedido.id_pedido_ml} resgatado pelo fallback.`);
+                                    } else {
+                                        console.error(`[HUB ML] Pedido ${pedido.id_pedido_ml} expurgado do ML. Pulando.`);
+                                        return; // Pula para o próximo pedido
+                                    }
+                                } catch (searchError) {
+                                    console.error(`[HUB ML] Erro no fallback de busca do pedido ${pedido.id_pedido_ml}:`, searchError.message);
+                                    return;
+                                }
+                            } else {
+                                // Erros 500 ou instabilidades da API
+                                console.error(`[HUB ML] Erro inesperado ao buscar pedido ${pedido.id_pedido_ml}:`, error.message);
+                                return;
+                            }
                         }
-                    } else {
-                        // Preserva os dados de NF existentes
-                        pedidoAtualizado.nfe_numero = pedido.nfe_numero;
-                        pedidoAtualizado.chave_acesso = pedido.chave_acesso;
+
+                        // Se por algum motivo bizarro chegou aqui sem dados, interrompe o fluxo deste pedido
+                        if (!dadosAtualizados) return;
+
+                        // Recriamos o objeto completo para garantir UPDATE total
+                        const pedidoAtualizado = {
+                            conta_id: pedido.conta_id_real,
+                            id_pedido_ml: dadosAtualizados.id,
+                            date_created: dadosAtualizados.date_created,
+                            status_pedido: dadosAtualizados.status,
+                            data_limite_envio: null,
+                            id_envio_ml: null,
+                            status_envio: null,
+                            etiqueta_zpl: pedido.etiqueta_zpl,
+                            comprador_nickname: dadosAtualizados.buyer?.nickname || null,
+                            frete_envio: null,
+                            // Mantém os dados antigos por precaução até a nova verificação
+                            tem_dev: pedido.tem_dev || false,
+                            tem_med: pedido.tem_med || false,
+                            status_dev: pedido.status_dev || null,
+                            status_med: pedido.status_med || null,
+                            id_envio_dev: pedido.id_envio_dev || null,
+                            status_envio_dev: pedido.status_envio_dev || null
+                        };
+
+                        // Re-mapeamento de Itens (Caso tenha mudado algo)
+                        const itensMapeados = (dadosAtualizados.order_items || []).map(itemWrapper => {
+                            const item = itemWrapper.item;
+                            return {
+                                id_item: item.id,
+                                sku: item.seller_sku || null,
+                                titulo: item.title,
+                                quantidade: itemWrapper.quantity,
+                                preco_unitario: itemWrapper.unit_price,
+                                taxa_venda: itemWrapper.sale_fee
+                            };
+                        });
+                        pedidoAtualizado.itens_pedido = JSON.stringify(itensMapeados);
+
+                        // Captura de Envio e Datas
+                        if (dadosAtualizados.shipping?.id) {
+                            try {
+                                const envioUrl = `${ML_API_URL}/shipments/${dadosAtualizados.shipping.id}`;
+                                const envioRes = await axios.get(envioUrl, {
+                                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                                });
+                                const envioData = envioRes.data;
+
+                                if (envioData) {
+                                    pedidoAtualizado.id_envio_ml = envioData.id;
+                                    pedidoAtualizado.status_envio = envioData.status;
+
+                                    try {
+                                        const freteUrl = `${ML_API_URL}/shipments/${envioData.id}/costs`;
+                                        const freteRes = await axios.get(freteUrl, {
+                                            headers: { 'Authorization': `Bearer ${accessToken}` }
+                                        });
+                                        pedidoAtualizado.frete_envio = freteRes.data?.senders?.[0]?.cost || 0;
+                                    } catch (freteError) {
+                                        // Silencioso: Se falhar, fica como null
+                                    }
+
+                                    // Isola a busca de SLA, pois pode dar 404 independentemente
+                                    try {
+                                        const limiteEnvioUrl = `${ML_API_URL}/shipments/${envioData.id}/sla`;
+                                        const limiteEnvio = await axios.get(limiteEnvioUrl, {
+                                            headers: { 'Authorization': `Bearer ${accessToken}` }
+                                        });
+                                        const limiteEnvioData = Array.isArray(limiteEnvio.data) ? limiteEnvio.data[0] : limiteEnvio.data;
+
+                                        if (limiteEnvioData.expected_date) {
+                                            pedidoAtualizado.data_limite_envio = limiteEnvioData.expected_date;
+                                        }
+                                    } catch (slaError) {
+                                        // Silencioso, apenas não preenche o SLA
+                                    }
+
+                                    const shippingOption = envioData.shipping_option || {};
+                                    const statusHistory = envioData.status_history || {};
+
+                                    // 1. Data de Envio Agendado
+                                    if (shippingOption.buffering?.date) {
+                                        const dataBuffering = new Date(shippingOption.buffering.date);
+                                        const hoje = new Date();
+                                        hoje.setHours(0, 0, 0, 0);
+                                        dataBuffering.setHours(0, 0, 0, 0);
+
+                                        if (dataBuffering > hoje) {
+                                            pedidoAtualizado.data_envio_agendado = shippingOption.buffering.date;
+                                        } else {
+                                            pedidoAtualizado.data_envio_agendado = null;
+                                        }
+                                    }
+
+                                    // 2. Data de Envio Disponível (Quando ficou 'ready_to_ship')
+                                    if (statusHistory.date_ready_to_ship) {
+                                        pedidoAtualizado.data_envio_disponivel = statusHistory.date_ready_to_ship;
+                                    }
+
+                                    // 4. Data Previsão de Entrega (Para o cliente final)
+                                    if (shippingOption.estimated_delivery_time?.date) {
+                                        pedidoAtualizado.data_previsao_entrega = shippingOption.estimated_delivery_time.date;
+                                    }
+
+                                    // --- CAPTURA DE ETIQUETA NO MONITORAMENTO ---
+                                    // Tenta baixar se não tiver ou se o status mudou para pronto
+                                    const deveBaixarEtiqueta = !pedido.etiqueta_zpl &&
+                                        envioData.logistic_type !== 'fulfillment' &&
+                                        (envioData.status === 'ready_to_ship' || envioData.status === 'shipped');
+
+                                    if (deveBaixarEtiqueta) {
+                                        await delay(300);
+                                        try {
+                                            const zplUrl = `${ML_API_URL}/shipment_labels?shipment_ids=${pedidoAtualizado.id_envio_ml}&response_type=zpl2`;
+                                            const zplResponse = await axios.get(zplUrl, {
+                                                headers: { 'Authorization': `Bearer ${accessToken}` },
+                                                responseType: 'arraybuffer'
+                                            });
+
+                                            let conteudoEtiqueta = zplResponse.data;
+                                            // Tratamento ZIP
+                                            if (conteudoEtiqueta && conteudoEtiqueta[0] === 0x50 && conteudoEtiqueta[1] === 0x4B) {
+                                                const zip = new AdmZip(conteudoEtiqueta);
+                                                const zipEntries = zip.getEntries();
+                                                const textoEntry = zipEntries.find(entry => entry.entryName.toLowerCase().endsWith('.txt') || entry.entryName.toLowerCase().endsWith('.zpl'));
+                                                if (textoEntry) {
+                                                    conteudoEtiqueta = zip.readAsText(textoEntry, 'utf8');
+                                                } else {
+                                                    conteudoEtiqueta = conteudoEtiqueta.toString('utf8');
+                                                }
+                                            } else {
+                                                conteudoEtiqueta = conteudoEtiqueta.toString('utf8');
+                                            }
+                                            pedidoAtualizado.etiqueta_zpl = conteudoEtiqueta;
+                                            console.log(`[HUB ML] Etiqueta capturada tardiamente para ${pedidoAtualizado.id_pedido_ml}`);
+                                        } catch (errLabel) {
+                                            // Silencioso se der erro, tenta na próxima
+                                        }
+                                    }
+                                }
+                            } catch (envioError) {
+                                console.warn(`[HUB ML] Envio inacessível para o pedido ${pedidoAtualizado.id_pedido_ml} (Provavelmente expurgado). Prosseguindo com dados básicos.`);
+                            }
+                        }
+
+                        // --- CAPTURA DE DEVOLUÇÕES NO MONITORAMENTO ---
+                        /*const detalhesReclamacaoMonitoramento = await this.buscarDetalhesReclamacao(pedidoAtualizado.id_pedido_ml, accessToken);
+                        Object.assign(pedidoAtualizado, detalhesReclamacaoMonitoramento);*/
+
+                        // --- CAPTURA DE NOTA FISCAL NO MONITORAMENTO ---
+                        // Se o pedido ainda não possui NF, tenta buscar novamente
+                        if (!pedido.nfe_numero) {
+                            const nfData = await this.buscarNotaFiscal(pedidoAtualizado.id_pedido_ml, pedido.seller_id, accessToken);
+                            if (nfData) {
+                                pedidoAtualizado.nfe_numero = nfData.invoiceNumber;
+                                pedidoAtualizado.chave_acesso = nfData.invoiceKey;
+                                console.log(`[HUB ML] NF capturada tardiamente para pedido ${pedidoAtualizado.id_pedido_ml}: NF ${nfData.invoiceNumber}`);
+                            }
+                        } else {
+                            // Preserva os dados de NF existentes
+                            pedidoAtualizado.nfe_numero = pedido.nfe_numero;
+                            pedidoAtualizado.chave_acesso = pedido.chave_acesso;
+                        }
+
+                        // Salva TUDO (Atualiza datas, itens, etiquetas, status e DEVOLUÇÕES)
+                        await this.salvarPedidoNoBanco(pedidoAtualizado);
+
+                    } catch (err) {
+                        console.error(`[HUB ML] Erro ao monitorar/atualizar pedido ${pedido.id_pedido_ml}:`, err.message);
                     }
-
-                    // Salva TUDO (Atualiza datas, itens, etiquetas, status e DEVOLUÇÕES)
-                    await this.salvarPedidoNoBanco(pedidoAtualizado);
-
-                } catch (err) {
-                    console.error(`[HUB ML] Erro ao monitorar/atualizar pedido ${pedido.id_pedido_ml}:`, err.message);
-                }
+                }));
             }
         } catch (error) {
             console.error('[HUB ML] Erro no monitoramento:', error);
@@ -575,219 +845,223 @@ class HubMercadoLivreService {
 
             console.log(`[HUB ML] Processando lote de ${pedidosParaChecar.length} pedidos mais antigos...`);
 
-            for (const pedido of pedidosParaChecar) {
+            const chunkSize = 20;
+            for (let i = 0; i < pedidosParaChecar.length; i += chunkSize) {
+                const chunk = pedidosParaChecar.slice(i, i + chunkSize);
+                await Promise.all(chunk.map(async (pedido) => {
 
-                const contaMock = {
-                    id: pedido.conta_id_real,
-                    nickname: pedido.nickname,
-                    refresh_token: pedido.refresh_token,
-                    token_expiration: pedido.token_expiration,
-                    access_token: pedido.access_token
-                };
-
-                let accessToken;
-                try {
-                    accessToken = await hubTokenService.getValidAccessToken(contaMock);
-                } catch (e) {
-                    console.error(`[HUB ML] Erro de token ao monitorar pedido ${pedido.id_pedido_ml}. Pulando.`);
-                    continue;
-                }
-
-                try {
-                    await delay(150);
-                    let dadosAtualizados = null;
-
-                    try {
-                        // TENTATIVA 1: Rota direta
-                        const checkOrderUrl = `${ML_API_URL}/orders/${pedido.id_pedido_ml}`;
-                        const orderRes = await axios.get(checkOrderUrl, {
-                            headers: { 'Authorization': `Bearer ${accessToken}` }
-                        });
-                        dadosAtualizados = orderRes.data;
-
-                    } catch (error) {
-                        // TENTATIVA 2: Fallback em caso de pedido "Fantasma" (404) ou vazamento de escopo (403)
-                        if (error.response && (error.response.status === 404 || error.response.status === 403)) {
-                            console.warn(`[HUB ML] Pedido ${pedido.id_pedido_ml} retornou ${error.response.status}. Iniciando fallback de busca...`);
-
-                            try {
-                                const searchUrl = `${ML_API_URL}/orders/search?seller=${pedido.seller_id}&q=${pedido.id_pedido_ml}`;
-                                const searchRes = await axios.get(searchUrl, {
-                                    headers: { 'Authorization': `Bearer ${accessToken}` }
-                                });
-
-                                if (searchRes.data.results && searchRes.data.results.length > 0) {
-                                    dadosAtualizados = searchRes.data.results[0];
-                                    console.log(`[HUB ML] Sucesso! Pedido ${pedido.id_pedido_ml} resgatado pelo fallback.`);
-                                } else {
-                                    console.error(`[HUB ML] Pedido ${pedido.id_pedido_ml} expurgado do ML. Pulando.`);
-                                    continue; // Pula para o próximo pedido
-                                }
-                            } catch (searchError) {
-                                console.error(`[HUB ML] Erro no fallback de busca do pedido ${pedido.id_pedido_ml}:`, searchError.message);
-                                continue;
-                            }
-                        } else {
-                            // Erros 500 ou instabilidades da API
-                            console.error(`[HUB ML] Erro inesperado ao buscar pedido ${pedido.id_pedido_ml}:`, error.message);
-                            continue;
-                        }
-                    }
-
-                    // Se por algum motivo bizarro chegou aqui sem dados, interrompe o fluxo deste pedido
-                    if (!dadosAtualizados) continue;
-
-                    // Recriamos o objeto completo para garantir UPDATE total
-                    const pedidoAtualizado = {
-                        conta_id: pedido.conta_id_real,
-                        id_pedido_ml: dadosAtualizados.id,
-                        date_created: dadosAtualizados.date_created,
-                        status_pedido: dadosAtualizados.status,
-                        data_limite_envio: null,
-                        id_envio_ml: null,
-                        status_envio: null,
-                        etiqueta_zpl: pedido.etiqueta_zpl,
-                        comprador_nickname: dadosAtualizados.buyer?.nickname || null,
-                        frete_envio: null,
-                        // Mantém os dados antigos por precaução até a nova verificação
-                        tem_dev: pedido.tem_dev || false,
-                        tem_med: pedido.tem_med || false,
-                        status_dev: pedido.status_dev || null,
-                        status_med: pedido.status_med || null,
-                        id_envio_dev: pedido.id_envio_dev || null,
-                        status_envio_dev: pedido.status_envio_dev || null
+                    const contaMock = {
+                        id: pedido.conta_id_real,
+                        nickname: pedido.nickname,
+                        refresh_token: pedido.refresh_token,
+                        token_expiration: pedido.token_expiration,
+                        access_token: pedido.access_token
                     };
 
-                    // Re-mapeamento de Itens (Caso tenha mudado algo)
-                    const itensMapeados = (dadosAtualizados.order_items || []).map(itemWrapper => {
-                        const item = itemWrapper.item;
-                        return {
-                            id_item: item.id,
-                            sku: item.seller_sku || null,
-                            titulo: item.title,
-                            quantidade: itemWrapper.quantity,
-                            preco_unitario: itemWrapper.unit_price,
-                            taxa_venda: itemWrapper.sale_fee
-                        };
-                    });
-                    pedidoAtualizado.itens_pedido = JSON.stringify(itensMapeados);
+                    let accessToken;
+                    try {
+                        accessToken = await hubTokenService.getValidAccessToken(contaMock);
+                    } catch (e) {
+                        console.error(`[HUB ML] Erro de token ao monitorar pedido ${pedido.id_pedido_ml}. Pulando.`);
+                        return;
+                    }
 
-                    // Captura de Envio e Datas (Lógica Replicada da Captura)
-                    if (dadosAtualizados.shipping?.id) {
+                    try {
+                        await delay(150);
+                        let dadosAtualizados = null;
+
                         try {
-                            const envioUrl = `${ML_API_URL}/shipments/${dadosAtualizados.shipping.id}`;
-                            const envioRes = await axios.get(envioUrl, {
+                            // TENTATIVA 1: Rota direta
+                            const checkOrderUrl = `${ML_API_URL}/orders/${pedido.id_pedido_ml}`;
+                            const orderRes = await axios.get(checkOrderUrl, {
                                 headers: { 'Authorization': `Bearer ${accessToken}` }
                             });
-                            const envioData = envioRes.data;
+                            dadosAtualizados = orderRes.data;
 
-                            if (envioData) {
-                                pedidoAtualizado.id_envio_ml = envioData.id;
-                                pedidoAtualizado.status_envio = envioData.status;
+                        } catch (error) {
+                            // TENTATIVA 2: Fallback em caso de pedido "Fantasma" (404) ou vazamento de escopo (403)
+                            if (error.response && (error.response.status === 404 || error.response.status === 403)) {
+                                console.warn(`[HUB ML] Pedido ${pedido.id_pedido_ml} retornou ${error.response.status}. Iniciando fallback de busca...`);
 
                                 try {
-                                    const freteUrl = `${ML_API_URL}/shipments/${envioData.id}/costs`;
-                                    const freteRes = await axios.get(freteUrl, {
+                                    const searchUrl = `${ML_API_URL}/orders/search?seller=${pedido.seller_id}&q=${pedido.id_pedido_ml}`;
+                                    const searchRes = await axios.get(searchUrl, {
                                         headers: { 'Authorization': `Bearer ${accessToken}` }
                                     });
-                                    pedidoAtualizado.frete_envio = freteRes.data?.senders?.[0]?.cost || 0;
-                                } catch (freteError) {
-                                    // Silencioso: Se falhar, fica como null
-                                }
 
-                                // Isola a busca de SLA, pois pode dar 404 independentemente
-                                try {
-                                    const limiteEnvioUrl = `${ML_API_URL}/shipments/${envioData.id}/sla`;
-                                    const limiteEnvio = await axios.get(limiteEnvioUrl, {
-                                        headers: { 'Authorization': `Bearer ${accessToken}` }
-                                    });
-                                    const limiteEnvioData = Array.isArray(limiteEnvio.data) ? limiteEnvio.data[0] : limiteEnvio.data;
-
-                                    if (limiteEnvioData.expected_date) {
-                                        pedidoAtualizado.data_limite_envio = limiteEnvioData.expected_date;
-                                    }
-                                } catch (slaError) {
-                                    // Silencioso, apenas não preenche o SLA
-                                }
-
-                                const shippingOption = envioData.shipping_option || {};
-                                const statusHistory = envioData.status_history || {};
-
-                                // 1. Data de Envio Agendado
-                                if (shippingOption.buffering?.date) {
-                                    const dataBuffering = new Date(shippingOption.buffering.date);
-                                    const hoje = new Date();
-                                    hoje.setHours(0, 0, 0, 0);
-                                    dataBuffering.setHours(0, 0, 0, 0);
-
-                                    if (dataBuffering > hoje) {
-                                        pedidoAtualizado.data_envio_agendado = shippingOption.buffering.date;
+                                    if (searchRes.data.results && searchRes.data.results.length > 0) {
+                                        dadosAtualizados = searchRes.data.results[0];
+                                        console.log(`[HUB ML] Sucesso! Pedido ${pedido.id_pedido_ml} resgatado pelo fallback.`);
                                     } else {
-                                        pedidoAtualizado.data_envio_agendado = null;
+                                        console.error(`[HUB ML] Pedido ${pedido.id_pedido_ml} expurgado do ML. Pulando.`);
+                                        return; // Pula para o próximo pedido
                                     }
+                                } catch (searchError) {
+                                    console.error(`[HUB ML] Erro no fallback de busca do pedido ${pedido.id_pedido_ml}:`, searchError.message);
+                                    return;
                                 }
+                            } else {
+                                // Erros 500 ou instabilidades da API
+                                console.error(`[HUB ML] Erro inesperado ao buscar pedido ${pedido.id_pedido_ml}:`, error.message);
+                                return;
+                            }
+                        }
 
-                                // 2. Data de Envio Disponível (Quando ficou 'ready_to_ship')
-                                if (statusHistory.date_ready_to_ship) {
-                                    pedidoAtualizado.data_envio_disponivel = statusHistory.date_ready_to_ship;
-                                }
+                        // Se por algum motivo bizarro chegou aqui sem dados, interrompe o fluxo deste pedido
+                        if (!dadosAtualizados) return;
 
-                                // 4. Data Previsão de Entrega (Para o cliente final)
-                                if (shippingOption.estimated_delivery_time?.date) {
-                                    pedidoAtualizado.data_previsao_entrega = shippingOption.estimated_delivery_time.date;
-                                }
+                        // Recriamos o objeto completo para garantir UPDATE total
+                        const pedidoAtualizado = {
+                            conta_id: pedido.conta_id_real,
+                            id_pedido_ml: dadosAtualizados.id,
+                            date_created: dadosAtualizados.date_created,
+                            status_pedido: dadosAtualizados.status,
+                            data_limite_envio: null,
+                            id_envio_ml: null,
+                            status_envio: null,
+                            etiqueta_zpl: pedido.etiqueta_zpl,
+                            comprador_nickname: dadosAtualizados.buyer?.nickname || null,
+                            frete_envio: null,
+                            // Mantém os dados antigos por precaução até a nova verificação
+                            tem_dev: pedido.tem_dev || false,
+                            tem_med: pedido.tem_med || false,
+                            status_dev: pedido.status_dev || null,
+                            status_med: pedido.status_med || null,
+                            id_envio_dev: pedido.id_envio_dev || null,
+                            status_envio_dev: pedido.status_envio_dev || null
+                        };
 
-                                // --- CAPTURA DE ETIQUETA NO MONITORAMENTO ---
-                                // Tenta baixar se não tiver ou se o status mudou para pronto
-                                const deveBaixarEtiqueta = !pedido.etiqueta_zpl &&
-                                    envioData.logistic_type !== 'fulfillment' &&
-                                    (envioData.status === 'ready_to_ship' || envioData.status === 'shipped');
+                        // Re-mapeamento de Itens (Caso tenha mudado algo)
+                        const itensMapeados = (dadosAtualizados.order_items || []).map(itemWrapper => {
+                            const item = itemWrapper.item;
+                            return {
+                                id_item: item.id,
+                                sku: item.seller_sku || null,
+                                titulo: item.title,
+                                quantidade: itemWrapper.quantity,
+                                preco_unitario: itemWrapper.unit_price,
+                                taxa_venda: itemWrapper.sale_fee
+                            };
+                        });
+                        pedidoAtualizado.itens_pedido = JSON.stringify(itensMapeados);
 
-                                if (deveBaixarEtiqueta) {
-                                    await delay(300);
+                        // Captura de Envio e Datas (Lógica Replicada da Captura)
+                        if (dadosAtualizados.shipping?.id) {
+                            try {
+                                const envioUrl = `${ML_API_URL}/shipments/${dadosAtualizados.shipping.id}`;
+                                const envioRes = await axios.get(envioUrl, {
+                                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                                });
+                                const envioData = envioRes.data;
+
+                                if (envioData) {
+                                    pedidoAtualizado.id_envio_ml = envioData.id;
+                                    pedidoAtualizado.status_envio = envioData.status;
+
                                     try {
-                                        const zplUrl = `${ML_API_URL}/shipment_labels?shipment_ids=${pedidoAtualizado.id_envio_ml}&response_type=zpl2`;
-                                        const zplResponse = await axios.get(zplUrl, {
-                                            headers: { 'Authorization': `Bearer ${accessToken}` },
-                                            responseType: 'arraybuffer'
+                                        const freteUrl = `${ML_API_URL}/shipments/${envioData.id}/costs`;
+                                        const freteRes = await axios.get(freteUrl, {
+                                            headers: { 'Authorization': `Bearer ${accessToken}` }
                                         });
+                                        pedidoAtualizado.frete_envio = freteRes.data?.senders?.[0]?.cost || 0;
+                                    } catch (freteError) {
+                                        // Silencioso: Se falhar, fica como null
+                                    }
 
-                                        let conteudoEtiqueta = zplResponse.data;
-                                        // Tratamento ZIP
-                                        if (conteudoEtiqueta && conteudoEtiqueta[0] === 0x50 && conteudoEtiqueta[1] === 0x4B) {
-                                            const zip = new AdmZip(conteudoEtiqueta);
-                                            const zipEntries = zip.getEntries();
-                                            const textoEntry = zipEntries.find(entry => entry.entryName.toLowerCase().endsWith('.txt') || entry.entryName.toLowerCase().endsWith('.zpl'));
-                                            if (textoEntry) {
-                                                conteudoEtiqueta = zip.readAsText(textoEntry, 'utf8');
+                                    // Isola a busca de SLA, pois pode dar 404 independentemente
+                                    try {
+                                        const limiteEnvioUrl = `${ML_API_URL}/shipments/${envioData.id}/sla`;
+                                        const limiteEnvio = await axios.get(limiteEnvioUrl, {
+                                            headers: { 'Authorization': `Bearer ${accessToken}` }
+                                        });
+                                        const limiteEnvioData = Array.isArray(limiteEnvio.data) ? limiteEnvio.data[0] : limiteEnvio.data;
+
+                                        if (limiteEnvioData.expected_date) {
+                                            pedidoAtualizado.data_limite_envio = limiteEnvioData.expected_date;
+                                        }
+                                    } catch (slaError) {
+                                        // Silencioso, apenas não preenche o SLA
+                                    }
+
+                                    const shippingOption = envioData.shipping_option || {};
+                                    const statusHistory = envioData.status_history || {};
+
+                                    // 1. Data de Envio Agendado
+                                    if (shippingOption.buffering?.date) {
+                                        const dataBuffering = new Date(shippingOption.buffering.date);
+                                        const hoje = new Date();
+                                        hoje.setHours(0, 0, 0, 0);
+                                        dataBuffering.setHours(0, 0, 0, 0);
+
+                                        if (dataBuffering > hoje) {
+                                            pedidoAtualizado.data_envio_agendado = shippingOption.buffering.date;
+                                        } else {
+                                            pedidoAtualizado.data_envio_agendado = null;
+                                        }
+                                    }
+
+                                    // 2. Data de Envio Disponível (Quando ficou 'ready_to_ship')
+                                    if (statusHistory.date_ready_to_ship) {
+                                        pedidoAtualizado.data_envio_disponivel = statusHistory.date_ready_to_ship;
+                                    }
+
+                                    // 4. Data Previsão de Entrega (Para o cliente final)
+                                    if (shippingOption.estimated_delivery_time?.date) {
+                                        pedidoAtualizado.data_previsao_entrega = shippingOption.estimated_delivery_time.date;
+                                    }
+
+                                    // --- CAPTURA DE ETIQUETA NO MONITORAMENTO ---
+                                    // Tenta baixar se não tiver ou se o status mudou para pronto
+                                    const deveBaixarEtiqueta = !pedido.etiqueta_zpl &&
+                                        envioData.logistic_type !== 'fulfillment' &&
+                                        (envioData.status === 'ready_to_ship' || envioData.status === 'shipped');
+
+                                    if (deveBaixarEtiqueta) {
+                                        await delay(300);
+                                        try {
+                                            const zplUrl = `${ML_API_URL}/shipment_labels?shipment_ids=${pedidoAtualizado.id_envio_ml}&response_type=zpl2`;
+                                            const zplResponse = await axios.get(zplUrl, {
+                                                headers: { 'Authorization': `Bearer ${accessToken}` },
+                                                responseType: 'arraybuffer'
+                                            });
+
+                                            let conteudoEtiqueta = zplResponse.data;
+                                            // Tratamento ZIP
+                                            if (conteudoEtiqueta && conteudoEtiqueta[0] === 0x50 && conteudoEtiqueta[1] === 0x4B) {
+                                                const zip = new AdmZip(conteudoEtiqueta);
+                                                const zipEntries = zip.getEntries();
+                                                const textoEntry = zipEntries.find(entry => entry.entryName.toLowerCase().endsWith('.txt') || entry.entryName.toLowerCase().endsWith('.zpl'));
+                                                if (textoEntry) {
+                                                    conteudoEtiqueta = zip.readAsText(textoEntry, 'utf8');
+                                                } else {
+                                                    conteudoEtiqueta = conteudoEtiqueta.toString('utf8');
+                                                }
                                             } else {
                                                 conteudoEtiqueta = conteudoEtiqueta.toString('utf8');
                                             }
-                                        } else {
-                                            conteudoEtiqueta = conteudoEtiqueta.toString('utf8');
+                                            pedidoAtualizado.etiqueta_zpl = conteudoEtiqueta;
+                                            console.log(`[HUB ML] Etiqueta capturada tardiamente para ${pedidoAtualizado.id_pedido_ml}`);
+                                        } catch (errLabel) {
+                                            // Silencioso se der erro, tenta na próxima
                                         }
-                                        pedidoAtualizado.etiqueta_zpl = conteudoEtiqueta;
-                                        console.log(`[HUB ML] Etiqueta capturada tardiamente para ${pedidoAtualizado.id_pedido_ml}`);
-                                    } catch (errLabel) {
-                                        // Silencioso se der erro, tenta na próxima
                                     }
                                 }
+                            } catch (envioError) {
+                                console.warn(`[HUB ML] Envio inacessível para o pedido ${pedidoAtualizado.id_pedido_ml} (Provavelmente expurgado). Prosseguindo com dados básicos.`);
                             }
-                        } catch (envioError) {
-                            console.warn(`[HUB ML] Envio inacessível para o pedido ${pedidoAtualizado.id_pedido_ml} (Provavelmente expurgado). Prosseguindo com dados básicos.`);
                         }
+
+                        // --- CAPTURA DE DEVOLUÇÕES NO MONITORAMENTO ---
+                        /*const detalhesReclamacaoMonitoramento = await this.buscarDetalhesReclamacao(pedidoAtualizado.id_pedido_ml, accessToken);
+                        Object.assign(pedidoAtualizado, detalhesReclamacaoMonitoramento);*/
+
+                        // Salva TUDO (Atualiza datas, itens, etiquetas, status e DEVOLUÇÕES)
+                        await this.salvarPedidoNoBanco(pedidoAtualizado);
+
+                    } catch (err) {
+                        console.error(`[HUB ML] Erro ao monitorar/atualizar pedido ${pedido.id_pedido_ml}:`, err.message);
                     }
-
-                    // --- CAPTURA DE DEVOLUÇÕES NO MONITORAMENTO ---
-                    /*const detalhesReclamacaoMonitoramento = await this.buscarDetalhesReclamacao(pedidoAtualizado.id_pedido_ml, accessToken);
-                    Object.assign(pedidoAtualizado, detalhesReclamacaoMonitoramento);*/
-
-                    // Salva TUDO (Atualiza datas, itens, etiquetas, status e DEVOLUÇÕES)
-                    await this.salvarPedidoNoBanco(pedidoAtualizado);
-
-                } catch (err) {
-                    console.error(`[HUB ML] Erro ao monitorar/atualizar pedido ${pedido.id_pedido_ml}:`, err.message);
-                }
+                }));
             }
         } catch (error) {
             console.error('[HUB ML] Erro no monitoramento:', error);
@@ -817,46 +1091,50 @@ class HubMercadoLivreService {
 
             console.log(`[HUB ML] Processando lote de devoluções com os ${pedidosParaChecar.length} pedidos mais antigos...`);
 
-            for (const pedido of pedidosParaChecar) {
-                const contaMock = {
-                    id: pedido.conta_id_real,
-                    nickname: pedido.nickname,
-                    refresh_token: pedido.refresh_token,
-                    token_expiration: pedido.token_expiration,
-                    access_token: pedido.access_token
-                };
+            const chunkSize = 20;
+            for (let i = 0; i < pedidosParaChecar.length; i += chunkSize) {
+                const chunk = pedidosParaChecar.slice(i, i + chunkSize);
+                await Promise.all(chunk.map(async (pedido) => {
+                    const contaMock = {
+                        id: pedido.conta_id_real,
+                        nickname: pedido.nickname,
+                        refresh_token: pedido.refresh_token,
+                        token_expiration: pedido.token_expiration,
+                        access_token: pedido.access_token
+                    };
 
-                let accessToken;
-                try {
-                    accessToken = await hubTokenService.getValidAccessToken(contaMock);
-                } catch (e) {
-                    console.error(`[HUB ML] Erro de token ao checar devoluções do pedido ${pedido.id_pedido_ml}. Pulando.`);
-                    continue;
-                }
+                    let accessToken;
+                    try {
+                        accessToken = await hubTokenService.getValidAccessToken(contaMock);
+                    } catch (e) {
+                        console.error(`[HUB ML] Erro de token ao checar devoluções do pedido ${pedido.id_pedido_ml}. Pulando.`);
+                        return;
+                    }
 
-                try {
-                    const detalhesReclamacao = await this.buscarDetalhesReclamacao(pedido.id_pedido_ml, accessToken);
+                    try {
+                        const detalhesReclamacao = await this.buscarDetalhesReclamacao(pedido.id_pedido_ml, accessToken);
 
-                    // Atualizamos o registro para sincronizar os dados da reclamação e colocar o last_update para o fim do rodízio
-                    const updateQuery = `
+                        // Atualizamos o registro para sincronizar os dados da reclamação e colocar o last_update para o fim do rodízio
+                        const updateQuery = `
                         UPDATE pedidos_mercado_livre SET 
                             tem_dev = $1, tem_med = $2, status_dev = $3, status_med = $4, 
                             id_envio_dev = $5, status_envio_dev = $6, last_update = NOW()
                         WHERE id_pedido_ml = $7
                     `;
-                    await client.query(updateQuery, [
-                        detalhesReclamacao.tem_dev, detalhesReclamacao.tem_med,
-                        detalhesReclamacao.status_dev, detalhesReclamacao.status_med,
-                        detalhesReclamacao.id_envio_dev, detalhesReclamacao.status_envio_dev,
-                        String(pedido.id_pedido_ml)
-                    ]);
+                        await client.query(updateQuery, [
+                            detalhesReclamacao.tem_dev, detalhesReclamacao.tem_med,
+                            detalhesReclamacao.status_dev, detalhesReclamacao.status_med,
+                            detalhesReclamacao.id_envio_dev, detalhesReclamacao.status_envio_dev,
+                            String(pedido.id_pedido_ml)
+                        ]);
 
-                    if (detalhesReclamacao.tem_dev || detalhesReclamacao.tem_med) {
-                        console.log(`[HUB ML] Devolução/Mediação detectada e atualizada para o pedido ${pedido.id_pedido_ml}`);
+                        if (detalhesReclamacao.tem_dev || detalhesReclamacao.tem_med) {
+                            console.log(`[HUB ML] Devolução/Mediação detectada e atualizada para o pedido ${pedido.id_pedido_ml}`);
+                        }
+                    } catch (err) {
+                        console.error(`[HUB ML] Erro ao buscar devolução para o pedido ${pedido.id_pedido_ml}:`, err.message);
                     }
-                } catch (err) {
-                    console.error(`[HUB ML] Erro ao buscar devolução para o pedido ${pedido.id_pedido_ml}:`, err.message);
-                }
+                }));
             }
         } catch (error) {
             console.error('[HUB ML] Erro no monitoramento de devoluções:', error);

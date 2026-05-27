@@ -766,59 +766,30 @@ async function getSkusAndQuantidades(client, productIds, nfeNumero) {
     const skus = [];
     let totalQuantidade = 0;
 
-    // Tenta obter os produtos diretamente de nfe_quantidade_produto primeiro (mais robusto)
-    const nfeProdsResult = await client.query(
-        'SELECT produto_codigo, quantidade FROM nfe_quantidade_produto WHERE nfe_numero = $1',
-        [nfeNumero]
-    );
+    for (const id of productIds) {
+        // Query modificada para incluir a nova coluna 'tipo_ml'
+        const productQuery = 'SELECT sku, tipo_ml FROM cached_products WHERE bling_id = $1 ORDER BY bling_account = \'lucas\' DESC LIMIT 1';
+        const productResult = await client.query(productQuery, [id]);
+        const skuData = productResult.rows[0]; // Contém { sku, tipo_ml }
 
-    if (nfeProdsResult.rows.length > 0) {
-        for (const row of nfeProdsResult.rows) {
-            const originalSku = row.produto_codigo;
-            const quantidade = parseInt(row.quantidade || 0, 10);
+        if (skuData && skuData.sku) {
+            const originalSku = skuData.sku;
+            const tipo = skuData.tipo_ml;
 
-            // Sempre busca os dados do produto (tipo_ml) da conta 'lucas'
-            const productQuery = 'SELECT sku, tipo_ml FROM cached_products WHERE UPPER(sku) = UPPER($1) AND bling_account = \'lucas\' LIMIT 1';
-            const productResult = await client.query(productQuery, [originalSku]);
-            const skuData = productResult.rows[0];
+            // Busca a quantidade usando o SKU original (com UPPER para ser case-insensitive)
+            const qtdQuery = 'SELECT quantidade FROM nfe_quantidade_produto WHERE nfe_numero = $1 AND UPPER(produto_codigo) = UPPER($2)';
+            const qtdResult = await client.query(qtdQuery, [nfeNumero, originalSku]);
+            const quantidade = parseInt(qtdResult.rows[0]?.quantidade || 0, 10);
 
-            const tipo = skuData ? skuData.tipo_ml : null;
+            // Cria o SKU de exibição (prefixado) se o tipo existir
             const displaySku = (tipo && tipo.trim() !== '') ? `${tipo.toUpperCase()}-${originalSku}` : originalSku;
 
+            // Adiciona o objeto completo ao array
             skus.push({
-                display: displaySku,
-                original: originalSku
+                display: displaySku, // Para ordenação e exibição
+                original: originalSku // Para queries no banco
             });
             totalQuantidade += quantidade;
-        }
-    } else {
-        // Fallback para comportamento antigo caso a tabela nfe_quantidade_produto não tenha registros
-        for (const id of productIds) {
-            const productQuery = 'SELECT sku, tipo_ml FROM cached_products WHERE bling_id = $1 ORDER BY bling_account = \'lucas\' DESC LIMIT 1';
-            const productResult = await client.query(productQuery, [id]);
-            const skuData = productResult.rows[0]; // Contém { sku, tipo_ml }
-
-            if (skuData && skuData.sku) {
-                // Se o produto foi achado no cache, busca as informações (tipo_ml) da conta 'lucas'
-                const lucasProductQuery = 'SELECT sku, tipo_ml FROM cached_products WHERE UPPER(sku) = UPPER($1) AND bling_account = \'lucas\' LIMIT 1';
-                const lucasProductResult = await client.query(lucasProductQuery, [skuData.sku]);
-                const lucasSkuData = lucasProductResult.rows[0];
-
-                const originalSku = lucasSkuData ? lucasSkuData.sku : skuData.sku;
-                const tipo = lucasSkuData ? lucasSkuData.tipo_ml : skuData.tipo_ml;
-
-                const qtdQuery = 'SELECT quantidade FROM nfe_quantidade_produto WHERE nfe_numero = $1 AND UPPER(produto_codigo) = UPPER($2)';
-                const qtdResult = await client.query(qtdQuery, [nfeNumero, originalSku]);
-                const quantidade = parseInt(qtdResult.rows[0]?.quantidade || 0, 10);
-
-                const displaySku = (tipo && tipo.trim() !== '') ? `${tipo.toUpperCase()}-${originalSku}` : originalSku;
-
-                skus.push({
-                    display: displaySku,
-                    original: originalSku
-                });
-                totalQuantidade += quantidade;
-            }
         }
     }
     return { skus, totalQuantidade };
@@ -3688,7 +3659,7 @@ async function gerarPdfPendentes(nfList) {
         // ============================================================
         // 2b. BUSCAR LOCALIZAÇÕES PARA CADA NF (via SKU → cached_structures)
         // ============================================================
-        await Promise.all(rowsEnriquecidos.map(async (row) => {
+        for (const row of rowsEnriquecidos) {
             const rawSkus = row._parsedSkus.map(s => s.original.toUpperCase()).filter(Boolean);
             let locations = [];
             if (rawSkus.length > 0) {
@@ -3707,7 +3678,7 @@ async function gerarPdfPendentes(nfList) {
                 }
             }
             row._locations = locations;
-        }));
+        }
 
         // ============================================================
         // 3. CLASSIFICAR CADA NF (ZPL vs PDF) E MONTAR ETIQUETAS
@@ -4006,7 +3977,7 @@ async function montarPaginaZpl(pdfDoc, etiqueta, font, boldFont, pageNum) {
                 const response = await axios.post('http://api.labelary.com/v1/printers/8dpmm/labels/4x6/0/', zplContent, {
                     headers: { 'Accept': 'image/png' },
                     responseType: 'arraybuffer',
-                    timeout: 5000 // 5 segundos de limite por tentativa
+                    timeout: 1000 // 1 segundos de limite por tentativa
                 });
 
                 labelImageBytes = response.data;

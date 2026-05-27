@@ -1,12 +1,18 @@
 document.addEventListener('DOMContentLoaded', () => {
     let gondolaItens = [];
     let hasUnsavedChanges = false;
+    let editandoGondolaId = null;
 
     const inputCodigo = document.getElementById('codigo-bipagem');
     const formBipagem = document.getElementById('form-bipagem-gondola');
     const tbodyBipagem = document.querySelector('#tabela-bipagem-atual tbody');
     const btnSalvar = document.getElementById('btn-salvar-gondola');
+    const spanBtnSalvar = btnSalvar.querySelector('span');
     const btnLimpar = document.getElementById('btn-limpar-gondola');
+    const btnCancelarEdicao = document.getElementById('btn-cancelar-edicao');
+    const badgeEditando = document.getElementById('badge-editando');
+    const tituloPainelBipagem = document.getElementById('titulo-painel-bipagem');
+    const nomeRelatorioEditando = document.getElementById('nome-relatorio-editando');
     const tbodyHistorico = document.querySelector('#tabela-historico-gondola tbody');
 
     // Carrega histórico inicial
@@ -39,12 +45,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (data.success) {
                 adicionarItemNaMemoria(data.estrutura);
+                if (typeof ToastSystem !== 'undefined') {
+                    ToastSystem.success(`Bipado: ${data.estrutura.component_sku}`);
+                }
             } else {
-                ModalSystem.alert(`Erro: ${data.message}`, 'Código não encontrado');
+                if (typeof ToastSystem !== 'undefined') {
+                    ToastSystem.error(`Erro: ${data.message}`);
+                } else {
+                    ModalSystem.alert(`Erro: ${data.message}`, 'Código não encontrado');
+                }
             }
         } catch (error) {
             console.error('Erro na requisição:', error);
-            ModalSystem.alert('Erro de conexão ao buscar a estrutura.', 'Erro de Rede');
+            if (typeof ToastSystem !== 'undefined') {
+                ToastSystem.error('Erro de conexão ao buscar a estrutura.');
+            } else {
+                ModalSystem.alert('Erro de conexão ao buscar a estrutura.', 'Erro de Rede');
+            }
         }
     });
 
@@ -53,7 +70,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const index = gondolaItens.findIndex(item => item.component_sku === estrutura.component_sku);
         
         if (index !== -1) {
-            gondolaItens[index].quantidade += 1; 
+            // Remove da posição atual e coloca no final para subir ao topo após o reverse()
+            const item = gondolaItens.splice(index, 1)[0];
+            item.quantidade += 1;
+            gondolaItens.push(item);
         } else {
             gondolaItens.push({
                 component_sku: estrutura.component_sku,
@@ -74,9 +94,9 @@ document.addEventListener('DOMContentLoaded', () => {
         [...gondolaItens].reverse().forEach(item => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td class="font-weight-bold align-middle">${item.component_sku}</td>
-                <td class="align-middle">${item.structure_name}</td>
-                <td class="text-center align-middle h5 mb-0 text-primary font-weight-bold">${item.quantidade}</td>
+                <td class="font-weight-bold align-middle" style="word-break: break-word; white-space: normal;">${item.component_sku}</td>
+                <td class="align-middle" style="word-break: break-word; white-space: normal;">${item.structure_name}</td>
+                <td class="text-center align-middle font-weight-bold" style="color: var(--accent-orange); font-size: 1rem;">${item.quantidade}</td>
             `;
             tbodyBipagem.appendChild(tr);
         });
@@ -100,6 +120,40 @@ document.addEventListener('DOMContentLoaded', () => {
         );
     });
 
+    // Função para sair do modo de edição
+    function sairModoEdicao() {
+        editandoGondolaId = null;
+        gondolaItens = [];
+        hasUnsavedChanges = false;
+        
+        // Reseta UI
+        btnCancelarEdicao.style.display = 'none';
+        badgeEditando.style.display = 'none';
+        tituloPainelBipagem.style.display = 'inline';
+        spanBtnSalvar.textContent = 'Finalizar Relatório';
+        btnSalvar.classList.remove('btn-warning');
+        btnSalvar.classList.add('btn-primary');
+        
+        renderizarTabelaBipagem();
+        inputCodigo.focus();
+    }
+
+    if(btnCancelarEdicao) {
+        btnCancelarEdicao.addEventListener('click', () => {
+            if (hasUnsavedChanges) {
+                ModalSystem.confirm(
+                    'Você tem alterações não salvas. Deseja cancelar a edição mesmo assim?',
+                    'Cancelar Edição',
+                    sairModoEdicao,
+                    null,
+                    { confirmText: 'Sim, cancelar', cancelText: 'Continuar editando' }
+                );
+            } else {
+                sairModoEdicao();
+            }
+        });
+    }
+
     // Botão Finalizar com ModalSystem
     btnSalvar.addEventListener('click', () => {
         if (gondolaItens.length === 0) {
@@ -108,15 +162,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         ModalSystem.confirm(
-            'Finalizar e salvar este relatório de gôndola?',
-            'Confirmar Salvamento',
+            editandoGondolaId ? 'Salvar alterações neste relatório de gôndola?' : 'Finalizar e salvar este novo relatório de gôndola?',
+            editandoGondolaId ? 'Confirmar Edição' : 'Confirmar Salvamento',
             async function() { // onConfirm
                 btnSalvar.disabled = true;
-                ModalSystem.showLoading('Salvando relatório no sistema...', 'Aguarde');
+                ModalSystem.showLoading(editandoGondolaId ? 'Atualizando relatório...' : 'Salvando relatório no sistema...', 'Aguarde');
 
                 try {
-                    const response = await fetch('/api/gondola/salvar', {
-                        method: 'POST',
+                    let url = '/api/gondola/salvar';
+                    let method = 'POST';
+                    if (editandoGondolaId) {
+                        url = `/api/gondola/${editandoGondolaId}`;
+                        method = 'PUT';
+                    }
+
+                    const response = await fetch(url, {
+                        method: method,
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ state_json: { itens: gondolaItens } })
                     });
@@ -125,10 +186,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     ModalSystem.hideLoading();
 
                     if (data.success) {
-                        gondolaItens = [];
-                        hasUnsavedChanges = false;
-                        renderizarTabelaBipagem();
-                        ModalSystem.alert('Relatório de Gôndola salvo com sucesso!', 'Sucesso');
+                        ModalSystem.alert(editandoGondolaId ? 'Relatório atualizado com sucesso!' : 'Relatório de Gôndola salvo com sucesso!', 'Sucesso');
+                        sairModoEdicao(); // Já limpa tudo e reseta UI
                         carregarHistorico();
                     } else {
                         ModalSystem.alert(`Erro ao salvar: ${data.message}`, 'Erro');
@@ -189,29 +248,81 @@ document.addEventListener('DOMContentLoaded', () => {
 
         paginatedItems.forEach((rel, index) => {
             const indexGeral = start + index;
-            const dataCriacao = new Date(rel.created_at).toLocaleString('pt-BR');
-            const badgeRecente = indexGeral === 0 ? '<span class="badge badge-success ml-2">Mais Recente</span>' : '';
+            // Data compacta: apenas dd/mm HH:MM para caber na coluna
+            const d = new Date(rel.created_at);
+            const dataCriacao = `${d.toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'})} ${d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}`;
+            const badgeRecente = indexGeral === 0 ? '<span class="badge badge-success ml-1" style="font-size:0.65rem;">Recente</span>' : '';
             
+            // Botão de editar apenas para o mais recente (indexGeral === 0)
+            const btnEditarHTML = indexGeral === 0 ? `
+                <button class="btn-action btn-action-warning btn-editar" data-id="${rel.id}" data-json='${JSON.stringify(rel.state_json.itens)}' data-nome="${rel.nome}" title="Editar Relatório">
+                    <i class="fas fa-edit"></i>
+                </button>
+            ` : '';
+
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td class="font-weight-bold text-primary pl-4 align-middle">${rel.nome} ${badgeRecente}</td>
-                <td class="align-middle">${dataCriacao}</td>
-                <td class="text-center pr-4 align-middle">
-                    <button class="btn btn-sm btn-outline-success btn-exportar" data-json='${JSON.stringify(rel.state_json.itens)}' data-nome="${rel.nome}" title="Exportar Excel">
-                        <i class="fas fa-file-excel"></i>
-                    </button>
-                    <button class="btn btn-sm btn-outline-danger btn-excluir ml-1" data-id="${rel.id}" title="Excluir Relatório">
-                        <i class="fas fa-trash-alt"></i>
-                    </button>
+                <td class="font-weight-bold align-middle" style="color: #fff; word-break: break-word; white-space: normal;">${rel.nome} ${badgeRecente}</td>
+                <td class="align-middle" style="font-size: 0.82rem; color: var(--text-secondary); white-space: nowrap;">${dataCriacao}</td>
+                <td class="align-middle" style="text-align: center; white-space: nowrap;">
+                    <div style="display: inline-flex; gap: 6px; align-items: center; justify-content: center;">
+                        ${btnEditarHTML}
+                        <button class="btn-action btn-action-success btn-exportar" data-json='${JSON.stringify(rel.state_json.itens)}' data-nome="${rel.nome}" title="Exportar Excel">
+                            <i class="fas fa-file-excel"></i>
+                        </button>
+                        <button class="btn-action btn-action-danger btn-excluir" data-id="${rel.id}" title="Excluir Relatório">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </div>
                 </td>
             `;
             tbodyHistorico.appendChild(tr);
         });
 
+        document.querySelectorAll('.btn-editar').forEach(btn => btn.addEventListener('click', entrarModoEdicao));
         document.querySelectorAll('.btn-exportar').forEach(btn => btn.addEventListener('click', exportarParaExcel));
         document.querySelectorAll('.btn-excluir').forEach(btn => btn.addEventListener('click', excluirRelatorio));
 
         renderizarPaginadores(totalPaginas);
+    }
+
+    function entrarModoEdicao(e) {
+        const btn = e.currentTarget;
+        const id = btn.getAttribute('data-id');
+        const nome = btn.getAttribute('data-nome');
+        const itensStr = btn.getAttribute('data-json');
+
+        const iniciarEdicao = () => {
+            editandoGondolaId = id;
+            gondolaItens = JSON.parse(itensStr) || [];
+            hasUnsavedChanges = false;
+
+            // Atualiza UI
+            tituloPainelBipagem.style.display = 'none';
+            badgeEditando.style.display = 'inline-block';
+            nomeRelatorioEditando.textContent = nome;
+            btnCancelarEdicao.style.display = 'inline-block';
+            
+            spanBtnSalvar.textContent = 'Salvar Alterações';
+            btnSalvar.classList.remove('btn-primary');
+            btnSalvar.classList.add('btn-warning');
+
+            renderizarTabelaBipagem();
+            inputCodigo.focus();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        };
+
+        if (hasUnsavedChanges || gondolaItens.length > 0) {
+            ModalSystem.confirm(
+                'Você tem uma bipagem em andamento que não foi salva. Deseja descartá-la para editar o relatório selecionado?',
+                'Atenção',
+                iniciarEdicao,
+                null,
+                { confirmText: 'Sim, descartar e editar', cancelText: 'Cancelar' }
+            );
+        } else {
+            iniciarEdicao();
+        }
     }
 
     function renderizarPaginadores(totalPaginas) {
