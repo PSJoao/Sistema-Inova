@@ -1083,7 +1083,8 @@ class HubMercadoLivreService {
                 SELECT p.id_pedido_ml, p.conta_id, c.access_token, c.refresh_token, c.token_expiration, c.id as conta_id_real, c.nickname 
                 FROM pedidos_mercado_livre p
                 JOIN hub_ml_contas c ON p.conta_id = c.id
-                WHERE p.date_created >= NOW() - INTERVAL '30 days'
+                WHERE p.date_created >= NOW() - INTERVAL '120 days'
+                OR p.status_envio IS NULL OR p.status_pedido = 'paid'
                 AND p.conta_id NOT IN (6, 7)
             `;
             const result = await client.query(query);

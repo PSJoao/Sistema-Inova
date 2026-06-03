@@ -241,7 +241,7 @@ exports.apiAtualizarStatusPendencia = async (req, res) => {
     try {
         const { id, status } = req.body;
         // Validação de segurança para não aceitarem status malucos
-        if (!['pendente', 'hub', 'sem_estoque', 'cancelado', 'bip_sem_etiq'].includes(status)) {
+        if (!['pendente', 'hub', 'sem_estoque', 'cancelado', 'bip_sem_etiq', 'conf_envio'].includes(status)) {
             return res.status(400).json({ error: 'Status inválido.' });
         }
 
@@ -1814,7 +1814,10 @@ exports.downloadHistoricoRelatorioTarde = async (req, res) => {
         let tipoMap = {};
         if (skusArray.length > 0) {
             const prodRes = await client.query(
-                'SELECT sku, tipo_ml FROM cached_products WHERE UPPER(sku) = ANY($1::text[])',
+                `SELECT DISTINCT ON (UPPER(sku)) sku, tipo_ml 
+                 FROM cached_products 
+                 WHERE UPPER(sku) = ANY($1::text[])
+                 ORDER BY UPPER(sku), (bling_account = 'lucas') DESC`,
                 [skusArray]
             );
             prodRes.rows.forEach(p => {
@@ -1924,7 +1927,7 @@ exports.downloadHistoricoRelatorioTarde = async (req, res) => {
             // Enriquecer com tipo_ml
             for (const item of gondolaData) {
                 const tipoRes = await client.query(
-                    `SELECT tipo_ml FROM cached_products WHERE UPPER(sku) = $1 LIMIT 1`,
+                    `SELECT tipo_ml FROM cached_products WHERE UPPER(sku) = $1 ORDER BY (bling_account = 'lucas') DESC LIMIT 1`,
                     [item.sku.toUpperCase()]
                 );
                 if (tipoRes.rows.length > 0 && tipoRes.rows[0].tipo_ml) {

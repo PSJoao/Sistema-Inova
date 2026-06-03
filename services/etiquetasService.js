@@ -1323,6 +1323,7 @@ async function validarProdutoPorEstruturas(scannedCodes) { // 1. Parâmetro reno
                OR gtin = $1           -- 2ª Tentativa: GTIN
                OR gtin_embalagem = $1 -- 3ª Tentativa: GTIN Embalagem
                OR codigo_fabrica = $1 -- 4ª Tentativa: Código de Fábrica (Gerenciamento)
+            ORDER BY (parent_product_bling_account = 'lucas') DESC
             LIMIT 1;
         `;
 
@@ -1378,30 +1379,29 @@ async function validarProdutoPorEstruturas(scannedCodes) { // 1. Parâmetro reno
         const skuCount = trueComponentSkus.length; // Usa a contagem da lista traduzida
 
         const parentQuery = `
-            SELECT
+            SELECT DISTINCT ON (p.sku)
                 p.bling_id,
                 p.sku,
                 p.nome
             FROM cached_products p
             WHERE
-                p.bling_account = $1
-            AND
                 -- Garante que o produto contenha TODOS os SKUs da lista traduzida
                 (SELECT COUNT(DISTINCT component_sku)
                  FROM cached_structures s1
                  WHERE s1.parent_product_bling_id = p.bling_id
-                   AND s1.component_sku = ANY($2::text[]) -- Usa trueComponentSkus
-                ) = $3 -- Usa skuCount
+                   AND s1.component_sku = ANY($1::text[]) -- Usa trueComponentSkus
+                ) = $2 -- Usa skuCount
             AND
                 -- Garante que o produto tenha EXATAMENTE esse número de estruturas
                 (SELECT COUNT(DISTINCT component_sku)
                  FROM cached_structures s2
                  WHERE s2.parent_product_bling_id = p.bling_id
-                ) = $3; -- Usa skuCount
+                ) = $2 -- Usa skuCount
+            ORDER BY p.sku, (p.bling_account = 'lucas') DESC;
         `;
 
         // Passa os parâmetros corretos
-        const parentResult = await client.query(parentQuery, [blingAccount, trueComponentSkus, skuCount]);
+        const parentResult = await client.query(parentQuery, [trueComponentSkus, skuCount]);
 
         if (parentResult.rows.length === 0) {
             return { success: false, message: 'Nenhum produto encontrado que corresponda exatamente a esta combinação de estruturas.' };
@@ -2341,6 +2341,7 @@ async function obterDadosDashboardExpedicao() {
                 COUNT(*) FILTER (WHERE DATE(created_at) < data_virtual_expedicao() AND (status = 'pendente' OR status = 'hub')) as heranca,
                 COUNT(*) FILTER (WHERE DATE(created_at) = data_virtual_expedicao() AND (status = 'pendente' OR status = 'hub')) as novos_hoje,
                 COUNT(*) FILTER (WHERE status = 'bip_sem_etiq') as sem_nota,
+                COUNT(*) FILTER (WHERE status = 'conf_envio') as conf_envio,
                 COUNT(*) FILTER (WHERE status IN ('sem_estoque')) as subtracoes,
                 COUNT(*) FILTER (WHERE status IN ('pendente', 'checado', 'hub')) as saldo_real
             FROM cached_etiquetas_ml
@@ -2369,6 +2370,7 @@ async function obterDadosDashboardExpedicao() {
                 COALESCE(m.pack_id, m.numero_loja) AS numero_loja_calc, 
                 cpv.numero AS pedido_numero, 
                 m.skus, 
+                m.locations,
                 m.status, 
                 m.created_at, 
                 (DATE(m.created_at) < data_virtual_expedicao() AND m.status NOT IN ('cancelado', 'sem_estoque', 'impresso')) as heranca_ontem,
@@ -2411,19 +2413,21 @@ async function obterDadosDashboardExpedicao() {
             const skusArray = Array.from(uniqueSkus).filter(s => s !== '');
             if (skusArray.length > 0) {
                 const skusUpper = skusArray.map(s => s.toUpperCase());
-                const prodQuery = `SELECT sku, tipo_ml FROM cached_products WHERE UPPER(sku) = ANY($1::text[]) AND bling_account = 'lucas'`;
+                const prodQuery = `SELECT DISTINCT ON (UPPER(sku)) sku, tipo_ml, estoque FROM cached_products WHERE UPPER(sku) = ANY($1::text[]) ORDER BY UPPER(sku), (bling_account = 'lucas') DESC`;
                 const prodRes = await client.query(prodQuery, [skusUpper]);
-                const tipoMap = {};
-                prodRes.rows.forEach(p => { tipoMap[p.sku.toUpperCase()] = p.tipo_ml; });
+                const infoMap = {};
+                prodRes.rows.forEach(p => { infoMap[p.sku.toUpperCase()] = { tipo_ml: p.tipo_ml, estoque: p.estoque }; });
 
                 pendenciasTratadas.forEach(row => {
                     const finalSkus = row.parsedSkus.map(item => {
-                        const tipo = tipoMap[item.raw.toUpperCase()];
+                        const info = infoMap[item.raw.toUpperCase()];
+                        const tipo = info ? info.tipo_ml : null;
+                        const estoque = info && info.estoque !== null ? info.estoque : '-';
                         let prefixado = item.raw;
                         if (tipo && tipo.toString().trim() !== '') {
                             prefixado = `${tipo.toString().toUpperCase()}-${item.raw}`;
                         }
-                        return { ...item.obj, original: item.raw, display: prefixado };
+                        return { ...item.obj, original: item.raw, display: prefixado, estoque: estoque };
                     });
                     row.skus = JSON.stringify(finalSkus);
                     delete row.parsedSkus;
@@ -3376,7 +3380,7 @@ async function gerarExcelDinamicoDataTable(linhas, tipo, gondolaId = null) {
 
                 // Busca tipo_ml
                 const tipoRes = await client.query(`
-                    SELECT tipo_ml FROM cached_products WHERE UPPER(sku) = $1 LIMIT 1
+                    SELECT tipo_ml FROM cached_products WHERE UPPER(sku) = $1 ORDER BY (bling_account = 'lucas') DESC LIMIT 1
                 `, [skuUpper]);
 
                 let finalSkuName = skuUpper;
@@ -3417,7 +3421,7 @@ async function gerarExcelDinamicoDataTable(linhas, tipo, gondolaId = null) {
             try {
                 for (const item of gondolaSummary) {
                     const tipoRes = await gondClient2.query(
-                        `SELECT tipo_ml FROM cached_products WHERE UPPER(sku) = $1 LIMIT 1`,
+                        `SELECT tipo_ml FROM cached_products WHERE UPPER(sku) = $1 ORDER BY (bling_account = 'lucas') DESC LIMIT 1`,
                         [item.sku.toUpperCase()]
                     );
                     if (tipoRes.rows.length > 0 && tipoRes.rows[0].tipo_ml) {
@@ -3508,7 +3512,7 @@ async function gerarExcelDinamicoDataTable(linhas, tipo, gondolaId = null) {
 
                     // Busca o tipo_ml do produto
                     const tipoRes = await client.query(`
-                        SELECT tipo_ml FROM cached_products WHERE UPPER(sku) = $1 LIMIT 1
+                        SELECT tipo_ml FROM cached_products WHERE UPPER(sku) = $1 ORDER BY (bling_account = 'lucas') DESC LIMIT 1
                     `, [skuUpper]);
 
                     let finalSkuName = sku;
@@ -3667,7 +3671,7 @@ async function gerarPdfPendentes(nfList) {
             if (skusArray.length > 0) {
                 const skusUpper = skusArray.map(s => s.toUpperCase());
                 const prodRes = await client.query(
-                    `SELECT sku, tipo_ml FROM cached_products WHERE UPPER(sku) = ANY($1::text[]) AND bling_account = 'lucas'`,
+                    `SELECT DISTINCT ON (UPPER(sku)) sku, tipo_ml FROM cached_products WHERE UPPER(sku) = ANY($1::text[]) ORDER BY UPPER(sku), (bling_account = 'lucas') DESC`,
                     [skusUpper]
                 );
                 prodRes.rows.forEach(p => { tipoMap[p.sku.toUpperCase()] = p.tipo_ml; });

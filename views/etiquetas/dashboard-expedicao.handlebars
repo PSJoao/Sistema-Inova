@@ -27,6 +27,11 @@
                 <h4 style="color: #6c757d;">Pego, Sem Etiquetar</h4>
                 <div class="stat-value" id="dash-sem-nota" style="color: #6c757d;">0</div>
             </div>
+            <div class="stat-card"
+                style="background: rgba(111, 66, 193, 0.1); border-color: rgba(111, 66, 193, 0.3);">
+                <h4 style="color: #6f42c1;">Conferência Envio</h4>
+                <div class="stat-value" id="dash-conf-envio" style="color: #6f42c1;">0</div>
+            </div>
             <div class="stat-card subtracoes">
                 <h4>Sem Estoque</h4>
                 <div class="stat-value" id="dash-subtracoes">0</div>
@@ -42,46 +47,6 @@
         </div>
     </div>
 
-    <div class="panel-group" style="display: flex; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
-        <div class="dashboard-panel" style="flex: 1; min-width: 350px;">
-            <h4 class="panel-title"><i class="fas fa-users"></i> Gerar Etiquetas de Equipe</h4>
-            <p class="description-text mb-3">Insira os dados da equipe para gerar etiquetas em PDF prontas para
-                bipagem.</p>
-
-            <form id="form-etiquetas-carregadores">
-                <div id="carregadores-container">
-                    <!-- Preenchido via JS do banco de dados -->
-                </div>
-
-                <div class="btn-actions-group"
-                    style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px; gap: 10px;">
-                    <button type="button" id="btn-add-carregador" class="btn-premium outline">
-                        <i class="fas fa-plus"></i> Novo Carregador
-                    </button>
-                    <button type="submit" id="btn-gerar-zip" class="btn-premium orange">
-                        <i class="fas fa-file-archive"></i> Baixar ZIP
-                    </button>
-                </div>
-            </form>
-        </div>
-
-        <div class="dashboard-panel" style="flex: 1; min-width: 350px;">
-            <h4 class="panel-title"><i class="fas fa-trophy"></i> Produtividade Diária</h4>
-            <div class="table-responsive">
-                <table class="table" id="tabela-produtividade" style="width: 100%">
-                    <thead>
-                        <tr>
-                            <th>Carregador</th>
-                            <th>Kits Separados</th>
-                            <th>Itens Unitários</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
     <div class="dashboard-panel">
         <div class="table-controls"
             style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; gap: 10px;">
@@ -123,6 +88,7 @@
                         <option value="Expedido">Expedidos</option>
                         <option value="Etiq. Impressa">Etiq. Impressa (Bipagem)</option>
                         <option value="Pego, Sem Etiquetar">Pego, Sem Etiquetar</option>
+                        <option value="Conferência Envio">Conferência Envio</option>
                     </select>
                 </div>
             </div>
@@ -148,6 +114,7 @@
                     <option value="sem_estoque">Sem Estoque</option>
                     <option value="cancelado">Cancelado</option>
                     <option value="bip_sem_etiq">Pego, Sem Etiquetar</option>
+                    <option value="conf_envio">Conferência Envio</option>
                 </select>
                 <button id="btn-massa-aplicar" class="btn-premium orange"
                     style="padding: 0.4rem 1.2rem; font-size: 0.9rem; border-radius: 6px;">
@@ -155,27 +122,66 @@
             </div>
         </div>
 
-        <div class="table-responsive">
-            <table class="table" id="tabela-pendencias" style="width: 100%">
-                <thead>
-                    <tr>
-                        <th id="th-massa" style="display:none; width: 40px; text-align: center;"><input type="checkbox"
-                                id="chk-master-massa" style="cursor: pointer; width: 16px; height: 16px;"></th>
-                        <th>Data Entrada</th>
-                        <th>Nota Fiscal</th>
-                        <th>Pedido</th>
-                        <th>Núm. Loja</th>
-                        <th>SKU / Produto</th>
-                        <th>Status</th>
-                        <th>Ações</th>
-                    </tr>
-                </thead>
-                <tbody>
-                </tbody>
-            </table>
+        <table class="table" id="tabela-pendencias" style="width: 100%">
+            <thead>
+                <tr>
+                    <th id="th-massa" style="display:none; width: 40px; text-align: center;"><input type="checkbox"
+                            id="chk-master-massa" style="cursor: pointer; width: 16px; height: 16px;"></th>
+                    <th>Data Entrada</th>
+                    <th>Nota Fiscal</th>
+                    <th>Pedido</th>
+                    <th>Núm. Loja</th>
+                    <th>SKU / Produto</th>
+                    <th>Estoque</th>
+                    <th>Localização</th>
+                    <th>Status</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+    </div>
+    <div class="panel-group" style="display: flex; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
+        <div class="dashboard-panel" style="flex: 1; min-width: 350px;">
+            <h4 class="panel-title"><i class="fas fa-users"></i> Gerar Etiquetas de Equipe</h4>
+            <p class="description-text mb-3">Insira os dados da equipe para gerar etiquetas em PDF prontas para
+                bipagem.</p>
+
+            <form id="form-etiquetas-carregadores">
+                <div id="carregadores-container">
+                    <!-- Preenchido via JS do banco de dados -->
+                </div>
+
+                <div class="btn-actions-group"
+                    style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px; gap: 10px;">
+                    <button type="button" id="btn-add-carregador" class="btn-premium outline">
+                        <i class="fas fa-plus"></i> Novo Carregador
+                    </button>
+                    <button type="submit" id="btn-gerar-zip" class="btn-premium orange">
+                        <i class="fas fa-file-archive"></i> Baixar ZIP
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <div class="dashboard-panel" style="flex: 1; min-width: 350px;">
+            <h4 class="panel-title"><i class="fas fa-trophy"></i> Produtividade Diária</h4>
+            <div class="table-responsive">
+                <table class="table" id="tabela-produtividade" style="width: 100%">
+                    <thead>
+                        <tr>
+                            <th>Carregador</th>
+                            <th>Kits Separados</th>
+                            <th>Itens Unitários</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
-
     {{!-- NOVA TABELA: GESTÃO DE CONFERÊNCIA EM MASSA --}}
     <div class="dashboard-panel mb-4">
         <div class="table-controls"

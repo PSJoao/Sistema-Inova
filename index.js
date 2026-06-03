@@ -26,7 +26,7 @@ const prodSyncRoutes = require('./routes/productSyncRoutes');
 const conferenciaRoutes = require('./routes/conferenciaRoutes.js');
 const produtosRoutes = require('./routes/produtosRoutes');
 const faturamentoAutomaticoRoutes = require('./routes/faturamentoAutomaticoRoutes');
-const { syncBlingProductsLucas, syncBlingProductsEliane } = require('./blingSyncService.js');
+const { syncBlingProductsLucas, syncBlingProductsEliane, syncEstoqueBling } = require('./blingSyncService.js');
 const hubProdutosService = require('./hub/services/hubProdutosService');
 const { updateUrlCostsAndData } = require('./costUpdater.js');
 const mercadoLivreSyncService = require('./services/mercadoLivreSyncService');
@@ -302,6 +302,27 @@ cron.schedule('0 4 * * 0', async () => {
     }
 });
 console.log('Job de sincronização de produtos agendado para rodar todo Domingo às 4h da manhã.');*/
+
+// Sincroniza estoques uma vez por dia (às 5h da manhã)
+cron.schedule('0 5 * * *', async () => {
+    console.log(`${new Date().toISOString()}: Disparando job agendado diário de sincronização de ESTOQUES.`);
+    try {
+        await syncEstoqueBling();
+    } catch (error) {
+        console.error(`${new Date().toISOString()}: Erro pego pelo agendador ao sincronizar estoques:`, error);
+    }
+});
+
+// Sincroniza estoques uma vez por dia (às 5h da manhã)
+cron.schedule('0 14 * * *', async () => {
+    console.log(`${new Date().toISOString()}: Disparando job agendado diário de sincronização de ESTOQUES.`);
+    try {
+        await syncEstoqueBling(false);
+    } catch (error) {
+        console.error(`${new Date().toISOString()}: Erro pego pelo agendador ao sincronizar estoques:`, error);
+    }
+});
+
 // Sincroniza as NF-e emitidas a cada 1 hora
 //0 * * * *
 //*/15 1-59 * * * *

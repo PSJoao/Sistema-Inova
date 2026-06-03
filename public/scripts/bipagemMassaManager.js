@@ -74,7 +74,8 @@ barcodeInput.addEventListener('keydown', async function(e) {
             'sem_estoque': 'Sem Estoque (Pausado)',
             'cancelado': 'Cancelado',
             'pendente': 'Pendente (Retomar)',
-            'bip_sem_etiq': 'Pego, Sem Etiquetar'
+            'bip_sem_etiq': 'Pego, Sem Etiquetar',
+            'conf_envio': 'Conferência Envio'
         };
         const statusNome = nomesStatus[novoStatus];
 

@@ -48,7 +48,7 @@ async function executeWithRetry(requestFn, context) {
             // Backoff exponencial leve ou fixo? O pedido foi fixo 400ms entre ações, 
             // mas para retry de erro é bom esperar um pouco mais. Vou colocar um progressivo simples.
             // Mas mantendo o "pausa entre buscas" mandatório de 400ms fora daqui.
-            const retryDelay = 1000 * attempt; 
+            const retryDelay = 1000 * attempt;
             await sleep(retryDelay);
         }
     }
@@ -57,7 +57,7 @@ async function executeWithRetry(requestFn, context) {
 
 exports.processarArquivoDeMapeamento = async (inputFilePath) => {
     console.log(`[ML Mapping] Processando arquivo de tradução: ${inputFilePath}`);
-    
+
     const workbook = xlsx.readFile(inputFilePath);
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
@@ -95,9 +95,9 @@ exports.processarArquivoDeMapeamento = async (inputFilePath) => {
 
         await client.query('COMMIT');
         console.log(`[ML Mapping] Sucesso. ${processedCount} registros atualizados.`);
-        
+
         // Limpa arquivo de upload
-        try { fs.unlinkSync(inputFilePath); } catch(e){}
+        try { fs.unlinkSync(inputFilePath); } catch (e) { }
 
         return { success: true, count: processedCount, message: 'Mapeamento atualizado com sucesso.' };
 
@@ -146,13 +146,15 @@ exports.processarArquivoDePedidos = async (inputFilePath) => {
             try {
                 const searchFn = async () => {
                     const token = await getValidBlingToken('lucas');
-                    return axios.get(`${BLING_API_BASE_URL}/pedidos/vendas?numerosLojas[]=${numeroLoja}`, {
+                    const cleanNumeroLoja = numeroLoja.replace(/#/g, '');
+                    return axios.get(`${BLING_API_BASE_URL}/pedidos/vendas`, {
+                        params: { 'numerosLojas[]': cleanNumeroLoja },
                         headers: { Authorization: `Bearer ${token}` }
                     });
                 };
 
                 const searchResponse = await executeWithRetry(searchFn, `Busca Direta ${numeroLoja}`);
-                
+
                 if (searchResponse.data && searchResponse.data.data && searchResponse.data.data.length > 0) {
                     pedidoEncontrado = searchResponse.data.data[0];
                 }
@@ -163,7 +165,7 @@ exports.processarArquivoDePedidos = async (inputFilePath) => {
             // TENTATIVA 2 (FALLBACK): Se não achou, busca na tabela de tradução
             if (!pedidoEncontrado) {
                 const cleanPackId = numeroLoja.replace(/#/g, '');
-                
+
                 // Consulta o banco local
                 const mapResult = await pool.query('SELECT numero_venda FROM ml_pack_id_mapping WHERE pack_id = $1', [cleanPackId]);
 
@@ -176,13 +178,14 @@ exports.processarArquivoDePedidos = async (inputFilePath) => {
                     try {
                         const fallbackSearchFn = async () => {
                             const token = await getValidBlingToken('lucas');
-                            return axios.get(`${BLING_API_BASE_URL}/pedidos/vendas?numerosLojas[]=${numeroReal}`, {
+                            return axios.get(`${BLING_API_BASE_URL}/pedidos/vendas`, {
+                                params: { 'numerosLojas[]': numeroReal },
                                 headers: { Authorization: `Bearer ${token}` }
                             });
                         };
 
                         const fallbackResponse = await executeWithRetry(fallbackSearchFn, `Busca Fallback ${numeroReal}`);
-                        
+
                         if (fallbackResponse.data && fallbackResponse.data.data && fallbackResponse.data.data.length > 0) {
                             pedidoEncontrado = fallbackResponse.data.data[0];
                         }
@@ -207,7 +210,7 @@ exports.processarArquivoDePedidos = async (inputFilePath) => {
                 successList.push([numeroLoja, 'Já estava atualizado (Ignorado)']);
                 continue; // Pula para o próximo loop sem fazer o PATCH
             }
-            
+
             console.log(`   > ID Bling encontrado: ${pedidoId}. Atualizando situação...`);
 
             // --- PASSO B: ATUALIZAR SITUAÇÃO (PATCH) ---
@@ -239,7 +242,7 @@ exports.processarArquivoDePedidos = async (inputFilePath) => {
 
     // Cria nova planilha
     const newWb = xlsx.utils.book_new();
-    
+
     // Monta dados: Cabeçalho + Linhas
     const maxRows = Math.max(successList.length, errorList.length);
     const reportData = [['PEDIDOS COM SUCESSO', 'PEDIDOS COM ERRO (MOTIVO)']];
@@ -251,7 +254,7 @@ exports.processarArquivoDePedidos = async (inputFilePath) => {
     }
 
     const newWs = xlsx.utils.aoa_to_sheet(reportData);
-    
+
     // Ajuste de largura de coluna (cosmético)
     newWs['!cols'] = [{ wch: 30 }, { wch: 50 }];
 
@@ -260,7 +263,7 @@ exports.processarArquivoDePedidos = async (inputFilePath) => {
     // Define nome do arquivo de saída
     const outputFileName = `Relatorio_ML_Batch_${Date.now()}.xlsx`;
     const outputDir = path.join(__dirname, '..', 'reports'); // Pasta reports na raiz
-    
+
     // Garante que a pasta existe
     if (!fs.existsSync(outputDir)) {
         fs.mkdirSync(outputDir, { recursive: true });
@@ -270,6 +273,6 @@ exports.processarArquivoDePedidos = async (inputFilePath) => {
     xlsx.writeFile(newWb, outputPath);
 
     console.log(`[ML Batch] Processamento finalizado. Relatório salvo em: ${outputPath}`);
-    
+
     return outputFileName; // Retorna apenas o nome para o controller fazer o download
 };

@@ -205,6 +205,14 @@ table.dataTable, .dashboard-wrapper .table {
     color: var(--text-secondary, #ccc);
 }
 
+/* Correção para evitar gap entre header e body quando scrollX está ativado */
+.dataTables_scrollHead table.dataTable,
+.dataTables_scrollBody table.dataTable,
+.dataTables_scrollHead .table,
+.dataTables_scrollBody .table {
+    margin: 0 !important;
+}
+
 table.dataTable thead th, 
 table.dataTable tbody td,
 .dashboard-wrapper .table thead th,

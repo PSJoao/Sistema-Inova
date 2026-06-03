@@ -295,6 +295,7 @@ function initTabelas() {
     tabelaPendencias = $('#tabela-pendencias').DataTable({
         language: dataTablesLangBR,
         pageLength: 10,
+        scrollX: true,
         ordering: false, // Mantém a ordem decrescente do banco de dados (created_at DESC)
         columns: [
             {
@@ -313,6 +314,8 @@ function initTabelas() {
             { data: 'pedidoId' },
             { data: 'numeroLoja' },
             { data: 'sku' },
+            { data: 'estoque' },
+            { data: 'localizacao' },
             { data: 'statusBadge' },
             { data: 'acoes' }
         ]
@@ -351,8 +354,8 @@ function initTabelas() {
 
     // Evento de Filtro via Combobox
     $('#filtro-status-tabela').on('change', function () {
-        // A coluna 6 agora é 'statusBadge' devido à injeção nativa da col 0 (Checkbox Massa)
-        tabelaPendencias.column(6).search(this.value, false, false).draw();
+        // A coluna 8 agora é 'statusBadge'
+        tabelaPendencias.column(8).search(this.value, false, false).draw();
     });
 }
 
@@ -482,6 +485,9 @@ async function carregarDadosDashboard() {
         if (document.getElementById('dash-sem-nota')) {
             document.getElementById('dash-sem-nota').innerText = data.stats.sem_nota || 0;
         }
+        if (document.getElementById('dash-conf-envio')) {
+            document.getElementById('dash-conf-envio').innerText = data.stats.conf_envio || 0;
+        }
         document.getElementById('dash-total').innerText = data.stats.saldo_real || 0;
         if (document.getElementById('dash-expedidos')) {
             document.getElementById('dash-expedidos').innerText = data.stats.expedidos_hoje || 0;
@@ -496,6 +502,7 @@ async function carregarDadosDashboard() {
             if (item.status === 'pendente') statusBadge = '<span class="badge badge-orange">Pendente</span>';
             else if (item.status === 'hub') statusBadge = '<span class="badge" style="background-color: #7f00ff; color: #fff; font-weight: bold;">Hub</span>';
             else if (item.status === 'sem_nota' || item.status === 'bip_sem_etiq') statusBadge = '<span class="badge" style="background-color: #6c757d; color: #fff;">Pego, Sem Etiquetar</span>';
+            else if (item.status === 'conf_envio') statusBadge = '<span class="badge" style="background-color: #6f42c1; color: #fff;">Conferência Envio</span>';
             else if (item.status === 'checado') statusBadge = '<span class="badge" style="background-color: #0dcaf0; color: #1e1e2f;">Checado</span>';
             else if (item.status === 'sem_estoque') statusBadge = '<span class="badge" style="background-color: var(--color-warning); color: #1e1e2f;">Sem Estoque</span>';
             else if (item.status === 'cancelado') statusBadge = '<span class="badge" style="background-color: var(--color-danger); color: #fff;">Cancelado</span>';
@@ -524,15 +531,18 @@ async function carregarDadosDashboard() {
             `;
 
             let skuFormatted = '-';
+            let estoqueFormatted = '-';
             if (item.skus) {
                 if (Array.isArray(item.skus)) {
                     // Extract the values
                     skuFormatted = item.skus.map(s => s.display || s.original || s).join(', ');
+                    estoqueFormatted = item.skus.map(s => s.estoque !== undefined ? s.estoque : '-').join(', ');
                 } else if (typeof item.skus === 'string') {
                     // It might be a stringified JSON
                     try {
                         const parsed = JSON.parse(item.skus);
                         skuFormatted = Array.isArray(parsed) ? parsed.map(s => s.display || s.original || s).join(', ') : item.skus;
+                        estoqueFormatted = Array.isArray(parsed) ? parsed.map(s => s.estoque !== undefined ? s.estoque : '-').join(', ') : '-';
                     } catch (e) {
                         skuFormatted = item.skus;
                     }
@@ -548,6 +558,8 @@ async function carregarDadosDashboard() {
                 pedidoId: item.pedido_numero || item.pack_id || '-',
                 numeroLoja: item.numero_loja_calc || item.numero_loja || '-',
                 sku: skuFormatted,
+                estoque: estoqueFormatted,
+                localizacao: item.locations || '-',
                 skusOriginal: item.skus,
                 statusBadge: statusBadge,
                 acoes: acoes

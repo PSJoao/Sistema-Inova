@@ -22,7 +22,9 @@ let shouldStopNFeEliane = false;
 const onDemandNfeQueue = [];
 let isOnDemandNfeRunning = false;
 
-let isPedidoFullSyncRunning = false; 
+let isEstoqueSyncRunning = false;
+
+let isPedidoFullSyncRunning = false;
 // ID da situação "Mercado Livre Full"
 const ID_SITUACAO_FULL = '451726';
 
@@ -45,10 +47,10 @@ async function apiRequestWithRetry(url, accountType, maxRetries = 8) {
             // Se entrar aqui, QUALQUER erro acionará a retentativa.
             lastError = error;
             const delay = Math.pow(2, attempt - 1) * 1000; // Lógica de espera: 1s, 2s, 4s...
-            
+
             console.warn(`[API Retry] Falha na requisição para a conta ${accountType}. Tentativa ${attempt} de ${maxRetries}. Aguardando ${delay / 1000}s...`);
             console.warn(`   > Motivo: ${error.message}`); // Mostra o motivo do erro para debug
-            
+
             await new Promise(resolve => setTimeout(resolve, delay));
         }
     }
@@ -78,12 +80,12 @@ async function processOnDemandNfeQueue() {
         // --- CORREÇÃO APLICADA AQUI ---
         // Pega o item inteiro da fila (que pode conter nfeNumber ou numeroLoja)
         const item = onDemandNfeQueue.shift();
-        
+
         console.log(`[OnDemandQueue] Processando item da fila:`, item);
-        
+
         // Passa o objeto 'item' inteiro para a processSingleNfe,
         // que agora espera um único objeto como parâmetro.
-        await processSingleNfe(item); 
+        await processSingleNfe(item);
     }
 
     isOnDemandNfeRunning = false;
@@ -92,8 +94,8 @@ async function processOnDemandNfeQueue() {
 async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve }) {
     // --- (Adicionado na Etapa 1) ---
     // Esta variável armazenará a conta correta ('lucas' ou 'eliane') para ser usada em todo o processamento.
-    let accountTypeEncontrada = accountType; 
-    
+    let accountTypeEncontrada = accountType;
+
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -103,7 +105,7 @@ async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve })
         if (numeroLoja) {
             // (Lógica do numeroLoja permanece a mesma)
             if (!accountTypeEncontrada) { // Garante que a conta foi passada
-                 throw new Error(`Busca por numeroLoja ${numeroLoja} falhou: accountType não foi fornecido.`);
+                throw new Error(`Busca por numeroLoja ${numeroLoja} falhou: accountType não foi fornecido.`);
             }
             console.log(`[OnDemandQueue] Processando pelo PACK ID: ${numeroLoja} (${accountTypeEncontrada})`);
             const pedidoSearchResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas?numerosLojas[]=${numeroLoja}`, accountTypeEncontrada);
@@ -119,7 +121,7 @@ async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve })
 
         } else if (nfeNumber) {
             console.log(`[OnDemandQueue] Processando pela NF: ${nfeNumber}`);
-            
+
             // --- (Modificado na Etapa 1) ---
             // Lógica para iterar e encontrar a NF se a conta não foi definida (ex: vindo da assistenciaController)
             if (!accountTypeEncontrada) {
@@ -133,7 +135,7 @@ async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve })
                             accountTypeEncontrada = conta; // Define a conta correta
                             console.log(`[OnDemandQueue] NF ${nfeNumber} encontrada na conta ${conta}.`);
                             nfeEncontrada = true;
-                            break; 
+                            break;
                         }
                     } catch (e) {
                         console.warn(`[OnDemandQueue] NF ${nfeNumber} não encontrada na conta ${conta}.`);
@@ -143,7 +145,7 @@ async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve })
                     throw new Error(`NF ${nfeNumber} não encontrada em nenhuma conta (Lucas ou Eliane).`);
                 }
             } else {
-                 // Se a accountType FOI passada, busca direto nela
+                // Se a accountType FOI passada, busca direto nela
                 const nfeSearchResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe?numero=${nfeNumber}`, accountTypeEncontrada);
                 if (!nfeSearchResponse.data || nfeSearchResponse.data.length === 0) {
                     throw new Error(`NF ${nfeNumber} não encontrada no Bling (${accountTypeEncontrada}).`);
@@ -152,14 +154,14 @@ async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve })
                 console.log(JSON.stringify(nfeDetalhes, null, 2));
             }
         }
-        
+
         // Se nfeDetalhes não foi definido por algum motivo (ex: falha na lógica)
         if (!nfeDetalhes) {
             throw new Error('Não foi possível obter os detalhes da NFe.');
         }
 
         // --- LÓGICA DE PROCESSAMENTO UNIFICADA E CORRIGIDA ---
-        
+
         // 1. Processar e Salvar o Pedido de Venda associado (se houver)
         if (nfeDetalhes.numeroPedidoLoja) {
             try {
@@ -172,14 +174,14 @@ async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve })
                         INSERT INTO cached_pedido_venda (bling_id, numero, numero_loja, data_pedido, data_saida, total_produtos, total_pedido, contato_id, contato_nome, contato_tipo_pessoa, contato_documento, situacao_id, situacao_valor, loja_id, desconto_valor, notafiscal_id, nfe_parent_numero, bling_account)
                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) ON CONFLICT (bling_id, bling_account) DO UPDATE SET
                         numero = EXCLUDED.numero, numero_loja = EXCLUDED.numero_loja, data_pedido = EXCLUDED.data_pedido, data_saida = EXCLUDED.data_saida, total_produtos = EXCLUDED.total_produtos, total_pedido = EXCLUDED.total_pedido, contato_id = EXCLUDED.contato_id, contato_nome = EXCLUDED.contato_nome, contato_tipo_pessoa = EXCLUDED.contato_tipo_pessoa, contato_documento = EXCLUDED.contato_documento, situacao_id = EXCLUDED.situacao_id, situacao_valor = EXCLUDED.situacao_valor, loja_id = EXCLUDED.loja_id, desconto_valor = EXCLUDED.desconto_valor, notafiscal_id = EXCLUDED.notafiscal_id, nfe_parent_numero = EXCLUDED.nfe_parent_numero;
-                    `, [ p.id, p.numero, p.numeroLoja, p.data, p.dataSaida, p.totalProdutos, p.total, p.contato?.id, p.contato?.nome, p.contato?.tipoPessoa, p.contato?.numeroDocumento, p.situacao?.id, p.situacao?.valor, p.loja?.id, p.desconto?.valor, p.notaFiscal?.id, nfeDetalhes.numero, accountTypeEncontrada ]);
+                    `, [p.id, p.numero, p.numeroLoja, p.data, p.dataSaida, p.totalProdutos, p.total, p.contato?.id, p.contato?.nome, p.contato?.tipoPessoa, p.contato?.numeroDocumento, p.situacao?.id, p.situacao?.valor, p.loja?.id, p.desconto?.valor, p.notaFiscal?.id, nfeDetalhes.numero, accountTypeEncontrada]);
                     console.log(`   [Cache] Pedido ${p.id} salvo no cache.`);
                 }
             } catch (pedidoError) { console.error(`[OnDemandQueue] Erro ao buscar/salvar pedido para a NF ${nfeDetalhes.numero}. Detalhe: ${pedidoError.message}`); }
         }
 
         // --- INÍCIO DA CORREÇÃO DE CÁLCULO DE VOLUME ---
-        
+
         // 2. Processar Itens, Produtos e Quantidades (Refatorado)
         let totalVolumesCalculado = 0; // Variável para o cálculo
         const idsBlingProduto = [];
@@ -192,14 +194,14 @@ async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve })
                 descricoesProdutos.add(item.descricao || 'S/ Descrição');
                 const sku = item.codigo;
                 const quantidadeComprada = parseFloat(item.quantidade) || 0;
-                
+
                 if (sku && !isNaN(quantidadeComprada)) {
                     // Agrega as quantidades (ex: 2x SKU-A e 3x SKU-A = 5x SKU-A)
                     quantidadesAgregadas.set(sku, (quantidadesAgregadas.get(sku) || 0) + quantidadeComprada);
                 }
             }
         }
-        
+
         // 2b. Segunda passagem: Iterar sobre os SKUs agregados para calcular volumes
         if (quantidadesAgregadas.size > 0) {
             const skusDaNota = Array.from(quantidadesAgregadas.keys());
@@ -216,7 +218,7 @@ async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve })
 
             // Agora processa cada SKU único
             for (const [produtoCodigo, quantidadeTotal] of quantidadesAgregadas.entries()) {
-                
+
                 // Salva a quantidade total do produto na tabela nfe_quantidade_produto
                 await client.query(`
                     INSERT INTO nfe_quantidade_produto (nfe_numero, produto_codigo, quantidade) VALUES ($1, $2, $3)
@@ -231,20 +233,20 @@ async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve })
                     const cachedProd = cachedProductsMap.get(produtoCodigo);
                     volumesUnit = parseFloat(cachedProd.volumes || 0);
                     productId = cachedProd.bling_id;
-                    
+
                 } else {
                     // Se não estava no cache, busca no Bling (lógica que já existia)
                     try {
                         await new Promise(resolve => setTimeout(resolve, 50)); // Rate limit
                         const prodSearchResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos?codigos[]=${produtoCodigo}`, accountTypeEncontrada);
-                        
+
                         if (prodSearchResp.data?.[0]?.id) {
                             productId = prodSearchResp.data[0].id;
                             await new Promise(resolve => setTimeout(resolve, 50)); // Rate limit
                             const prodDetails = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${productId}`, accountTypeEncontrada)).data;
-                            
+
                             volumesUnit = parseFloat(prodDetails.volumes || 0); // Pega o volume unitário
-                            
+
                             // Salva o produto recém-buscado no cache
                             await client.query(`
                                 INSERT INTO cached_products (bling_id, bling_account, sku, nome, preco_custo, volumes, last_updated_at) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
@@ -258,11 +260,11 @@ async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve })
                                 await processAndCacheStructuresEliane(prodDetails, client);
                             }
                         }
-                    } catch (idError) { 
-                        console.error(`[OnDemandQueue] Erro ao buscar ID/Volumes do produto ${produtoCodigo}. Detalhe: ${idError.message}`); 
+                    } catch (idError) {
+                        console.error(`[OnDemandQueue] Erro ao buscar ID/Volumes do produto ${produtoCodigo}. Detalhe: ${idError.message}`);
                     }
                 }
-                
+
                 if (productId) {
                     idsBlingProduto.push(productId);
                 }
@@ -271,15 +273,15 @@ async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve })
                 totalVolumesCalculado += (volumesUnit * quantidadeTotal);
             }
         }
-        
+
         // --- FIM DA CORREÇÃO DE CÁLCULO DE VOLUME ---
 
-        
+
         // 3. Salvar a Nota Fiscal com os dados compilados
         const { id, numero, chaveAcesso, dataEmissao, situacao, transporte } = nfeDetalhes;
         const productIdsList = `${idsBlingProduto.join('; ')}`; // IDs dos produtos
         const productDescriptions = Array.from(descricoesProdutos).join('; '); // Nomes dos produtos
-        
+
         await client.query(`
             INSERT INTO cached_nfe (bling_id, bling_account, nfe_numero, chave_acesso, data_emissao, situacao, transportador_nome, total_volumes, product_ids_list, product_descriptions_list, etiqueta_nome, etiqueta_endereco, etiqueta_numero, etiqueta_complemento, etiqueta_municipio, etiqueta_uf, etiqueta_cep, etiqueta_bairro, fone, last_updated_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, CURRENT_TIMESTAMP)
@@ -292,16 +294,16 @@ async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve })
             
             product_ids_list = EXCLUDED.product_ids_list, product_descriptions_list = EXCLUDED.product_descriptions_list, etiqueta_nome = EXCLUDED.etiqueta_nome, etiqueta_endereco = EXCLUDED.etiqueta_endereco, etiqueta_numero = EXCLUDED.etiqueta_numero, etiqueta_complemento = EXCLUDED.etiqueta_complemento, etiqueta_municipio = EXCLUDED.etiqueta_municipio, etiqueta_uf = EXCLUDED.etiqueta_uf, etiqueta_cep = EXCLUDED.etiqueta_cep, etiqueta_bairro = EXCLUDED.etiqueta_bairro, fone = EXCLUDED.fone, last_updated_at = CURRENT_TIMESTAMP;
         `, [
-            id, accountTypeEncontrada, numero, chaveAcesso, dataEmissao, situacao, transporte?.transportador?.nome, 
-            
+            id, accountTypeEncontrada, numero, chaveAcesso, dataEmissao, situacao, transporte?.transportador?.nome,
+
             // --- (Modificado na Etapa 3) ---
             // Substitui nfeDetalhes.volumes pelo totalVolumesCalculado
-            totalVolumesCalculado, 
+            totalVolumesCalculado,
             // ---
-            
+
             productIdsList, productDescriptions, transporte?.etiqueta?.nome, transporte?.etiqueta?.endereco, transporte?.etiqueta?.numero, transporte?.etiqueta?.complemento, transporte?.etiqueta?.municipio, transporte?.etiqueta?.uf, transporte?.etiqueta?.cep, transporte?.etiqueta?.bairro, nfeDetalhes.contato?.telefone
         ]);
-        
+
         await client.query('COMMIT');
         console.log(`   [Cache] Processo de cache para NF ${numero} finalizado com sucesso. Volumes: ${totalVolumesCalculado}`);
         resolve(true);
@@ -348,17 +350,17 @@ async function syncPedidosVendaFull() {
     // Bloco de verificação de trava
     if (isPedidoFullSyncRunning || isNFeLucasRunning || isNFeElianeRunning || isProductSyncRunning || isEmissaoPageActive) {
         const reason = isPedidoFullSyncRunning ? 'sinc. de pedidos full já em execução' :
-                       isNFeLucasRunning ? 'sinc. de NFe Lucas em andamento' :
-                       isNFeElianeRunning ? 'sinc. de NFe Eliane em andamento' :
-                       isProductSyncRunning ? 'sinc. de produtos em andamento' :
-                       isEmissaoPageActive ? 'página de emissão em uso' : 'outra operação';
+            isNFeLucasRunning ? 'sinc. de NFe Lucas em andamento' :
+                isNFeElianeRunning ? 'sinc. de NFe Eliane em andamento' :
+                    isProductSyncRunning ? 'sinc. de produtos em andamento' :
+                        isEmissaoPageActive ? 'página de emissão em uso' : 'outra operação';
         console.log(`[PedidoFullSync] Sincronização de Pedidos Full pulada: ${reason}.`);
         return { success: false, message: `Sincronização pulada: ${reason}.`, processed: 0, skipped: 0, failed: 0 };
     }
 
     isPedidoFullSyncRunning = true;
     console.log(`[PedidoFullSync] Iniciando sincronização de Pedidos de Venda FULL (Situação ${ID_SITUACAO_FULL})...`);
-    
+
     let totalProcessados = 0;
     let totalIgnorados = 0;
     let totalFalhas = 0;
@@ -368,12 +370,12 @@ async function syncPedidosVendaFull() {
         for (const account of ['lucas', 'eliane']) {
             if (isEmissaoPageActive) break; // Para a sincronização se a emissão for ativada
             console.log(`[PedidoFullSync] Processando conta: ${account.toUpperCase()}`);
-            
+
             // Loop para 5 páginas, conforme solicitado
             for (let pagina = 1; pagina <= 5; pagina++) {
                 if (isEmissaoPageActive) {
-                     console.log(`[PedidoFullSync] Página de emissão ativa. Interrompendo sync da conta ${account}.`);
-                     break;
+                    console.log(`[PedidoFullSync] Página de emissão ativa. Interrompendo sync da conta ${account}.`);
+                    break;
                 }
 
                 console.log(`[PedidoFullSync] [${account}] Buscando página ${pagina} de 5...`);
@@ -471,14 +473,14 @@ async function syncPedidosVendaFull() {
                                     item.valor,
                                     item.descricao
                                 ]);
-                                
+
                                 // 4. Verifica se o produto (SKU) existe no cache principal `cached_products`
                                 // Se não existir, busca e salva lá
                                 const checkProd = await client.query(
                                     'SELECT 1 FROM cached_products WHERE sku = $1 AND bling_account = $2',
                                     [item.codigo, account]
                                 );
-                                
+
                                 if (checkProd.rows.length === 0) {
                                     console.log(`[PedidoFullSync] [${account}] Produto ${item.codigo} não encontrado no cache. Buscando no Bling...`);
                                     try {
@@ -486,15 +488,15 @@ async function syncPedidosVendaFull() {
                                         const prodSearchResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos?codigos[]=${item.codigo}`, account);
                                         if (prodSearchResp.data?.[0]?.id) {
                                             const prodDetails = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${prodSearchResp.data[0].id}`, account)).data;
-                                            
+
                                             await client.query(`
                                                 INSERT INTO cached_products (bling_id, bling_account, sku, nome, preco_custo, volumes, last_updated_at) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
                                                 ON CONFLICT (bling_id, bling_account) DO UPDATE SET sku = EXCLUDED.sku, nome = EXCLUDED.nome, preco_custo = EXCLUDED.preco_custo, volumes = EXCLUDED.volumes, last_updated_at = CURRENT_TIMESTAMP;
                                             `, [prodDetails.id, account, prodDetails.codigo, prodDetails.nome, prodDetails.precoCusto, prodDetails.volumes || 1]);
                                         }
                                     } catch (prodError) {
-                                         console.error(`[PedidoFullSync] [${account}] Falha ao buscar/cachear produto ${item.codigo}. Erro: ${prodError.message}`);
-                                         // Não falha o pedido inteiro por causa de um produto
+                                        console.error(`[PedidoFullSync] [${account}] Falha ao buscar/cachear produto ${item.codigo}. Erro: ${prodError.message}`);
+                                        // Não falha o pedido inteiro por causa de um produto
                                     }
                                 }
                             }
@@ -529,7 +531,7 @@ async function syncNFeLucasOnDemand(nfeNumbers) {
     if (!nfeNumbers || nfeNumbers.length === 0) {
         return { success: true, found: [], notFound: [] };
     }
-    
+
     console.log(`[OnDemandSync] Iniciando busca por ${nfeNumbers.length} NF-e no Bling...`);
     const status = getSyncStatus();
     if (status.isNFeRunning || status.isProductSyncRunning) {
@@ -554,7 +556,7 @@ async function syncNFeLucasOnDemand(nfeNumbers) {
                 const totalVolumes = itens.reduce((acc, item) => acc + (item.volumes || 0), 0) || 1;
                 const productIdsList = `{${itens.map(item => item.produto.id).join('};{')}}`;
                 const productDescriptions = itens.map(item => item.descricao).join('; ');
-                
+
                 await client.query('BEGIN');
                 await upsertNfe(client, {
                     bling_id: id, bling_account: 'lucas', nfe_numero: numero, chave_acesso: chaveAcesso, data_emissao: dataEmissao,
@@ -568,7 +570,7 @@ async function syncNFeLucasOnDemand(nfeNumbers) {
                 for (const item of itens) {
                     await upsertProduct(client, { bling_id: item.produto.id, bling_account: 'lucas', sku: item.codigo, nome: item.descricao, preco_custo: item.valor, volumes: item.volumes || 1 });
                     await upsertNfeQuantidade(client, { nfe_numero: numero, produto_codigo: item.codigo, quantidade: item.quantidade });
-                    
+
                     // [NOVO] Busca detalhes para garantir que estruturas (kits) sejam carregadas no On-Demand
                     try {
                         const prodDetailsResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${item.produto.id}`, 'lucas');
@@ -580,7 +582,7 @@ async function syncNFeLucasOnDemand(nfeNumbers) {
                     }
                 }
                 await client.query('COMMIT');
-                
+
                 foundNfes.push(nfeNumber);
                 notFoundNfes = notFoundNfes.filter(n => n !== nfeNumber);
             }
@@ -876,22 +878,22 @@ async function syncNFeLucas() {
             }
 
             console.log(`[LucasSync] Processando página ${pagina} de NFs...`);
-        
+
             try {
                 const nfeListResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe?pagina=${pagina}&limite=100&tipo=1`, 'lucas');
-                
+
                 // Se a página não retornar nenhuma nota, não há mais o que buscar. Interrompe o loop.
                 if (nfeListResponse.data.length === 0) {
-                     console.log(`[LucasSync] Nenhuma NF-e encontrada na página ${pagina}. Finalizando busca.`);
-                     break; 
+                    console.log(`[LucasSync] Nenhuma NF-e encontrada na página ${pagina}. Finalizando busca.`);
+                    break;
                 }
 
                 for (const nfeResumo of nfeListResponse.data) {
                     // Verificação interna para interromper o processamento da página atual
                     if (shouldStopNFeLucas || isEmissaoPageActive) {
-                        break; 
+                        break;
                     }
-                    
+
                     try { // Bloco TRY para cada NFe individual
                         const chaveDeAcesso = nfeResumo.chaveAcesso;
                         if (!chaveDeAcesso) continue;
@@ -913,12 +915,12 @@ async function syncNFeLucas() {
                         if (nfeDetalhes.numeroPedidoLoja) {
                             try {
                                 const pedidoSearchResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas?numerosLojas[]=${nfeDetalhes.numeroPedidoLoja}`, 'lucas');
-                                
+
                                 if (pedidoSearchResponse.data && pedidoSearchResponse.data.length > 0) {
                                     const pedidoId = pedidoSearchResponse.data[0].id;
                                     const pedidoDetalhes = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas/${pedidoId}`, 'lucas')).data;
-                                    
-                                    const p = pedidoDetalhes; 
+
+                                    const p = pedidoDetalhes;
                                     await pool.query(`
                                         INSERT INTO cached_pedido_venda (
                                             bling_id, numero, numero_loja, data_pedido, data_saida, total_produtos, total_pedido,
@@ -986,7 +988,7 @@ async function syncNFeLucas() {
                                     ON CONFLICT (nfe_numero, produto_codigo)
                                     DO UPDATE SET quantidade = EXCLUDED.quantidade;
                                 `, [nfeDetalhes.numero, produtoCodigo, quantidadeTotal]);
-                                
+
                                 let volumesUnit = 0;
                                 let prodId = null;
 
@@ -995,24 +997,24 @@ async function syncNFeLucas() {
                                     const cachedProduct = cachedProductsMap.get(produtoCodigo);
                                     volumesUnit = parseFloat(cachedProduct.volumes || 0);
                                     prodId = cachedProduct.bling_id; // Pega o ID direto do cache.
-                                    
+
                                 } else {
                                     // 2. PRODUTO NÃO ESTÁ NO CACHE
                                     try {
                                         await new Promise(resolve => setTimeout(resolve, 50));
                                         const prodSearchResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos?codigos[]=${produtoCodigo}`, 'lucas');
-                                        
+
                                         prodId = prodSearchResp.data?.[0]?.id; // Armazena o ID
 
-                                        if (prodId) { 
+                                        if (prodId) {
                                             await new Promise(resolve => setTimeout(resolve, 50));
                                             const prodDetailsResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${prodId}`, 'lucas');
                                             volumesUnit = parseFloat(prodDetailsResp.data.volumes || 0);
-                                            
+
                                             // [NOVO] Sincroniza estruturas (kits) durante o sync de NF-e background
                                             await processAndCacheStructuresLucas(prodDetailsResp.data, client);
                                         }
-                                        
+
                                     } catch (productError) {
                                         console.error(`[LucasSync] Erro...: ${productError.message}`);
                                     }
@@ -1077,7 +1079,7 @@ async function syncNFeLucas() {
                         continue; // Pula para a próxima NFe
                     }
                 } // Fim do for (nfeResumo)
-            
+
             } catch (pageError) {
                 console.error(`[LucasSync] Erro persistente ao buscar página de NFs ${pagina}. Interrompendo sync de NFs. Detalhe: ${pageError.message}`);
                 break; // Em caso de erro na página, interrompe o loop principal
@@ -1137,19 +1139,19 @@ async function syncNFeEliane() {
 
             try {
                 const nfeListResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/nfe?pagina=${pagina}&limite=100&tipo=1`, 'eliane');
-                
+
                 // Se a página não retornar nenhuma nota, não há mais o que buscar. Interrompe o loop.
                 if (nfeListResponse.data.length === 0) {
                     console.log(`[ElianeSync] Nenhuma NF-e encontrada na página ${pagina}. Finalizando busca.`);
                     break;
                 }
-                 
+
                 for (const nfeResumo of nfeListResponse.data) {
                     // Verificação interna para interromper o processamento da página atual
                     if (shouldStopNFeEliane || isEmissaoPageActive) {
                         break;
                     }
-                    
+
                     try { // Bloco TRY para cada NFe individual
                         const chaveDeAcesso = nfeResumo.chaveAcesso;
                         if (!chaveDeAcesso) continue;
@@ -1168,12 +1170,12 @@ async function syncNFeEliane() {
                         if (nfeDetalhes.numeroPedidoLoja) {
                             try {
                                 const pedidoSearchResponse = await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas?numerosLojas[]=${nfeDetalhes.numeroPedidoLoja}`, 'eliane');
-                                
+
                                 if (pedidoSearchResponse.data && pedidoSearchResponse.data.length > 0) {
                                     await new Promise(resolve => setTimeout(resolve, 50));
                                     const pedidoId = pedidoSearchResponse.data[0].id;
                                     const pedidoDetalhes = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/pedidos/vendas/${pedidoId}`, 'eliane')).data;
-                                    
+
                                     const p = pedidoDetalhes;
                                     await pool.query(`
                                         INSERT INTO cached_pedido_venda (
@@ -1207,7 +1209,7 @@ async function syncNFeEliane() {
                                 console.error(`  [ElianeSync] Erro persistente ao processar pedido para a NF ${nfeDetalhes.numero}. Pulando pedido. Detalhe: ${pedidoError.message}`);
                             }
                         }
-                        
+
                         // Lógica original para calcular volumes e processar produtos
                         let totalVolumesCalculado = 0;
                         let idsBlingProduto = [];
@@ -1244,7 +1246,7 @@ async function syncNFeEliane() {
                                     ON CONFLICT (nfe_numero, produto_codigo)
                                     DO UPDATE SET quantidade = EXCLUDED.quantidade;
                                 `, [nfeDetalhes.numero, produtoCodigo, quantidadeTotal]);
-                                
+
                                 let volumesUnit = 0;
                                 if (cachedProductsMap.has(produtoCodigo)) {
                                     volumesUnit = parseFloat(cachedProductsMap.get(produtoCodigo).volumes || 0);
@@ -1265,14 +1267,14 @@ async function syncNFeEliane() {
                                     }
                                 }
                                 totalVolumesCalculado += volumesUnit * quantidadeTotal;
-                                
+
                                 try {
                                     await new Promise(resolve => setTimeout(resolve, 50));
                                     const prodSearchResp = await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos?codigos[]=${produtoCodigo}`, 'eliane');
                                     if (prodSearchResp.data?.[0]?.id) {
                                         idsBlingProduto.push(String(prodSearchResp.data[0].id).substring(0, 100));
                                     }
-                                } catch(idError) {
+                                } catch (idError) {
                                     console.error(`[ElianeSync] Erro persistente ao buscar ID do produto ${produtoCodigo}. Detalhe: ${idError.message}`);
                                 }
                             }
@@ -1328,12 +1330,12 @@ async function syncNFeEliane() {
                         continue; // Pula para a próxima NFe
                     }
                 } // Fim do for (nfeResumo)
-                
+
             } catch (pageError) {
                 console.error(`[ElianeSync] Erro persistente ao buscar página de NFs ${pagina}. Interrompendo sync de NFs. Detalhe: ${pageError.message}`);
                 break; // Em caso de erro na página, interrompe o loop principal
             }
-        
+
             // Lógica para verificação de notas canceladas (executada a cada página)
             await new Promise(resolve => setTimeout(resolve, 50));
             try {
@@ -1353,7 +1355,7 @@ async function syncNFeEliane() {
                 console.error(`[ElianeSync] Falha ao verificar NFs canceladas na página ${pagina}:`, cancelErr.message);
             }
         } // Fim do for (pagina)
-        
+
         console.log(`[ElianeSync] NF-e finalizadas. Total processadas nesta execução: ${totalNFsProcessadas}`);
     } catch (error) {
         console.error('[ElianeSync] Erro geral durante sincronização de NF-e:', error.message);
@@ -1368,7 +1370,7 @@ async function upsertNfe(client, data) {
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, CURRENT_TIMESTAMP)
         ON CONFLICT (bling_id, bling_account) DO UPDATE SET
         nfe_numero = EXCLUDED.nfe_numero, chave_acesso = EXCLUDED.chave_acesso, data_emissao = EXCLUDED.data_emissao, situacao = EXCLUDED.situacao, transportador_nome = EXCLUDED.transportador_nome, total_volumes = EXCLUDED.total_volumes, product_ids_list = EXCLUDED.product_ids_list, product_descriptions_list = EXCLUDED.product_descriptions_list, etiqueta_nome = EXCLUDED.etiqueta_nome, etiqueta_endereco = EXCLUDED.etiqueta_endereco, etiqueta_numero = EXCLUDED.etiqueta_numero, etiqueta_complemento = EXCLUDED.etiqueta_complemento, etiqueta_municipio = EXCLUDED.etiqueta_municipio, etiqueta_uf = EXCLUDED.etiqueta_uf, etiqueta_cep = EXCLUDED.etiqueta_cep, etiqueta_bairro = EXCLUDED.etiqueta_bairro, fone = EXCLUDED.fone, last_updated_at = CURRENT_TIMESTAMP;`;
-    await client.query(query, [ data.bling_id, data.bling_account, data.nfe_numero, data.chave_acesso, data.data_emissao, data.situacao, data.transportador_nome, data.total_volumes, data.product_ids_list, data.product_descriptions_list, data.etiqueta_nome, data.etiqueta_endereco, data.etiqueta_numero, data.etiqueta_complemento, data.etiqueta_municipio, data.etiqueta_uf, data.etiqueta_cep, data.etiqueta_bairro, data.fone ]);
+    await client.query(query, [data.bling_id, data.bling_account, data.nfe_numero, data.chave_acesso, data.data_emissao, data.situacao, data.transportador_nome, data.total_volumes, data.product_ids_list, data.product_descriptions_list, data.etiqueta_nome, data.etiqueta_endereco, data.etiqueta_numero, data.etiqueta_complemento, data.etiqueta_municipio, data.etiqueta_uf, data.etiqueta_cep, data.etiqueta_bairro, data.fone]);
 }
 async function upsertProduct(client, data) {
     const query = `
@@ -1419,6 +1421,85 @@ async function syncSingleProductAndStructuresLucas(sku, client) {
     return null;
 }
 
+/**
+ * Função isolada para sincronização de estoque dos produtos do Bling
+ */
+async function syncEstoqueBling(sync_prod = true) {
+    if (isEstoqueSyncRunning) {
+        console.log('[EstoqueSync] Sincronização de estoque já está em andamento. Pulando execução.');
+        return;
+    }
+    isEstoqueSyncRunning = true;
+
+    console.log('[EstoqueSync] Iniciando sincronização de estoque do Bling...');
+    const client = await pool.connect();
+
+    try {
+        // Pega todos os SKUs únicos no cache
+        const result = await client.query(`
+            SELECT DISTINCT sku 
+            FROM cached_products 
+            WHERE sku IS NOT NULL AND sku != '' 
+            AND bling_account = 'lucas'`);
+        const skus = result.rows.map(r => r.sku);
+
+        console.log(`[EstoqueSync] Encontrados ${skus.length} produtos únicos para sincronizar.`);
+
+        const chunkSize = 50; // Dividindo em blocos de 50 para evitar URL muito longa
+        let processedCount = 0;
+
+        for (let i = 0; i < skus.length; i += chunkSize) {
+            const chunk = skus.slice(i, i + chunkSize);
+            const queryParams = chunk.map(sku => `codigos[]=${encodeURIComponent(sku)}`).join('&');
+            // 14887607235 é o depósito fornecido
+            const url = `${BLING_API_BASE_URL}/estoques/saldos/14887607235?${queryParams}`;
+
+            try {
+                // Utilizando a conta lucas como principal para a consulta.
+                const response = await apiRequestWithRetry(url, 'lucas');
+
+                if (response.data && response.data.length > 0) {
+                    await client.query('BEGIN');
+                    for (const item of response.data) {
+                        const saldoFisico = item.saldoFisicoTotal || 0;
+                        const sku = item.produto?.codigo;
+                        if (sku) {
+                            await client.query(
+                                'UPDATE cached_products SET estoque = $1 WHERE sku = $2',
+                                [saldoFisico, sku]
+                            );
+                            processedCount++;
+                        }
+                    }
+                    await client.query('COMMIT');
+                }
+            } catch (err) {
+                // Se der erro no commit ou na API, fazemos rollback do bloco atual e continuamos o próximo
+                await client.query('ROLLBACK');
+                console.error(`[EstoqueSync] Erro no lote ${Math.floor(i / chunkSize) + 1}:`, err.message);
+            }
+
+            // Pausa entre as requisições para respeitar o rate limit do Bling (3 por segundo)
+            await new Promise(resolve => setTimeout(resolve, 350));
+        }
+
+        console.log(`[EstoqueSync] Sincronização finalizada. ${processedCount} saldos atualizados.`);
+        if (sync_prod) {
+            // Dispara a sincronização de produtos logo após a conclusão da sincronização de estoque
+            console.log('[EstoqueSync] Disparando a sincronização completa de produtos (Lucas)...');
+            syncBlingProductsLucas().catch(err => {
+                console.error('[EstoqueSync] Erro ao sincronizar produtos após o estoque:', err);
+            });
+        }
+    } catch (error) {
+        console.error('[EstoqueSync] Erro geral durante sincronização de estoque:', error.message);
+    } finally {
+        client.release();
+        isEstoqueSyncRunning = false;
+    }
+}
+
+
 module.exports = {
     syncNFeLucas,
     syncNFeEliane,
@@ -1431,7 +1512,8 @@ module.exports = {
     findAndCacheNfeByNumber: exports.findAndCacheNfeByNumber,
     findAndCachePedidoByLojaNumber: exports.findAndCachePedidoByLojaNumber,
     syncPedidosVendaFull,
-    getLucasStatus, 
+    getLucasStatus,
     getElianeStatus,
-    syncSingleProductAndStructuresLucas
+    syncSingleProductAndStructuresLucas,
+    syncEstoqueBling
 };
