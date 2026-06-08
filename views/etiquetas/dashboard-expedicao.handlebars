@@ -13,83 +13,91 @@
     <div class="dashboard-panel">
         <h4 class="panel-title"><i class="fas fa-chart-pie"></i> Balanço do Dia</h4>
         <div class="stat-grid">
-            <div class="stat-card" style="background: rgba(13, 202, 240, 0.1); border-color: rgba(13, 202, 240, 0.3);">
-                <h4 style="color: #0dcaf0;">Checados</h4>
+            <div class="stat-card stat-card-clickable" data-filter-status="Checado"
+                style="background: rgba(13, 202, 240, 0.06); border-color: rgba(13, 202, 240, 0.25);">
                 <div class="stat-value" id="dash-checados" style="color: #0dcaf0;">0</div>
+                <h4 style="color: #0dcaf0;">Checados</h4>
             </div>
-            <div class="stat-card pendentes"
-                style="background: rgba(255, 152, 0, 0.1); border-color: rgba(255, 152, 0, 0.3);">
-                <h4 style="color: #ff9800;">Pendentes</h4>
+            <div class="stat-card stat-card-clickable" data-filter-status="Pendente"
+                style="background: rgba(255, 152, 0, 0.06); border-color: rgba(255, 152, 0, 0.25);">
                 <div class="stat-value" id="dash-pendentes" style="color: #ff9800;">0</div>
+                <h4 style="color: #ff9800;">Pendentes</h4>
             </div>
-            <div class="stat-card"
-                style="background: rgba(108, 117, 125, 0.1); border-color: rgba(108, 117, 125, 0.3);">
-                <h4 style="color: #6c757d;">Pego, Sem Etiquetar</h4>
+            <div class="stat-card stat-card-clickable" data-filter-status="Pego, Sem Etiquetar"
+                style="background: rgba(108, 117, 125, 0.06); border-color: rgba(108, 117, 125, 0.25);">
                 <div class="stat-value" id="dash-sem-nota" style="color: #6c757d;">0</div>
+                <h4 style="color: #6c757d;">Pego, Sem Etiq.</h4>
             </div>
-            <div class="stat-card"
-                style="background: rgba(111, 66, 193, 0.1); border-color: rgba(111, 66, 193, 0.3);">
-                <h4 style="color: #6f42c1;">Conferência Envio</h4>
+            <div class="stat-card stat-card-clickable" data-filter-status="Conferência Envio"
+                style="background: rgba(111, 66, 193, 0.06); border-color: rgba(111, 66, 193, 0.25);">
                 <div class="stat-value" id="dash-conf-envio" style="color: #6f42c1;">0</div>
+                <h4 style="color: #6f42c1;">Conf. Envio</h4>
             </div>
-            <div class="stat-card subtracoes">
-                <h4>Sem Estoque</h4>
+            <div class="stat-card subtracoes stat-card-clickable" data-filter-status="Sem Estoque">
                 <div class="stat-value" id="dash-subtracoes">0</div>
+                <h4>Sem Estoque</h4>
             </div>
-            <div class="stat-card destaque">
-                <h4>Total a Expedir</h4>
+            <div class="stat-card destaque stat-card-clickable" data-filter-status="">
                 <div class="stat-value" id="dash-total">0</div>
+                <h4>A Expedir</h4>
             </div>
-            <div class="stat-card success">
-                <h4>Expedidos Hoje</h4>
+            <div class="stat-card success stat-card-clickable" data-filter-status="Expedido">
                 <div class="stat-value" id="dash-expedidos">0</div>
+                <h4>Expedidos</h4>
             </div>
         </div>
     </div>
 
     <div class="dashboard-panel">
-        <div class="table-controls"
-            style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; gap: 10px;">
-            <h4 class="panel-title mb-0" style="border: none; padding: 0;"><i class="fas fa-clipboard-list"></i>
-                Fila de Expedição e Pendências</h4>
-            <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <button id="btn-exportar-tabela-full" class="btn-premium orange"
-                        style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px;">
-                        <i class="fas fa-file-excel"></i> Gerar Relatório
+        <div class="table-toolbar">
+            <h4 class="panel-title mb-0" style="border: none; padding: 0; white-space: nowrap;"><i
+                    class="fas fa-clipboard-list"></i>
+                Fila de Expedição</h4>
+            <div class="toolbar-actions">
+                <div class="toolbar-buttons">
+                    <button id="btn-exportar-tabela-full" class="btn-toolbar" title="Gerar Relatório">
+                        <i class="fas fa-file-excel"></i><span>Rel. Tabela</span>
                     </button>
-                    <button id="btn-exportar-tabela-agrupada" class="btn-premium orange"
-                        style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px;">
-                        <i class="fas fa-boxes"></i> Contagem SKU
+                    <button id="btn-exportar-tabela-agrupada" class="btn-toolbar" title="Contagem SKU">
+                        <i class="fas fa-boxes"></i><span>Contagem SKU</span>
                     </button>
-                    <button id="btn-exportar-tabela-restante" class="btn-premium orange"
-                        style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px; background-color: transparent; border: 1px solid var(--accent-orange); color: var(--accent-orange);">
-                        <i class="fas fa-clipboard-check"></i> Faltantes (Já Separados)
+                    <button id="btn-exportar-tabela-restante" class="btn-toolbar btn-toolbar-outline" title="Faltantes">
+                        <i class="fas fa-clipboard-check"></i><span>Rel. Faltantes</span>
                     </button>
-                    <button id="btn-imprimir-pendencias" class="btn-premium orange"
-                        style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px;">
-                        <i class="fas fa-print"></i> Imprimir Etiquetas
+                    <button id="btn-imprimir-pendencias" class="btn-toolbar" title="Imprimir Etiquetas">
+                        <i class="fas fa-print"></i><span>Imprimir Etiq.</span>
                     </button>
-                    <button id="btn-massa-modo" class="btn-premium outline"
-                        style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px;">
-                        <i class="fas fa-check-square"></i> Seleção em Massa
+                    <button id="btn-massa-modo" class="btn-toolbar btn-toolbar-outline" title="Seleção em Massa">
+                        <i class="fas fa-check-square"></i><span>Seleção em Massa</span>
                     </button>
                 </div>
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <label for="filtro-status-tabela"
-                        style="color: var(--text-secondary); margin: 0; font-size: 0.9rem;">Filtro:</label>
-                    <select id="filtro-status-tabela" class="form-control-dark">
-                        <option value="">Todos os Status</option>
-                        <option value="Pendente">Pendentes</option>
-                        <option value="Hub">Hub</option>
-                        <option value="Checado">Checados</option>
-                        <option value="Sem Estoque">Sem Estoque</option>
-                        <option value="Cancelado">Cancelados</option>
-                        <option value="Expedido">Expedidos</option>
-                        <option value="Etiq. Impressa">Etiq. Impressa (Bipagem)</option>
-                        <option value="Pego, Sem Etiquetar">Pego, Sem Etiquetar</option>
-                        <option value="Conferência Envio">Conferência Envio</option>
-                    </select>
+                <div class="toolbar-filters">
+                    <div class="filter-group">
+                        <label class="filter-label">Interno:</label>
+                        <select id="filtro-status-tabela" class="filter-select" title="Filtro de Status">
+                            <option value="">Todos</option>
+                            <option value="Pendente">Pendentes</option>
+                            <option value="Hub">Hub</option>
+                            <option value="Checado">Checados</option>
+                            <option value="Sem Estoque">Sem Estoque</option>
+                            <option value="Cancelado">Cancelados</option>
+                            <option value="Expedido">Expedidos</option>
+                            <option value="Etiq. Impressa">Etiq. Impressa</option>
+                            <option value="Pego, Sem Etiquetar">Pego, Sem Etiq.</option>
+                            <option value="Conferência Envio">Conf. Envio</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label class="filter-label">ML:</label>
+                        <select id="filtro-status-ml-tabela" class="filter-select" title="Filtro Status ML">
+                            <option value="">Todos</option>
+                            <option value="Pronto para enviar">Pronto p/ enviar</option>
+                            <option value="Aguardando">Aguardando</option>
+                            <option value="Enviado">Enviado</option>
+                            <option value="Entregue">Entregue</option>
+                            <option value="Cancelado">Cancelado</option>
+                        </select>
+                    </div>
                 </div>
             </div>
         </div>
@@ -134,6 +142,7 @@
                     <th>SKU / Produto</th>
                     <th>Estoque</th>
                     <th>Localização</th>
+                    <th>Status ML</th>
                     <th>Status</th>
                     <th>Ações</th>
                 </tr>

@@ -413,6 +413,22 @@ let isHubPedidosSyncRunning = false;
     timezone: "America/Sao_Paulo"
 });*/
 
+cron.schedule('* * * * *', async () => {
+    try {
+        await HubPedidosService.monitorarPadrao();
+    } catch (e) {
+        console.error('[CRON MonitorarPadrao] Erro:', e);
+    }
+});
+
+cron.schedule('0 12 * * *', async () => {
+    try {
+        await HubPedidosService.monitorarAprofundado();
+    } catch (e) {
+        console.error('[CRON MonitorarAprofundado] Erro:', e);
+    }
+});
+
 // Rota para lidar com páginas não encontradas
 app.use((req, res) => {
     res.status(404).send('Página não encontrada');

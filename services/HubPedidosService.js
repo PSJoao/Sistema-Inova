@@ -483,6 +483,178 @@ async function enriquecerViaBling(clientMon, nfeNumero) {
     return enriqueceu;
 }
 
+const MAPA_STATUS_ML = {
+    'ready_to_ship': 'Pronto para enviar',
+    'pending': 'Aguardando',
+    'cancelled': 'Cancelado',
+    'shipped': 'Enviado',
+    'delivered': 'Entregue'
+};
+
+let isMonitorandoPadrao = false;
+
+/**
+ * Identifica a qual conta do Hub pertence um pedido baseado no padrão do nfe_numero.
+ * - Eliane: nfe_numero começa com "0" (5 dígitos reais + zero à esquerda = 6 chars)
+ * - Lucas: nfe_numero NÃO começa com "0" (6 dígitos reais, sem zero à esquerda)
+ * Retorna o índice da conta no array HUB_ACCOUNTS (0 = Eliane, 1 = Lucas).
+ */
+function identificarContaPorNfe(nfeNumero) {
+    if (!nfeNumero) return null;
+    const nfeStr = String(nfeNumero).trim();
+    // Eliane = começa com 0 → HUB_ACCOUNTS[0] (email_1)
+    // Lucas  = não começa com 0 → HUB_ACCOUNTS[1] (email_2)
+    return nfeStr.startsWith('0') ? 0 : 1;
+}
+
+async function executarMonitoramentoPorLote(pedidos, token) {
+    if (!pedidos || pedidos.length === 0) return;
+    console.log(`[HubPedidos] Iniciando monitoramento de ${pedidos.length} pedidos...`);
+
+    let clientMon;
+    let totalAtualizados = 0;
+    try {
+        clientMon = await poolMon.connect();
+        for (let i = 0; i < pedidos.length; i += 20) {
+            const lote = pedidos.slice(i, i + 20);
+            const ids = lote.map(p => p.id_envio_ml || p.pack_id).filter(Boolean);
+            const pedidosIds = lote.map(p => p.numero_loja || p.pack_id).filter(Boolean);
+            if (ids.length === 0 && pedidosIds.length === 0) continue;
+
+            let url = `${HUB_API_URL}/hub/api/pedidos/monitoramento-instantaneo?ids=${ids.join(',')}`;
+            if (pedidosIds.length > 0) {
+                url += `&pedidos=${pedidosIds.join(',')}`;
+            }
+
+            try {
+                const response = await axios.get(url, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                const dadosLote = response.data.dados || [];
+                let atualizados = 0;
+
+                for (const item of dadosLote) {
+                    const statusMl = item.status_envio || 'pending';
+                    const statusTraduzido = MAPA_STATUS_ML[statusMl] || statusMl;
+                    const idPedidoStr = item.id_pedido_ml ? String(item.id_pedido_ml) : null;
+                    const idEnvioStr = item.id_envio_ml ? String(item.id_envio_ml) : null;
+
+                    const updateRes = await clientMon.query(
+                        `UPDATE cached_etiquetas_ml 
+                         SET status_ml = $1 
+                         WHERE numero_loja = $2::text
+                            OR ($3::text IS NOT NULL AND (id_envio_ml = $3::text OR pack_id = $3::text))`,
+                        [statusTraduzido, idPedidoStr, idEnvioStr]
+                    );
+                    atualizados += updateRes.rowCount;
+                }
+                totalAtualizados += atualizados;
+            } catch (err) {
+                console.error(`[HubPedidos] Erro no lote ${i}-${i + 20}:`, err.message);
+            }
+        }
+        console.log(`[HubPedidos] Monitoramento finalizado. ${totalAtualizados}/${pedidos.length} atualizados.`);
+    } catch (e) {
+        console.error(`[HubPedidos] Erro geral no monitoramento:`, e.message);
+    } finally {
+        if (clientMon) clientMon.release();
+    }
+}
+
+/**
+ * Separa os pedidos por conta (Eliane/Lucas) com base no nfe_numero,
+ * obtém o token de cada conta e executa o monitoramento por lote separadamente.
+ */
+async function monitorarPorConta(pedidos) {
+    if (!pedidos || pedidos.length === 0) return;
+    if (HUB_ACCOUNTS.length === 0) {
+        console.warn('[HubPedidos] Nenhuma conta Hub configurada. Abortando monitoramento.');
+        return;
+    }
+
+    // Separa os pedidos por conta
+    const gruposPorConta = {};
+    for (const pedido of pedidos) {
+        const idx = identificarContaPorNfe(pedido.nfe_numero);
+        if (idx === null || idx >= HUB_ACCOUNTS.length) continue;
+        if (!gruposPorConta[idx]) gruposPorConta[idx] = [];
+        gruposPorConta[idx].push(pedido);
+    }
+
+    // Para cada grupo, autentica na conta correta e monitora
+    for (const [idxStr, grupo] of Object.entries(gruposPorConta)) {
+        const idx = parseInt(idxStr);
+        const account = HUB_ACCOUNTS[idx];
+        console.log(`[HubPedidos] Monitorando ${grupo.length} pedidos na conta ${account.email}...`);
+
+        try {
+            const token = await getHubToken(account);
+            if (!token) {
+                console.error(`[HubPedidos] Falha ao obter token para conta ${account.email}. Pulando grupo.`);
+                continue;
+            }
+            await executarMonitoramentoPorLote(grupo, token);
+        } catch (err) {
+            console.error(`[HubPedidos] Erro ao monitorar grupo da conta ${account.email}:`, err.message);
+        }
+    }
+}
+
+async function monitorarPadrao() {
+    if (isMonitorandoPadrao) return;
+    isMonitorandoPadrao = true;
+    console.log('[HubPedidos] Monitoramento Padrão iniciado.');
+
+    try {
+        let clientMon;
+        try {
+            clientMon = await poolMon.connect();
+            const res = await clientMon.query(`
+                SELECT id, nfe_numero, id_envio_ml, pack_id, numero_loja
+                FROM cached_etiquetas_ml
+                WHERE status != 'cancelado' AND status != 'impresso'
+            `);
+            console.log(`[HubPedidos] Monitoramento Padrão: ${res.rows.length} pedidos encontrados.`);
+            if (res.rows.length > 0) {
+                await monitorarPorConta(res.rows);
+            }
+        } finally {
+            if (clientMon) clientMon.release();
+        }
+    } catch (error) {
+        console.error('[HubPedidos] Erro no monitorarPadrao:', error.message);
+    } finally {
+        isMonitorandoPadrao = false;
+    }
+}
+
+async function monitorarAprofundado() {
+    console.log('[HubPedidos] Iniciando Monitoramento Aprofundado (120 dias)...');
+    try {
+        let clientMon;
+        try {
+            clientMon = await poolMon.connect();
+            const res = await clientMon.query(`
+                SELECT id, nfe_numero, id_envio_ml, pack_id, numero_loja
+                FROM cached_etiquetas_ml
+                WHERE created_at >= NOW() - INTERVAL '120 days'
+            `);
+            console.log(`[HubPedidos] Monitoramento Aprofundado: ${res.rows.length} pedidos encontrados.`);
+            if (res.rows.length > 0) {
+                await monitorarPorConta(res.rows);
+            }
+        } finally {
+            if (clientMon) clientMon.release();
+        }
+        console.log('[HubPedidos] Monitoramento Aprofundado concluído.');
+    } catch (error) {
+        console.error('[HubPedidos] Erro no monitorarAprofundado:', error.message);
+    }
+}
+
 module.exports = {
-    sincronizar
+    sincronizar,
+    monitorarPadrao,
+    monitorarAprofundado
 };

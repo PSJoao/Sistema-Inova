@@ -79,6 +79,21 @@ exports.searchNfeByChave = async (req, res) => {
     const { chave } = req.params;
 
     try {
+        // [NOVO] Bloqueio preventivo pelo Status Real do ML
+        const mlCheck = await pool.query(
+            `SELECT status_ml, nfe_numero FROM cached_etiquetas_ml WHERE chave_acesso = $1 OR nfe_numero = $1 LIMIT 1`,
+            [chave]
+        );
+        if (mlCheck.rows.length > 0) {
+            const statusMl = mlCheck.rows[0].status_ml;
+            if (statusMl === 'Cancelado' || statusMl === 'Enviado' || statusMl === 'Entregue') {
+                return res.status(400).json({
+                    message: `Bloqueio de Segurança: O status deste pedido no Mercado Livre é '${statusMl}'. A conferência não deve prosseguir.`,
+                    code: 'STATUS_ML_BLOCK'
+                });
+            }
+        }
+
         // 1. Busca a Nota Fiscal
         // [ALTERAÇÃO] Adicionado 'bling_account' no SELECT para saber de quem é a nota
         let nfeQuery = `

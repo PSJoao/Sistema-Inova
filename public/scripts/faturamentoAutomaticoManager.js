@@ -12,8 +12,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     <div class="modal-radio-group">
                         <label class="radio-option">
-                            <input type="radio" name="contaFaturamento" value="lucas">
+                            <input type="radio" name="contaFaturamento" value="lucas" checked>
                             <span class="radio-label">Conta Lucas</span>
+                        </label>
+                        <label class="radio-option" style="margin-left: 15px;">
+                            <input type="radio" name="contaFaturamento" value="eliane">
+                            <span class="radio-label">Conta Eliane</span>
                         </label>
                     </div>
                     <br>

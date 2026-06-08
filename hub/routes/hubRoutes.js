@@ -11,6 +11,7 @@ router.post('/api/login', hubApiController.login);
 
 // Rotas Privadas (Dados) - Exige Token
 router.get('/api/pedidos', verifyHubToken, hubApiController.getPedidos);
+router.get('/api/pedidos/monitoramento-instantaneo', verifyHubToken, hubApiController.monitoramentoInstantaneo);
 
 // Rota para buscar todos os pedidos vinculados a um ID de Envio específico
 router.get('/api/envios/:id_envio', verifyHubToken, hubApiController.getEnvioPorId);

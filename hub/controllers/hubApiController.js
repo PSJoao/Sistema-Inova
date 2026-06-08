@@ -2,6 +2,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('../middleware/auth');
 const { poolHub, poolProdutos } = require('../config/database');
+const hubMercadoLivreService = require('../services/hubMercadoLivreService');
 
 exports.login = async (req, res) => {
     const { email, password } = req.body;
@@ -363,3 +364,104 @@ exports.getProdutoPorId = async (req, res) => {
         res.status(500).json({ error: 'Erro interno ao buscar dados do produto.' });
     }
 };
+
+exports.monitoramentoInstantaneo = async (req, res) => {
+    const clienteId = req.user.id;
+    const { ids, pedidos } = req.query;
+
+    if (!ids && !pedidos) {
+        return res.status(400).json({ error: 'Parâmetros ids ou pedidos são obrigatórios' });
+    }
+
+    const idsArray = ids ? ids.split(',').map(id => id.trim()).filter(id => id) : [];
+    const pedidosArray = pedidos ? pedidos.split(',').map(id => id.trim()).filter(id => id) : [];
+
+    if (idsArray.length === 0 && pedidosArray.length === 0) {
+        return res.status(400).json({ error: 'Envie pelo menos um ID válido.' });
+    }
+
+    try {
+        // 1. Executar a rotina de monitoramento instantâneo
+        await hubMercadoLivreService.monitorarPedidosInstantaneo(idsArray, pedidosArray, clienteId);
+
+        // 2. Buscar os pedidos atualizados no banco e consolidá-los (mesma lógica de getPedidos)
+        const query = `
+            SELECT p.*, c.nickname as nome_loja
+            FROM pedidos_mercado_livre p
+            JOIN hub_ml_contas c ON p.conta_id = c.id
+            WHERE c.cliente_id = $1 AND (p.id_pedido_ml = ANY($2) OR p.id_envio_ml = ANY($3))
+        `;
+        const result = await poolHub.query(query, [clienteId, pedidosArray, idsArray]);
+        const rows = result.rows;
+
+        const pacotesMap = new Map();
+
+        rows.forEach(p => {
+            const chave = p.id_envio_ml || `pedido_${p.id_pedido_ml}`;
+
+            if (!pacotesMap.has(chave)) {
+                pacotesMap.set(chave, {
+                    id_pedido_ml: p.id_pedido_ml,
+                    id_envio_ml: p.id_envio_ml,
+                    status_envio: p.status_envio,
+                    data_criacao: p.date_created,
+                    data_limite_envio: p.data_limite_envio,        
+                    data_envio_disponivel: p.data_envio_disponivel, 
+                    data_envio_agendado: p.data_envio_agendado, 
+                    data_previsao_entrega: p.data_previsao_entrega,
+                    comprador_nickname: p.comprador_nickname,
+                    etiqueta_zpl: p.etiqueta_zpl,
+                    conta_id: p.conta_id,
+                    nome_loja: p.nome_loja,
+                    status_pedido_geral: p.status_pedido, 
+                    frete_envio: p.frete_envio,
+                    tem_dev: p.tem_dev || false,
+                    tem_med: p.tem_med || false,
+                    status_dev: p.status_dev || null,
+                    status_med: p.status_med || null,
+                    id_envio_dev: p.id_envio_dev || null,
+                    status_envio_dev: p.status_envio_dev || null,
+                    nfe_numero: p.nfe_numero || null,
+                    chave_acesso: p.chave_acesso || null,
+                    ids_pedidos_originais: [],
+                    itens: []
+                });
+            }
+
+            const pacote = pacotesMap.get(chave);
+
+            if (p.tem_dev) {
+                pacote.tem_dev = true;
+                pacote.status_dev = p.status_dev;
+                pacote.id_envio_dev = p.id_envio_dev;
+                pacote.status_envio_dev = p.status_envio_dev;
+            }
+            if (p.tem_med) {
+                pacote.tem_med = true;
+                pacote.status_med = p.status_med;
+            }
+
+            pacote.ids_pedidos_originais.push(p.id_pedido_ml);
+
+            let itens = p.itens_pedido;
+            if (typeof itens === 'string') {
+                try { itens = JSON.parse(itens); } catch(e) { itens = []; }
+            }
+            
+            if (Array.isArray(itens)) {
+                pacote.itens = pacote.itens.concat(itens);
+            }
+        });
+
+        const listaConsolidada = Array.from(pacotesMap.values());
+
+        res.json({
+            total_retornado: listaConsolidada.length,
+            dados: listaConsolidada
+        });
+
+    } catch (error) {
+        console.error('Erro no monitoramento instantâneo:', error);
+        res.status(500).json({ error: 'Erro interno ao realizar monitoramento instantâneo.' });
+    }
+};

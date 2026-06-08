@@ -316,6 +316,7 @@ function initTabelas() {
             { data: 'sku' },
             { data: 'estoque' },
             { data: 'localizacao' },
+            { data: 'statusMlBadge' },
             { data: 'statusBadge' },
             { data: 'acoes' }
         ]
@@ -354,8 +355,35 @@ function initTabelas() {
 
     // Evento de Filtro via Combobox
     $('#filtro-status-tabela').on('change', function () {
-        // A coluna 8 agora é 'statusBadge'
+        // A coluna 9 é 'statusBadge'
+        tabelaPendencias.column(9).search(this.value, false, false).draw();
+    });
+
+    $('#filtro-status-ml-tabela').on('change', function () {
+        // A coluna 8 é 'statusMlBadge'
         tabelaPendencias.column(8).search(this.value, false, false).draw();
+    });
+
+    // Evento de Clique nos Cards de Balanço do Dia (Filtro Rápido)
+    $('.stat-card-clickable').on('click', function() {
+        const filterValue = $(this).attr('data-filter-status') || '';
+        
+        // Atualiza visualmente o card ativo
+        $('.stat-card-clickable').removeClass('stat-card-active');
+        if (filterValue !== "") {
+            $(this).addClass('stat-card-active');
+        }
+        
+        // Atualiza o select do filtro interno e dispara o change para o DataTables
+        $('#filtro-status-tabela').val(filterValue).trigger('change');
+        
+        // Reseta o filtro ML para não conflitar com o clique rápido (opcional)
+        $('#filtro-status-ml-tabela').val('').trigger('change');
+        
+        // Rola a tela suavemente até a tabela
+        $('html, body').animate({
+            scrollTop: $('.table-toolbar').offset().top - 20
+        }, 500);
     });
 }
 
@@ -493,10 +521,24 @@ async function carregarDadosDashboard() {
             document.getElementById('dash-expedidos').innerText = data.stats.expedidos_hoje || 0;
         }
 
-        // 2. Prepara os dados formatados para o DataTables
         const linhasFormatadas = data.pendencias.map(item => {
             const dataFmt = new Date(item.created_at).toLocaleString('pt-BR');
             const herancaIcon = item.heranca_ontem ? '<i class="fas fa-history" title="Herança" style="color:var(--color-warning); margin-left: 5px;"></i>' : '';
+
+            let statusMlBadge = '-';
+            if (item.status_ml) {
+                if (item.status_ml === 'Pronto para enviar') {
+                    statusMlBadge = '<span class="badge" style="background-color: #28a745; color: #fff;">Pronto para enviar</span>';
+                } else if (item.status_ml === 'Enviado') {
+                    statusMlBadge = '<span class="badge" style="background-color: #007bff; color: #fff;">Enviado</span>';
+                } else if (item.status_ml === 'Entregue') {
+                    statusMlBadge = '<span class="badge" style="background-color: #17a2b8; color: #fff;">Entregue</span>';
+                } else if (item.status_ml === 'Cancelado') {
+                    statusMlBadge = '<span class="badge" style="background-color: #dc3545; color: #fff;">Cancelado</span>';
+                } else {
+                    statusMlBadge = `<span class="badge badge-secondary">${item.status_ml}</span>`;
+                }
+            }
 
             let statusBadge = '';
             if (item.status === 'pendente') statusBadge = '<span class="badge badge-orange">Pendente</span>';
@@ -561,6 +603,7 @@ async function carregarDadosDashboard() {
                 estoque: estoqueFormatted,
                 localizacao: item.locations || '-',
                 skusOriginal: item.skus,
+                statusMlBadge: statusMlBadge,
                 statusBadge: statusBadge,
                 acoes: acoes
             };

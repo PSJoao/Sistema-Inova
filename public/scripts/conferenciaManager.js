@@ -346,7 +346,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (!response.ok) {
                 sounds.error.play().catch(e => console.log(e));
-                if (data.code === 'ALREADY_CHECKED') {
+                if (data.code === 'STATUS_ML_BLOCK') {
+                    ModalSystem.alert(data.message, "Atenção: Ação Bloqueada");
+                } else if (data.code === 'ALREADY_CHECKED') {
                     ToastSystem.warning(`A nota fiscal ${data.nfeNumero || 'N/A'} já foi conferida!`);
                 } else {
                     ToastSystem.error(data.message || "Erro ao buscar nota.");

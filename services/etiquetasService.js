@@ -2367,6 +2367,7 @@ async function obterDadosDashboardExpedicao() {
                 m.nfe_numero, 
                 m.situacao,
                 m.origem,
+                m.status_ml,
                 COALESCE(m.pack_id, m.numero_loja) AS numero_loja_calc, 
                 cpv.numero AS pedido_numero, 
                 m.skus, 

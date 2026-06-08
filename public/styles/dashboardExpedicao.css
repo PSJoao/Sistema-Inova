@@ -73,64 +73,217 @@
 }
 
 /* ==========================================================================
-   STATS GRID (Responsividade Automática Inteligente)
+   STATS GRID (Compacto — todos na mesma linha)
    ========================================================================== */
 .stat-grid {
-    display: grid;
-    /* Isso cria colunas automáticas sem quebrar em telas pequenas */
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
 }
 
 .stat-card {
     background: var(--bg-tertiary, #2a2a2a);
     border-radius: var(--border-radius-md, 8px);
-    padding: 1.5rem;
-    border: 1px solid rgba(255, 255, 255, 0.02);
+    padding: 0.65rem 0.9rem;
+    border: 1px solid rgba(255, 255, 255, 0.04);
     display: flex;
-    flex-direction: column;
-    text-align: center;
-    transition: transform var(--transition-fast, 0.3s) ease;
+    align-items: center;
+    gap: 0.6rem;
+    flex: 1 1 0;
+    min-width: 120px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .stat-card:hover {
-    transform: translateY(-5px);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .stat-card h4 {
     color: var(--text-muted, #888);
-    font-size: 0.85rem;
+    font-size: 0.65rem;
     text-transform: uppercase;
-    margin-bottom: 1rem;
-    letter-spacing: 1px;
+    margin: 0;
+    letter-spacing: 0.3px;
     font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
 }
 
 .stat-value {
-    font-size: 2.2rem;
+    font-size: 1.4rem;
     font-weight: 800;
     color: #fff;
     line-height: 1;
+    white-space: nowrap;
 }
 
 /* Cores específicas dos cards */
-.stat-card.heranca .stat-value { color: var(--color-warning, #ffc107); }
-.stat-card.novos .stat-value { color: var(--color-info, #17a2b8); }
-.stat-card.subtracoes .stat-value { color: var(--color-danger, #dc3545); }
+.stat-card.heranca .stat-value {
+    color: var(--color-warning, #ffc107);
+}
+
+.stat-card.novos .stat-value {
+    color: var(--color-info, #17a2b8);
+}
+
+.stat-card.subtracoes .stat-value {
+    color: var(--color-danger, #dc3545);
+}
+
+.stat-card.subtracoes h4 {
+    color: var(--color-danger, #dc3545);
+}
 
 .stat-card.destaque {
     border: 1px solid var(--accent-orange, #f07c00);
-    background: linear-gradient(180deg, rgba(240, 124, 0, 0.1) 0%, transparent 100%);
+    background: linear-gradient(180deg, rgba(240, 124, 0, 0.08) 0%, transparent 100%);
 }
 
 .stat-card.destaque .stat-value {
     color: var(--accent-orange, #f07c00);
 }
 
+.stat-card.success {
+    border: 1px solid rgba(40, 167, 69, 0.4);
+    background: rgba(40, 167, 69, 0.06);
+}
+
+.stat-card.success h4 {
+    color: #28a745;
+}
+
+.stat-card.success .stat-value {
+    color: #28a745;
+}
+
+/* ==========================================================================
+   TOOLBAR (Botões + Filtros compactos)
+   ========================================================================== */
+.table-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.1rem;
+}
+
+.toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin-left: auto;
+}
+
+.toolbar-buttons {
+    display: flex;
+    gap: 0.35rem;
+}
+
+.toolbar-filters {
+    display: flex;
+    gap: 0.4rem;
+}
+
+.btn-toolbar {
+    background: var(--accent-orange, #f07c00);
+    border: 1px solid var(--accent-orange, #f07c00);
+    color: #fff;
+    border-radius: 6px;
+    padding: 0.3rem 0.6rem;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.75rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.btn-toolbar:hover {
+    background: #d86f00;
+    transform: translateY(-1px);
+}
+
+.btn-toolbar-outline {
+    background: transparent;
+    border: 1px solid rgba(240, 124, 0, 0.5);
+    color: var(--accent-orange, #f07c00);
+}
+
+.btn-toolbar-outline:hover {
+    background: rgba(240, 124, 0, 0.1);
+    border-color: var(--accent-orange, #f07c00);
+}
+
+.filter-select {
+    background-color: var(--bg-tertiary, #2a2a2a);
+    color: var(--text-primary, #fff);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 0.3rem 0.5rem;
+    font-size: 0.78rem;
+    outline: none;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    min-width: 100px;
+}
+
+.filter-select:focus {
+    border-color: var(--accent-orange, #f07c00);
+    box-shadow: 0 0 0 2px rgba(240, 124, 0, 0.15);
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.8rem;
+}
+
+.filter-label {
+    color: var(--text-secondary, #aaa);
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+}
+
+/* Cards clicáveis */
+.stat-card-clickable {
+    cursor: pointer;
+    position: relative;
+}
+
+.stat-card-clickable::after {
+    content: '\f0b0';
+    font-family: 'Font Awesome 5 Free';
+    font-weight: 900;
+    position: absolute;
+    top: 5px;
+    right: 7px;
+    font-size: 0.5rem;
+    opacity: 0;
+    color: inherit;
+    transition: opacity 0.2s ease;
+}
+
+.stat-card-clickable:hover::after {
+    opacity: 0.4;
+}
+
+.stat-card-clickable.stat-card-active {
+    box-shadow: 0 0 0 2px currentColor, 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
 /* ==========================================================================
    FORMULÁRIOS E BOTÕES (Match com inputs de Bipagem)
    ========================================================================== */
-.form-control-dark, .bip-select {
+.form-control-dark,
+.bip-select {
     background-color: var(--bg-tertiary, #2a2a2a);
     color: var(--text-primary, #fff);
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -142,7 +295,8 @@
     width: 100%;
 }
 
-.form-control-dark:focus, .bip-select:focus {
+.form-control-dark:focus,
+.bip-select:focus {
     border-color: var(--accent-orange, #f07c00);
     box-shadow: 0 0 0 2px rgba(240, 124, 0, 0.2);
 }
@@ -185,8 +339,13 @@
     font-size: 0.85rem;
 }
 
-.gap-2 { gap: 0.5rem !important; }
-.gap-3 { gap: 1rem !important; }
+.gap-2 {
+    gap: 0.5rem !important;
+}
+
+.gap-3 {
+    gap: 1rem !important;
+}
 
 /* ==========================================================================
    REFORMULAÇÃO TOTAL DO DATATABLES
@@ -198,9 +357,11 @@
 }
 
 /* Ajustes estruturais da Tabela */
-table.dataTable, .dashboard-wrapper .table {
+table.dataTable,
+.dashboard-wrapper .table {
     width: 100% !important;
-    border-collapse: collapse !important; /* Resolve colunas separadas/fantasmas */
+    border-collapse: collapse !important;
+    /* Resolve colunas separadas/fantasmas */
     margin: 1.5rem 0 !important;
     color: var(--text-secondary, #ccc);
 }
@@ -213,11 +374,12 @@ table.dataTable, .dashboard-wrapper .table {
     margin: 0 !important;
 }
 
-table.dataTable thead th, 
+table.dataTable thead th,
 table.dataTable tbody td,
 .dashboard-wrapper .table thead th,
 .dashboard-wrapper .table tbody td {
-    box-sizing: border-box; /* Previne que o padding quebre as larguras */
+    box-sizing: border-box;
+    /* Previne que o padding quebre as larguras */
     padding: 1rem 1.2rem;
     border: none;
     vertical-align: middle;
@@ -301,7 +463,8 @@ table.dataTable tbody tr:hover,
     cursor: pointer;
     font-weight: 500;
     transition: all var(--transition-fast, 0.2s) ease !important;
-    margin: 0 !important; /* Remove margens zoadas do padrão */
+    margin: 0 !important;
+    /* Remove margens zoadas do padrão */
 }
 
 /* Hover nos botões normais */
@@ -342,8 +505,9 @@ table.dataTable tbody tr:hover,
 /* 1. Força todos os botões a serem "blocos" preenchidos, e não apenas textos soltos */
 .dataTables_wrapper .dataTables_paginate .paginate_button,
 .dataTables_wrapper .dataTables_paginate .page-item .page-link {
-    display: inline-block !important; 
-    margin: 0 3px !important; /* Dá um respiro entre os botões */
+    display: inline-block !important;
+    margin: 0 3px !important;
+    /* Dá um respiro entre os botões */
     border-radius: var(--border-radius-md, 6px) !important;
     text-align: center;
     vertical-align: middle;
@@ -355,7 +519,8 @@ table.dataTable tbody tr:hover,
 .dataTables_wrapper .dataTables_paginate .page-item.active .page-link {
     color: #ffffff !important;
     font-weight: 700 !important;
-    pointer-events: none; /* Evita que o usuário clique na página que já está aberta */
+    pointer-events: none;
+    /* Evita que o usuário clique na página que já está aberta */
 }
 
 /* ==========================================================================
@@ -409,6 +574,7 @@ table.dataTable tbody tr:hover,
     background: rgba(240, 124, 0, 0.15);
     color: var(--accent-orange, #f07c00);
 }
+
 .btn-action-accent:hover {
     background: var(--accent-orange, #f07c00);
     color: #fff;
@@ -420,6 +586,7 @@ table.dataTable tbody tr:hover,
     background: rgba(255, 193, 7, 0.15);
     color: #ffc107;
 }
+
 .btn-action-warning:hover {
     background: #ffc107;
     color: #1e1e2f;
@@ -431,6 +598,7 @@ table.dataTable tbody tr:hover,
     background: rgba(220, 53, 69, 0.15);
     color: #dc3545;
 }
+
 .btn-action-danger:hover {
     background: #dc3545;
     color: #fff;
@@ -442,6 +610,7 @@ table.dataTable tbody tr:hover,
     background: rgba(40, 167, 69, 0.15);
     color: #28a745;
 }
+
 .btn-action-success:hover {
     background: #28a745;
     color: #fff;
@@ -453,6 +622,7 @@ table.dataTable tbody tr:hover,
     background: rgba(156, 39, 176, 0.15);
     color: #9C27B0;
 }
+
 .btn-action-print:hover {
     background: #9C27B0;
     color: #fff;
