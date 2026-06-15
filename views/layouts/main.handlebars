@@ -209,17 +209,17 @@
   <script>
     document.addEventListener('DOMContentLoaded', function () {
       // Exibe mensagens flash usando o ModalSystem
-      { { #if success_msg.length } }
+      {{#if success_msg.length}}
       ModalSystem.alert('{{success_msg}}', 'Sucesso!');
-      { {/if } }
+      {{/if}}
 
-      { { #if error_msg.length } }
+      {{#if error_msg.length}}
       ModalSystem.alert('{{error_msg}}', 'Erro!');
-      { {/if } }
+      {{/if}}
 
-      { { #if info_msg.length } }
+      {{#if info_msg.length}}
       ModalSystem.alert('{{info_msg}}', 'Aviso');
-      { {/if } }
+      {{/if}}
     });
   </script>
 </body>

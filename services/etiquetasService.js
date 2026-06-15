@@ -308,6 +308,9 @@ async function extrairDadosDosPdfs(pdfInputs, ondasMap = []) {
     const etiquetas = [];
     let fileIndex = 0;
 
+    // Set para rastrear IDs e evitar duplicatas (ex: Danfe Simplificada que vem após a etiqueta principal)
+    const seenIds = new Set();
+
     for (const pdfInput of pdfInputs) {
         const { buffer, originalFilename } = pdfInput;
         fileIndex++;
@@ -384,6 +387,8 @@ async function extrairDadosDosPdfs(pdfInputs, ondasMap = []) {
                 const vendaMatch = textoPagina.match(/Venda:\s*(\d+)/);
                 const packIdMatch = textoPagina.match(/Pack ID:\s*(\d+)/);
 
+                let etiquetaData = null;
+
                 // APLICAÇÃO DA HIERARQUIA CORRETA DE BUSCA: NF > Venda > Pack ID
                 if (nfMatch) {
                     console.log(`   > Página ${pageIndex + 1}: Encontrado por HIERARQUIA 1 (NF): ${nfMatch[1]}`);
@@ -407,6 +412,15 @@ async function extrairDadosDosPdfs(pdfInputs, ondasMap = []) {
                 }
 
                 if (etiquetaData) {
+                    // Dedup: Se já vimos este id (NF ou Venda), pulamos.
+                    // Isso evita que a Danfe Simplificada (que vem após a etiqueta principal) sobrescreva ou duplique os dados.
+                    const uniqueKey = `${etiquetaData.tipoId}_${etiquetaData.id}`;
+                    if (seenIds.has(uniqueKey)) {
+                        console.log(`   > Página ${pageIndex + 1}: Etiqueta ignorada (Danfe Simplificada ou duplicata mantendo a primeira) -> ${uniqueKey}`);
+                        continue;
+                    }
+                    seenIds.add(uniqueKey);
+
                     let ondaEncontrada = { cor: '-', prioridade: 99 };
                     if (ondasMap && ondasMap.length > 0) {
                         const textoNormalizado = textoPagina.replace(/_/g, ' ');
@@ -458,7 +472,7 @@ async function buscarInformacoesCruciais(etiquetasExtraidas, nomeArquivoGerado, 
             let nfeNumeroFinal = null;
             let numeroLojaFinal = null;
             let pedidoInterno = null;
-            let packIdOriginal = etiqueta.originalPackId || null; // Pega daqui
+            let packIdOriginal = etiqueta.originalPackId || null;
 
             try {
                 if (etiqueta.tipoId === 'nfe') {
@@ -469,7 +483,7 @@ async function buscarInformacoesCruciais(etiquetasExtraidas, nomeArquivoGerado, 
                         numeroLojaFinal = pedidoRes.rows[0]?.numero_loja;
                     }
                 } else if (etiqueta.tipoId === 'numero_loja') {
-                    info = await getInfoPorNumeroLoja(etiqueta.id);
+                    info = await getInfoPorNumeroLoja(etiqueta.id, packIdOriginal);
                     numeroLojaFinal = etiqueta.id;
                     nfeNumeroFinal = info?.nfeNumero;
                 }
@@ -713,12 +727,21 @@ async function getInfoPorNFe(nfeNumero) {
     }
 }
 
-async function getInfoPorNumeroLoja(numeroLoja) {
+async function getInfoPorNumeroLoja(numeroLoja, pack_id = null) {
     let client;
+    let query;
+    let result;
+
     try {
         client = await pool.connect();
-        const query = 'SELECT nfe_parent_numero FROM cached_pedido_venda WHERE numero_loja = $1';
-        let result = await client.query(query, [numeroLoja]);
+
+        query = 'SELECT nfe_parent_numero FROM cached_pedido_venda WHERE numero_loja = $1';
+        result = await client.query(query, [numeroLoja]);
+
+        if (result.rows.length <= 0 && pack_id) {
+            query = 'SELECT nfe_parent_numero FROM cached_pedido_venda WHERE numero_loja = $1';
+            result = await client.query(query, [pack_id]);
+        }
 
         if (!result.rows.length || !result.rows[0].nfe_parent_numero) {
             console.log(`   [Cache Miss] Pedido com Numero Loja ${numeroLoja} não encontrado. Solicitando busca no Bling...`);
@@ -2332,9 +2355,300 @@ async function syncBlingConferenciaMassa(nfeList) {
     }
 }
 
-async function obterDadosDashboardExpedicao() {
+// ============================================================================
+// ENVIO INDIVIDUAL AO BLING (1 pedido por vez)
+// ============================================================================
+async function syncBlingConferenciaIndividual(nfeNumero) {
     const client = await pool.connect();
     try {
+        // 1. Pega dados para o Bling
+        const nfeDataRes = await client.query(`
+            SELECT n.bling_account, p.bling_id as pedidoblingid 
+            FROM cached_nfe n
+            LEFT JOIN cached_pedido_venda p ON p.notafiscal_id = n.bling_id
+            WHERE n.nfe_numero = $1 LIMIT 1
+        `, [nfeNumero]);
+
+        if (nfeDataRes.rows.length === 0 || !nfeDataRes.rows[0].pedidoblingid) {
+            throw new Error("Pedido Bling não encontrado no cache local.");
+        }
+
+        const accountName = nfeDataRes.rows[0].bling_account || 'lucas';
+        const pedidoBlingId = nfeDataRes.rows[0].pedidoblingid;
+
+        // 2. Chama a API do Bling
+        const accessToken = await getValidBlingToken(accountName);
+        const url = `https://api.bling.com.br/Api/v3/pedidos/vendas/${pedidoBlingId}/situacoes/24`;
+
+        await axios.patch(url, {}, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+
+        // 3. Sucesso: Atualiza o DB
+        await client.query(`
+            UPDATE cached_etiquetas_ml 
+            SET bling_sync_status = 'success',
+                bling_error_msg = null,
+                status = 'impresso',
+                last_processed_at = CURRENT_TIMESTAMP
+            WHERE nfe_numero = $1
+        `, [nfeNumero]);
+
+        return { nfe: nfeNumero, success: true };
+
+    } catch (err) {
+        let errorMsg = "Erro desconhecido ao atualizar Bling.";
+        if (err.response) {
+            if (err.response.data && err.response.data.error) {
+                errorMsg = err.response.data.error.message || JSON.stringify(err.response.data.error);
+            } else {
+                errorMsg = "O Bling rejeitou a atualização (Status " + err.response.status + ").";
+            }
+        } else if (err.request) {
+            errorMsg = "Sem comunicação com a API do Bling.";
+        } else {
+            errorMsg = err.message;
+        }
+
+        await client.query(`
+            UPDATE cached_etiquetas_ml 
+            SET bling_sync_status = 'error',
+                bling_error_msg = $1
+            WHERE nfe_numero = $2
+        `, [errorMsg, nfeNumero]);
+
+        return { nfe: nfeNumero, success: false, message: errorMsg };
+    } finally {
+        client.release();
+    }
+}
+
+// ============================================================================
+// ENVIO EM LOTE INTELIGENTE (Blocos de 100, 2 em paralelo, retry, limite 500)
+// ============================================================================
+const blingLoteJobs = new Map();
+
+function getStatusBlingLoteJob(jobId) {
+    return blingLoteJobs.get(jobId) || null;
+}
+
+async function syncBlingConferenciaLoteInteligente() {
+    // 1. Cria o job
+    const jobId = `bling-lote-${Date.now()}`;
+    const jobState = {
+        status: 'running',
+        totalPedidos: 0,
+        blocoAtual: 0,
+        totalBlocos: 0,
+        processadosNoBloco: 0,
+        tamanhoBloco: 0,
+        sucessos: 0,
+        erros: 0,
+        logErros: [],
+        iniciado: new Date().toISOString(),
+        concluido: null
+    };
+    blingLoteJobs.set(jobId, jobState);
+
+    // Auto-expiração após 1 hora
+    setTimeout(() => blingLoteJobs.delete(jobId), 3600000);
+
+    // 2. Inicia o processamento assíncrono (não bloqueia a resposta HTTP)
+    _processarLoteBling(jobId, jobState).catch(err => {
+        console.error(`[Bling Lote] Erro fatal no job ${jobId}:`, err);
+        jobState.status = 'error';
+        jobState.concluido = new Date().toISOString();
+        jobState.logErros.push({ nfe: 'SISTEMA', message: err.message });
+    });
+
+    return jobId;
+}
+
+async function _processarLoteBling(jobId, jobState) {
+    const client = await pool.connect();
+    try {
+        // 1. Busca até 500 pedidos pendentes/erro, mais antigos primeiro
+        const query = `
+            SELECT m.nfe_numero
+            FROM cached_etiquetas_ml m
+            LEFT JOIN conferencia_relatorio cr ON cr.nfe_numero = m.nfe_numero
+            WHERE m.passou_conferencia_bipagem = true
+              AND m.bling_sync_status IN ('pending', 'error')
+            ORDER BY cr.data_hora ASC NULLS LAST
+            LIMIT 10
+        `;
+        const res = await client.query(query);
+        const nfeList = res.rows.map(r => r.nfe_numero);
+
+        if (nfeList.length === 0) {
+            jobState.status = 'completed';
+            jobState.concluido = new Date().toISOString();
+            return;
+        }
+
+        jobState.totalPedidos = nfeList.length;
+
+        // 2. Divide em blocos de 100
+        const BLOCK_SIZE = 100;
+        const blocos = [];
+        for (let i = 0; i < nfeList.length; i += BLOCK_SIZE) {
+            blocos.push(nfeList.slice(i, i + BLOCK_SIZE));
+        }
+        jobState.totalBlocos = blocos.length;
+
+        console.log(`[Bling Lote] Job ${jobId}: ${nfeList.length} pedidos em ${blocos.length} blocos de ${BLOCK_SIZE}`);
+
+        // 3. Processa cada bloco
+        for (let b = 0; b < blocos.length; b++) {
+            const bloco = blocos[b];
+            jobState.blocoAtual = b + 1;
+            jobState.processadosNoBloco = 0;
+            jobState.tamanhoBloco = bloco.length;
+
+            const errosDoBloco = [];
+
+            // 3a. Processa de 2 em 2 (paralelo)
+            for (let i = 0; i < bloco.length; i += 2) {
+                const pair = bloco.slice(i, i + 2);
+                const resultados = await Promise.allSettled(
+                    pair.map(nfe => _executarSyncBlingUnico(nfe))
+                );
+
+                for (let j = 0; j < resultados.length; j++) {
+                    const resultado = resultados[j];
+                    if (resultado.status === 'fulfilled' && resultado.value.success) {
+                        jobState.sucessos++;
+                    } else {
+                        const errMsg = resultado.status === 'fulfilled'
+                            ? resultado.value.message
+                            : resultado.reason?.message || 'Erro desconhecido';
+                        errosDoBloco.push({ nfe: pair[j], message: errMsg });
+                        jobState.erros++;
+                    }
+                }
+
+                jobState.processadosNoBloco = Math.min(i + 2, bloco.length);
+
+                // Pausa de 100ms entre cada par
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+
+            // 3b. Retry dos erros do bloco (1 tentativa extra, sequencial)
+            if (errosDoBloco.length > 0) {
+                console.log(`[Bling Lote] Bloco ${b + 1}: Retentando ${errosDoBloco.length} erros...`);
+                for (const errItem of errosDoBloco) {
+                    try {
+                        const retryResult = await _executarSyncBlingUnico(errItem.nfe);
+                        if (retryResult.success) {
+                            // Corrigiu no retry! Ajusta contadores
+                            jobState.sucessos++;
+                            jobState.erros--;
+                        } else {
+                            // Continua com erro — registra no log final
+                            jobState.logErros.push({ nfe: errItem.nfe, message: retryResult.message });
+                        }
+                    } catch (retryErr) {
+                        jobState.logErros.push({ nfe: errItem.nfe, message: retryErr.message || 'Erro no retry' });
+                    }
+                    // Pausa entre retries
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+            }
+
+            console.log(`[Bling Lote] Bloco ${b + 1}/${blocos.length} concluído. Sucessos: ${jobState.sucessos}, Erros: ${jobState.erros}`);
+        }
+
+        jobState.status = 'completed';
+        jobState.concluido = new Date().toISOString();
+        console.log(`[Bling Lote] Job ${jobId} concluído. Total: ${jobState.totalPedidos}, Sucessos: ${jobState.sucessos}, Erros: ${jobState.erros}`);
+
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Executa a sincronização Bling de uma única NFe (sem gerenciar conexão de pool externa)
+ */
+async function _executarSyncBlingUnico(nfeNumero) {
+    const client = await pool.connect();
+    try {
+        const nfeDataRes = await client.query(`
+            SELECT n.bling_account, p.bling_id as pedidoblingid 
+            FROM cached_nfe n
+            LEFT JOIN cached_pedido_venda p ON p.notafiscal_id = n.bling_id
+            WHERE n.nfe_numero = $1 LIMIT 1
+        `, [nfeNumero]);
+
+        if (nfeDataRes.rows.length === 0 || !nfeDataRes.rows[0].pedidoblingid) {
+            const errMsg = "Pedido Bling não encontrado no cache local.";
+            await client.query(`
+                UPDATE cached_etiquetas_ml 
+                SET bling_sync_status = 'error', bling_error_msg = $1
+                WHERE nfe_numero = $2
+            `, [errMsg, nfeNumero]);
+            return { nfe: nfeNumero, success: false, message: errMsg };
+        }
+
+        const accountName = nfeDataRes.rows[0].bling_account || 'lucas';
+        const pedidoBlingId = nfeDataRes.rows[0].pedidoblingid;
+
+        const accessToken = await getValidBlingToken(accountName);
+        const url = `https://api.bling.com.br/Api/v3/pedidos/vendas/${pedidoBlingId}/situacoes/24`;
+
+        await axios.patch(url, {}, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+
+        await client.query(`
+            UPDATE cached_etiquetas_ml 
+            SET bling_sync_status = 'success',
+                bling_error_msg = null,
+                status = 'impresso',
+                last_processed_at = CURRENT_TIMESTAMP
+            WHERE nfe_numero = $1
+        `, [nfeNumero]);
+
+        return { nfe: nfeNumero, success: true };
+
+    } catch (err) {
+        let errorMsg = "Erro desconhecido ao atualizar Bling.";
+        if (err.response) {
+            if (err.response.data && err.response.data.error) {
+                errorMsg = err.response.data.error.message || JSON.stringify(err.response.data.error);
+            } else {
+                errorMsg = "O Bling rejeitou a atualização (Status " + err.response.status + ").";
+            }
+        } else if (err.request) {
+            errorMsg = "Sem comunicação com a API do Bling.";
+        } else {
+            errorMsg = err.message;
+        }
+
+        await client.query(`
+            UPDATE cached_etiquetas_ml 
+            SET bling_sync_status = 'error', bling_error_msg = $1
+            WHERE nfe_numero = $2
+        `, [errorMsg, nfeNumero]);
+
+        return { nfe: nfeNumero, success: false, message: errorMsg };
+    } finally {
+        client.release();
+    }
+}
+
+async function obterDadosDashboardExpedicao(dataInicio, dataFim) {
+    const client = await pool.connect();
+    try {
+        let dateFilter = '';
+        let mDateFilter = '';
+        let dateParams = [];
+        if (dataInicio && dataFim) {
+            dateFilter = ` AND created_at >= $1 AND created_at <= $2 `;
+            mDateFilter = ` AND m.created_at >= $1 AND m.created_at <= $2 `;
+            dateParams = [`${dataInicio} 00:00:00`, `${dataFim} 23:59:59`];
+        }
+
         const statsQuery = `
             SELECT 
                 COUNT(*) FILTER (WHERE status = 'checado') as checados,
@@ -2345,9 +2659,9 @@ async function obterDadosDashboardExpedicao() {
                 COUNT(*) FILTER (WHERE status IN ('sem_estoque')) as subtracoes,
                 COUNT(*) FILTER (WHERE status IN ('pendente', 'checado', 'hub')) as saldo_real
             FROM cached_etiquetas_ml
-            WHERE status != 'impresso'
+            WHERE status != 'impresso' ${dateFilter}
         `;
-        const statsRes = await client.query(statsQuery);
+        const statsRes = dateParams.length ? await client.query(statsQuery, dateParams) : await client.query(statsQuery);
 
         // NFs concluídas hoje (Convencionais via tabela `expedicao_registros` + Massa via `last_processed_at`)
         const expedidosQuery = `
@@ -2356,8 +2670,9 @@ async function obterDadosDashboardExpedicao() {
             LEFT JOIN expedicao_registros r ON r.nf = m.nfe_numero AND DATE(r.created_at) = data_virtual_expedicao()
             WHERE m.status = 'impresso' 
               AND (DATE(m.last_processed_at) = data_virtual_expedicao() OR r.id IS NOT NULL)
+              ${mDateFilter}
         `;
-        const expedidosRes = await client.query(expedidosQuery);
+        const expedidosRes = dateParams.length ? await client.query(expedidosQuery, dateParams) : await client.query(expedidosQuery);
         statsRes.rows[0].expedidos_hoje = parseInt(expedidosRes.rows[0].expedidos_hoje) || 0;
 
         // Fila Reactiva: Pendentes, Pausadas, ou Impressas (se acabaram de ser impressas hoje)
@@ -2374,18 +2689,19 @@ async function obterDadosDashboardExpedicao() {
                 m.locations,
                 m.status, 
                 m.created_at, 
-                (DATE(m.created_at) < data_virtual_expedicao() AND m.status NOT IN ('cancelado', 'sem_estoque', 'impresso')) as heranca_ontem,
+                (DATE(m.created_at) < data_virtual_expedicao() AND m.status NOT IN ('cancelado', 'cancelamento', 'sem_estoque', 'impresso')) as heranca_ontem,
                 CASE WHEN m.status = 'impresso' THEN 1 ELSE 0 END as order_status
             FROM cached_etiquetas_ml m
             LEFT JOIN expedicao_registros r ON r.nf = m.nfe_numero AND DATE(r.created_at) = data_virtual_expedicao()
             LEFT JOIN cached_pedido_venda cpv ON cpv.nfe_parent_numero = m.nfe_numero
-            WHERE m.status != 'impresso'
-               OR (m.status = 'impresso' AND (DATE(m.last_processed_at) = data_virtual_expedicao() OR r.id IS NOT NULL))
+            WHERE (m.status != 'impresso'
+               OR (m.status = 'impresso' AND (DATE(m.last_processed_at) = data_virtual_expedicao() OR r.id IS NOT NULL)))
+               ${mDateFilter}
             ORDER BY 
                order_status ASC,
                m.created_at DESC
         `;
-        const filaRes = await client.query(filaQuery);
+        const filaRes = dateParams.length ? await client.query(filaQuery, dateParams) : await client.query(filaQuery);
 
         // EXTRAÇÃO: Anexar 'tipo_ml' de cached_products aos SKUs processados (Ordenador Style)
         let uniqueSkus = new Set();
@@ -2847,7 +3163,7 @@ async function identificarCodigoBipado(codigo) {
         const mlCheck = await client.query(`SELECT id, status FROM cached_etiquetas_ml WHERE nfe_numero = $1 LIMIT 1`, [finalNfeNumero]);
         if (mlCheck.rows.length > 0) {
             // TRAVA DE SEGURANÇA: Bloqueia imediatamente se a nota estiver cancelada
-            if (mlCheck.rows[0].status === 'cancelado') {
+            if (mlCheck.rows[0].status === 'cancelado' || mlCheck.rows[0].status === 'cancelamento') {
                 return {
                     success: false,
                     message: `A Nota Fiscal ${finalNfeNumero} está CANCELADA e não pode ser expedida. Devolva o produto.`
@@ -2883,7 +3199,7 @@ async function validarNftBipagemMassa(codigo) {
 
         const mlCheck = await client.query(`SELECT id, status FROM cached_etiquetas_ml WHERE nfe_numero = $1 LIMIT 1`, [finalNfeNumero]);
         if (mlCheck.rows.length > 0) {
-            if (mlCheck.rows[0].status === 'impresso' || mlCheck.rows[0].status === 'cancelado') {
+            if (mlCheck.rows[0].status === 'impresso' || mlCheck.rows[0].status === 'cancelado' || mlCheck.rows[0].status === 'cancelamento') {
                 return { success: false, message: `Esta NF possui status definitivo (${mlCheck.rows[0].status.toUpperCase()}) e não pode mais ser alterada nesta tela.` };
             }
             return { success: true, type: 'nfe', nfe: finalNfeNumero, nf_id: mlCheck.rows[0].id, status_atual: mlCheck.rows[0].status };
@@ -2910,7 +3226,7 @@ async function atualizarStatusEmLote(nfList, novoStatus) {
             UPDATE cached_etiquetas_ml
             SET status = $1, last_processed_at = timestamp_virtual_expedicao()
             WHERE nfe_numero = ANY($2::text[])
-            AND status != 'impresso' AND status != 'cancelado'
+            AND status != 'impresso' AND status != 'cancelado' AND status != 'cancelamento'
         `, queryParams);
 
         await client.query('COMMIT');
@@ -4231,5 +4547,8 @@ module.exports = {
     atualizarGlobalDashboardEmLote,
     atualizarPaginasCorretasNoDB,
     obterDadosGestaoConferencia,
-    syncBlingConferenciaMassa
+    syncBlingConferenciaMassa,
+    syncBlingConferenciaIndividual,
+    syncBlingConferenciaLoteInteligente,
+    getStatusBlingLoteJob
 };

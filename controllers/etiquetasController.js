@@ -36,7 +36,7 @@ const { gerarZipEtiquetasCarregadores } = require('../services/carregadoresPdfSe
         // --- 2. Cancelar Etiquetas Pendentes (Fim do Expediente) ---
         const cancelQuery = `
             UPDATE cached_etiquetas_ml 
-            SET status = 'cancelado' 
+            SET status = 'cancelamento' 
             WHERE status = 'pendente';
         `;
         const resultCancel = await client.query(cancelQuery);
@@ -83,7 +83,8 @@ exports.renderDashboardExpedicao = (req, res) => {
 // --- NOVOS MÉTODOS: DASHBOARD DE EXPEDIÇÃO (API AJAX) ---
 exports.apiGetDashboardExpedicao = async (req, res) => {
     try {
-        const dados = await etiquetasService.obterDadosDashboardExpedicao();
+        const { dataInicio, dataFim } = req.query;
+        const dados = await etiquetasService.obterDadosDashboardExpedicao(dataInicio, dataFim);
         res.json(dados);
     } catch (error) {
         console.error('[EtiquetasController] Erro ao buscar dados do dashboard:', error);
@@ -113,6 +114,53 @@ exports.apiSyncBlingConferencia = async (req, res) => {
     } catch (error) {
         console.error('[EtiquetasController] Erro ao sincronizar Bling em massa:', error);
         res.status(500).json({ error: 'Erro ao sincronizar com o Bling.' });
+    }
+};
+
+// --- ENVIO INDIVIDUAL AO BLING ---
+exports.apiSyncBlingConferenciaIndividual = async (req, res) => {
+    try {
+        const { nfeNumero } = req.body;
+        if (!nfeNumero) {
+            return res.status(400).json({ error: 'Número da NFe é obrigatório.' });
+        }
+
+        const resultado = await etiquetasService.syncBlingConferenciaIndividual(nfeNumero);
+        res.json(resultado);
+    } catch (error) {
+        console.error('[EtiquetasController] Erro ao sincronizar NFe individual com Bling:', error);
+        res.status(500).json({ success: false, message: 'Erro ao sincronizar com o Bling.' });
+    }
+};
+
+// --- ENVIO EM LOTE INTELIGENTE AO BLING ---
+exports.apiSyncBlingConferenciaLote = async (req, res) => {
+    try {
+        const jobId = await etiquetasService.syncBlingConferenciaLoteInteligente();
+        res.json({ success: true, jobId });
+    } catch (error) {
+        console.error('[EtiquetasController] Erro ao iniciar lote inteligente Bling:', error);
+        res.status(500).json({ success: false, message: 'Erro ao iniciar processamento em lote.' });
+    }
+};
+
+// --- STATUS DO JOB DE LOTE INTELIGENTE ---
+exports.apiSyncBlingConferenciaLoteStatus = async (req, res) => {
+    try {
+        const { jobId } = req.query;
+        if (!jobId) {
+            return res.status(400).json({ error: 'jobId é obrigatório.' });
+        }
+
+        const status = etiquetasService.getStatusBlingLoteJob(jobId);
+        if (!status) {
+            return res.status(404).json({ error: 'Job não encontrado ou expirado.' });
+        }
+
+        res.json(status);
+    } catch (error) {
+        console.error('[EtiquetasController] Erro ao consultar status do lote:', error);
+        res.status(500).json({ error: 'Erro ao consultar status.' });
     }
 };
 
@@ -241,7 +289,7 @@ exports.apiAtualizarStatusPendencia = async (req, res) => {
     try {
         const { id, status } = req.body;
         // Validação de segurança para não aceitarem status malucos
-        if (!['pendente', 'hub', 'sem_estoque', 'cancelado', 'bip_sem_etiq', 'conf_envio'].includes(status)) {
+        if (!['pendente', 'hub', 'sem_estoque', 'cancelado', 'cancelamento', 'bip_sem_etiq', 'conf_envio'].includes(status)) {
             return res.status(400).json({ error: 'Status inválido.' });
         }
 

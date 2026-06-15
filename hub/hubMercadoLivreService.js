@@ -211,8 +211,8 @@ class HubMercadoLivreService {
                                     }
 
                                     // 2. Data de Envio Disponível
-                                    if (statusHistory.date_handling || envioData.date_created || statusHistory.date_ready_to_ship) {
-                                        novoPedido.data_envio_disponivel = statusHistory.date_handling || envioData.date_created || statusHistory.date_ready_to_ship;
+                                    if (statusHistory.date_ready_to_ship) {
+                                        novoPedido.data_envio_disponivel = statusHistory.date_ready_to_ship;
                                     }
 
                                     // 3. Data Previsão de Entrega
@@ -321,7 +321,7 @@ class HubMercadoLivreService {
                 JOIN hub_ml_contas c ON p.conta_id = c.id
                 WHERE p.status_pedido NOT IN ('cancelled')
                 AND p.status_envio NOT IN ('cancelled', 'delivered')
-                /* Removido o filtro estrito de IN para monitorar handling e shipped sem etiqueta */
+                AND p.status_envio IN ('pending', 'ready_to_ship')
                 AND p.conta_id NOT IN (6, 7)
             `;
             const result = await client.query(query);
@@ -485,8 +485,8 @@ class HubMercadoLivreService {
                                     }
 
                                     // 2. Data de Envio Disponível (Quando ficou 'ready_to_ship')
-                                    if (statusHistory.date_handling || envioData.date_created || statusHistory.date_ready_to_ship) {
-                                        pedidoAtualizado.data_envio_disponivel = statusHistory.date_handling || envioData.date_created || statusHistory.date_ready_to_ship;
+                                    if (statusHistory.date_ready_to_ship) {
+                                        pedidoAtualizado.data_envio_disponivel = statusHistory.date_ready_to_ship;
                                     }
 
                                     // 4. Data Previsão de Entrega (Para o cliente final)
@@ -742,8 +742,8 @@ class HubMercadoLivreService {
                                     }
 
                                     // 2. Data de Envio Disponível (Quando ficou 'ready_to_ship')
-                                    if (statusHistory.date_handling || envioData.date_created || statusHistory.date_ready_to_ship) {
-                                        pedidoAtualizado.data_envio_disponivel = statusHistory.date_handling || envioData.date_created || statusHistory.date_ready_to_ship;
+                                    if (statusHistory.date_ready_to_ship) {
+                                        pedidoAtualizado.data_envio_disponivel = statusHistory.date_ready_to_ship;
                                     }
 
                                     // 4. Data Previsão de Entrega (Para o cliente final)
@@ -1001,8 +1001,8 @@ class HubMercadoLivreService {
                                     }
 
                                     // 2. Data de Envio Disponível (Quando ficou 'ready_to_ship')
-                                    if (statusHistory.date_handling || envioData.date_created || statusHistory.date_ready_to_ship) {
-                                        pedidoAtualizado.data_envio_disponivel = statusHistory.date_handling || envioData.date_created || statusHistory.date_ready_to_ship;
+                                    if (statusHistory.date_ready_to_ship) {
+                                        pedidoAtualizado.data_envio_disponivel = statusHistory.date_ready_to_ship;
                                     }
 
                                     // 4. Data Previsão de Entrega (Para o cliente final)
@@ -1467,8 +1467,8 @@ class HubMercadoLivreService {
                                         }
                                     }
 
-                                    if (statusHistory.date_handling || envioData.date_created || statusHistory.date_ready_to_ship) {
-                                        pedidoAtualizado.data_envio_disponivel = statusHistory.date_handling || envioData.date_created || statusHistory.date_ready_to_ship;
+                                    if (statusHistory.date_ready_to_ship) {
+                                        pedidoAtualizado.data_envio_disponivel = statusHistory.date_ready_to_ship;
                                     }
 
                                     if (shippingOption.estimated_delivery_time?.date) {
@@ -1625,8 +1625,8 @@ class HubMercadoLivreService {
                                     pedidoNovo.data_envio_agendado = dataBuffering > hoje ? shippingOption.buffering.date : null;
                                 }
 
-                                if (statusHistory.date_handling || envioData.date_created || statusHistory.date_ready_to_ship) {
-                                    pedidoNovo.data_envio_disponivel = statusHistory.date_handling || envioData.date_created || statusHistory.date_ready_to_ship;
+                                if (statusHistory.date_ready_to_ship) {
+                                    pedidoNovo.data_envio_disponivel = statusHistory.date_ready_to_ship;
                                 }
 
                                 if (shippingOption.estimated_delivery_time?.date) {

@@ -55,6 +55,9 @@ router.post('/api/expedicao/atualizar-status', etiquetasController.apiAtualizarS
 // Rotas de API para a Gestão de Conferência em Massa (Dashboard)
 router.get('/api/expedicao/conferencia-gestao', etiquetasController.apiGetConferenciaGestao);
 router.post('/api/expedicao/conferencia-sync-bling', etiquetasController.apiSyncBlingConferencia);
+router.post('/api/expedicao/conferencia-sync-bling-individual', etiquetasController.apiSyncBlingConferenciaIndividual);
+router.post('/api/expedicao/conferencia-sync-bling-lote', etiquetasController.apiSyncBlingConferenciaLote);
+router.get('/api/expedicao/conferencia-sync-bling-lote/status', etiquetasController.apiSyncBlingConferenciaLoteStatus);
 
 router.get('/api/expedicao/historico', etiquetasController.apiGetHistoricoExpedicoes);
 router.get('/api/expedicao/historico/relatorio/:data', etiquetasController.apiDownloadRelatorioExpedicao);

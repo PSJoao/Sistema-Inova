@@ -72,7 +72,8 @@ barcodeInput.addEventListener('keydown', async function(e) {
         const nomesStatus = {
             'checado': 'Checado',
             'sem_estoque': 'Sem Estoque (Pausado)',
-            'cancelado': 'Cancelado',
+            'cancelamento': 'Cancelado',
+            'cancelado': 'Cancelado Efetivado',
             'pendente': 'Pendente (Retomar)',
             'bip_sem_etiq': 'Pego, Sem Etiquetar',
             'conf_envio': 'Conferência Envio'

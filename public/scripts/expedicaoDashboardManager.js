@@ -287,7 +287,8 @@ function initTabelas() {
             { data: 'data_hora' },
             { data: 'status_local' },
             { data: 'status_bling' },
-            { data: 'erro_bling' }
+            { data: 'erro_bling' },
+            { data: 'acao', orderable: false, className: 'text-center' }
         ]
     });
 
@@ -296,7 +297,8 @@ function initTabelas() {
         language: dataTablesLangBR,
         pageLength: 10,
         scrollX: true,
-        ordering: false, // Mantém a ordem decrescente do banco de dados (created_at DESC)
+        ordering: true, // Mantém a ordem decrescente obrigatoriamente
+        order: [[1, "desc"]], // Ordena pela Data Entrada (coluna 1) decrescente
         columns: [
             {
                 data: null,
@@ -309,7 +311,15 @@ function initTabelas() {
                     return `<input type="checkbox" class="chk-massa-row" value="${nfBase}" style="cursor: pointer; width: 16px; height: 16px; margin-top: 5px;" ${checked}>`;
                 }
             },
-            { data: 'dataEntrada' },
+            { 
+                data: 'dataEntrada',
+                render: function(data, type, row) {
+                    if (type === 'sort' || type === 'type') {
+                        return row.dataEntradaRaw || '';
+                    }
+                    return data;
+                }
+            },
             { data: 'nfHtml' },
             { data: 'pedidoId' },
             { data: 'numeroLoja' },
@@ -321,6 +331,48 @@ function initTabelas() {
             { data: 'acoes' }
         ]
     });
+
+    // Filtro de Data Global (Próximo à Busca Global)
+    const searchWrapper = $('#tabela-pendencias_filter');
+    if (searchWrapper.length) {
+        // Aplica flexbox no wrapper do DataTables para garantir alinhamento perfeito na mesma linha
+        searchWrapper.css({
+            'display': 'flex',
+            'align-items': 'center',
+            'justify-content': 'flex-end',
+            'gap': '15px'
+        });
+        
+        // Remove a margem inferior padrão da label de busca do DataTables (Bootstrap as vezes adiciona)
+        searchWrapper.find('label').css('margin-bottom', '0');
+
+        // Estado Padrão do Filtro: Últimos 30 dias contados a partir da data atual
+        const hoje = new Date();
+        const trintaDiasAtras = new Date();
+        trintaDiasAtras.setDate(hoje.getDate() - 30);
+        
+        const formatData = (d) => {
+            const tzOffset = d.getTimezoneOffset() * 60000; // offset in milliseconds
+            const localISOTime = (new Date(d.getTime() - tzOffset)).toISOString().slice(0, 10);
+            return localISOTime;
+        };
+        
+        const dateFilterHtml = `
+            <div id="data-filter-wrapper" style="display:flex; align-items: center; gap: 5px;">
+                <label style="margin: 0; font-size: 0.9rem; color: var(--text-secondary);">Período:</label>
+                <input type="date" id="filtro-data-inicio" class="form-control form-control-sm" style="width:auto; background-color: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border-color);" value="${formatData(trintaDiasAtras)}">
+                <span style="margin: 0; color: var(--text-secondary);">até</span>
+                <input type="date" id="filtro-data-fim" class="form-control form-control-sm" style="width:auto; background-color: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border-color);" value="${formatData(hoje)}">
+            </div>
+        `;
+        searchWrapper.prepend(dateFilterHtml);
+        
+        // Recarregar os dados ao alterar a data
+        $('#filtro-data-inicio, #filtro-data-fim').on('change', function() {
+            carregarDadosDashboard();
+            carregarGestaoConferencia();
+        });
+    }
 
     // Listener para o clique na checkbox da linha (DELEGAÇÃO DE EVENTO)
     $('#tabela-pendencias tbody').on('change', '.chk-massa-row', function () {
@@ -356,7 +408,16 @@ function initTabelas() {
     // Evento de Filtro via Combobox
     $('#filtro-status-tabela').on('change', function () {
         // A coluna 9 é 'statusBadge'
-        tabelaPendencias.column(9).search(this.value, false, false).draw();
+        let val = this.value;
+        if (val === 'Cancelado') {
+            // Regex para buscar 'Cancelado' mas não 'Cancelado Efetivado'
+            // O DataTables usa o texto puro sem HTML, então pode ter 'Cancelado Etiq. Impressa'
+            tabelaPendencias.column(9).search('^Cancelado(?! Efetivado)', true, false).draw();
+        } else if (val) {
+            tabelaPendencias.column(9).search(val, false, false).draw();
+        } else {
+            tabelaPendencias.column(9).search('', false, false).draw();
+        }
     });
 
     $('#filtro-status-ml-tabela').on('change', function () {
@@ -498,7 +559,15 @@ function initDashboardRealTime() {
  */
 async function carregarDadosDashboard() {
     try {
-        const response = await fetch('/api/expedicao/dashboard-dados');
+        let url = '/api/expedicao/dashboard-dados';
+        const dataInicioEl = document.getElementById('filtro-data-inicio');
+        const dataFimEl = document.getElementById('filtro-data-fim');
+        
+        if (dataInicioEl && dataFimEl && dataInicioEl.value && dataFimEl.value) {
+            url += `?dataInicio=${dataInicioEl.value}&dataFim=${dataFimEl.value}`;
+        }
+
+        const response = await fetch(url);
         if (!response.ok) throw new Error('Erro na rede ao buscar dados do dashboard.');
         const data = await response.json();
 
@@ -547,7 +616,8 @@ async function carregarDadosDashboard() {
             else if (item.status === 'conf_envio') statusBadge = '<span class="badge" style="background-color: #6f42c1; color: #fff;">Conferência Envio</span>';
             else if (item.status === 'checado') statusBadge = '<span class="badge" style="background-color: #0dcaf0; color: #1e1e2f;">Checado</span>';
             else if (item.status === 'sem_estoque') statusBadge = '<span class="badge" style="background-color: var(--color-warning); color: #1e1e2f;">Sem Estoque</span>';
-            else if (item.status === 'cancelado') statusBadge = '<span class="badge" style="background-color: var(--color-danger); color: #fff;">Cancelado</span>';
+            else if (item.status === 'cancelamento') statusBadge = '<span class="badge" style="background-color: var(--color-danger); color: #fff;">Cancelado</span>';
+            else if (item.status === 'cancelado') statusBadge = '<span class="badge" style="background-color: #8b0000; color: #fff;">Cancelado Efetivado</span>';
             else if (item.status === 'impresso') statusBadge = '<span class="badge" style="background-color: #4CAF50; color: #fff;">Expedido</span>';
 
             // Flag visual: etiqueta impressa pela bipagem de produtos (situacao=impresso mas status NÃO é impresso/expedido)
@@ -596,6 +666,7 @@ async function carregarDadosDashboard() {
             return {
                 nf_numero: item.nfe_numero || item.nf || '-',
                 dataEntrada: `${dataFmt} ${herancaIcon}`,
+                dataEntradaRaw: item.created_at,
                 nfHtml: `<strong>${item.nfe_numero || item.nf || '-'}</strong>`,
                 pedidoId: item.pedido_numero || item.pack_id || '-',
                 numeroLoja: item.numero_loja_calc || item.numero_loja || '-',
@@ -667,6 +738,16 @@ async function carregarGestaoConferencia() {
                 else if (item.status_ml === 'impresso') localStatus = '<span class="badge badge-success">Expedido</span>';
                 else localStatus = `<span class="badge badge-secondary">${item.status_ml || 'Desconhecido'}</span>`;
 
+                // Botão de ação individual
+                let acaoHtml = '';
+                if (isPendingSync || isErrorSync) {
+                    acaoHtml = `<button class="btn-action btn-action-accent btn-sync-individual" data-nfe="${item.nfe_numero}" title="Enviar ao Bling" style="min-width:32px;"><i class="fas fa-cloud-upload-alt"></i></button>`;
+                } else if (isSuccessSync) {
+                    acaoHtml = `<span class="btn-action btn-action-disabled" title="Já enviado" style="min-width:32px;"><i class="fas fa-check"></i></span>`;
+                } else {
+                    acaoHtml = '-';
+                }
+
                 return {
                     nfe: `<strong>${item.nfe_numero || '-'}</strong>`,
                     pedido: item.pedido_numero || '-',
@@ -675,7 +756,8 @@ async function carregarGestaoConferencia() {
                     status_local: localStatus,
                     status_bling: syncBadge,
                     erro_bling: isErrorSync && item.bling_error_msg ? `<span class="text-danger small" style="word-break: break-word;" title="${item.bling_error_msg}">${item.bling_error_msg}</span>` : '-',
-                    _rawItem: item // guardamos pra puxar dps
+                    acao: acaoHtml,
+                    _rawItem: item
                 };
             });
             tabelaGestaoConferencia.clear().rows.add(formatado).draw(false);
@@ -685,60 +767,246 @@ async function carregarGestaoConferencia() {
     }
 }
 
+// ==========================================
+// ENVIO INDIVIDUAL AO BLING
+// ==========================================
+window.enviarIndividualBling = async function(nfeNumero) {
+    // Já temos referência indireta. Mas pra facilitar delegação de evento:
+};
+
 function initGestaoConferenciaListeners() {
+    // --- Delegação de Evento: Envio Individual ---
+    $('#tabela-gestao-conferencia tbody').on('click', '.btn-sync-individual', async function (e) {
+        e.preventDefault();
+        const btn = $(this);
+        const nfeNumero = btn.data('nfe');
+        if (!nfeNumero) return;
+
+        // Desabilita o botão e mostra spinner
+        const originalHtml = btn.html();
+        btn.html('<i class="fas fa-spinner fa-spin"></i>').prop('disabled', true).css('pointer-events', 'none');
+
+        try {
+            const res = await fetch('/api/expedicao/conferencia-sync-bling-individual', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nfeNumero })
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                ToastSystem.success(`NFe ${nfeNumero} sincronizada com sucesso!`);
+            } else {
+                ToastSystem.error(`Erro na NFe ${nfeNumero}: ${data.message || 'Falha desconhecida'}`);
+            }
+        } catch (err) {
+            ToastSystem.error('Erro de rede ao sincronizar.');
+        }
+
+        // Recarrega a tabela para refletir o status atualizado
+        await carregarGestaoConferencia();
+        carregarDadosDashboard();
+    });
+
+    // --- Envio em Lote Inteligente ---
     const btnSync = document.getElementById('btn-sync-conferencia-bling');
     if (btnSync) {
         btnSync.addEventListener('click', async () => {
             if (!tabelaGestaoConferencia) return;
 
-            // Pega apenas as linhas que estão pendentes ou com erro
+            // Conta quantas pendentes/erro existem na tabela
             const todasLinhas = tabelaGestaoConferencia.rows().data().toArray();
-            const notasParaSincronizar = todasLinhas
-                .map(row => row._rawItem)
-                .filter(i => i.bling_sync_status === 'pending' || i.bling_sync_status === 'error')
-                .map(i => i.nfe_numero);
+            const pendentesCount = todasLinhas
+                .filter(row => row._rawItem && (row._rawItem.bling_sync_status === 'pending' || row._rawItem.bling_sync_status === 'error'))
+                .length;
 
-            if (notasParaSincronizar.length === 0) {
+            if (pendentesCount === 0) {
                 ToastSystem.info('Não há notas pendentes ou com erro para sincronizar com o Bling.');
                 return;
             }
 
-            ModalSystem.confirm(`Deseja enviar/tentar enviar ${notasParaSincronizar.length} nota(s) para o Bling?`, 'Sincronizar com Bling', async () => {
-                ModalSystem.showLoading('Enviando dados para o Bling... Isso pode demorar devido ao limite de taxa (1 requisição por segundo).', 'Aguarde');
-
-                try {
-                    const res = await fetch('/api/expedicao/conferencia-sync-bling', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ nfeList: notasParaSincronizar })
-                    });
-
-                    const data = await res.json();
-                    ModalSystem.hideLoading();
-
-                    if (res.ok) {
-                        const falhas = data.resultados.filter(r => !r.success).length;
-                        const sucessos = data.resultados.filter(r => r.success).length;
-
-                        if (falhas > 0) {
-                            ToastSystem.warning(`${sucessos} com sucesso, ${falhas} com erro.`);
-                        } else {
-                            ToastSystem.success(`${sucessos} notas sincronizadas com sucesso!`);
-                        }
-                    } else {
-                        ToastSystem.error(data.error || 'Erro ao sincronizar.');
-                    }
-                } catch (error) {
-                    ModalSystem.hideLoading();
-                    ToastSystem.error('Erro de rede ao tentar sincronizar.');
+            ModalSystem.confirm(
+                `<div style="line-height:1.6;">
+                    <p>Serão processados até <strong>500 pedidos</strong> com status pendente ou erro.</p>
+                    <p style="font-size:0.9rem; color: var(--text-secondary);">O processamento será feito em <strong>blocos de 100</strong>, com <strong>2 pedidos em paralelo</strong>. Erros serão retentados automaticamente ao final de cada bloco.</p>
+                    <p style="font-size:0.9rem; color: var(--text-secondary);">Você poderá acompanhar o progresso em tempo real.</p>
+                </div>`,
+                'Envio em Lote Inteligente',
+                async () => {
+                    await iniciarEnvioLoteInteligente();
                 }
-
-                // Recarrega as tabelas para refletir o status
-                carregarGestaoConferencia();
-                carregarDadosDashboard();
-            });
+            );
         });
     }
+}
+
+// ==========================================
+// ENVIO EM LOTE INTELIGENTE — Modal de Progresso
+// ==========================================
+let _lotePollingInterval = null;
+
+async function iniciarEnvioLoteInteligente() {
+    try {
+        // 1. Dispara o job no backend
+        const res = await fetch('/api/expedicao/conferencia-sync-bling-lote', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+
+        if (!data.success || !data.jobId) {
+            ToastSystem.error(data.message || 'Erro ao iniciar processamento em lote.');
+            return;
+        }
+
+        const jobId = data.jobId;
+
+        // 2. Abre o modal de progresso
+        abrirModalProgressoLote(jobId);
+
+    } catch (err) {
+        ToastSystem.error('Erro de rede ao iniciar processamento em lote.');
+    }
+}
+
+function abrirModalProgressoLote(jobId) {
+    // Cria o overlay e modal
+    const overlay = document.createElement('div');
+    overlay.id = 'lote-progress-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;';
+
+    overlay.innerHTML = `
+        <div style="background:var(--bg-secondary, #1e1e2f);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:2rem;width:90%;max-width:550px;color:#fff;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+            <h4 style="margin:0 0 1.5rem;font-size:1.2rem;display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-cloud-upload-alt" style="color:var(--accent-orange,#ff9800);"></i> Envio em Lote — Progresso
+            </h4>
+
+            <div id="lote-status-text" style="font-size:0.95rem;margin-bottom:1rem;color:var(--text-secondary,#aaa);">
+                Iniciando processamento...
+            </div>
+
+            <div style="background:rgba(255,255,255,0.05);border-radius:10px;overflow:hidden;height:24px;margin-bottom:0.8rem;border:1px solid rgba(255,255,255,0.08);">
+                <div id="lote-progress-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#ff9800,#ff5722);transition:width 0.4s ease;border-radius:10px;display:flex;align-items:center;justify-content:center;">
+                    <span id="lote-progress-pct" style="font-size:0.7rem;font-weight:bold;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.5);"></span>
+                </div>
+            </div>
+
+            <div style="display:flex;gap:1.5rem;margin-bottom:1rem;">
+                <div style="flex:1;background:rgba(76,175,80,0.08);border:1px solid rgba(76,175,80,0.2);border-radius:8px;padding:0.6rem;text-align:center;">
+                    <div id="lote-sucessos" style="font-size:1.4rem;font-weight:bold;color:#4CAF50;">0</div>
+                    <div style="font-size:0.75rem;color:#aaa;">Sucessos</div>
+                </div>
+                <div style="flex:1;background:rgba(244,67,54,0.08);border:1px solid rgba(244,67,54,0.2);border-radius:8px;padding:0.6rem;text-align:center;">
+                    <div id="lote-erros" style="font-size:1.4rem;font-weight:bold;color:#f44336;">0</div>
+                    <div style="font-size:0.75rem;color:#aaa;">Erros</div>
+                </div>
+                <div style="flex:1;background:rgba(255,152,0,0.08);border:1px solid rgba(255,152,0,0.2);border-radius:8px;padding:0.6rem;text-align:center;">
+                    <div id="lote-bloco" style="font-size:1.4rem;font-weight:bold;color:#ff9800;">-</div>
+                    <div style="font-size:0.75rem;color:#aaa;">Bloco</div>
+                </div>
+            </div>
+
+            <div id="lote-log-container" style="display:none;max-height:150px;overflow-y:auto;background:rgba(0,0,0,0.3);border-radius:8px;padding:0.6rem;margin-bottom:1rem;font-size:0.8rem;font-family:monospace;">
+                <div style="color:#f44336;font-weight:bold;margin-bottom:4px;">Erros encontrados:</div>
+                <div id="lote-log-erros"></div>
+            </div>
+
+            <div style="text-align:right;">
+                <button id="btn-lote-fechar" class="btn-premium orange" style="padding:0.4rem 1.2rem;font-size:0.9rem;border-radius:6px;display:none;">
+                    Fechar
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    // Botão Fechar
+    document.getElementById('btn-lote-fechar').addEventListener('click', () => {
+        fecharModalProgressoLote();
+    });
+
+    // 3. Inicia polling a cada 2 segundos
+    _lotePollingInterval = setInterval(() => pollStatusLote(jobId), 2000);
+    // Faz a primeira checagem imediata
+    setTimeout(() => pollStatusLote(jobId), 500);
+}
+
+async function pollStatusLote(jobId) {
+    try {
+        const res = await fetch(`/api/expedicao/conferencia-sync-bling-lote/status?jobId=${encodeURIComponent(jobId)}`);
+        if (!res.ok) {
+            console.warn('Polling: resposta não ok', res.status);
+            return;
+        }
+        const status = await res.json();
+
+        // Atualiza UI
+        const totalProcessados = status.sucessos + status.erros;
+        const pct = status.totalPedidos > 0 ? Math.round((totalProcessados / status.totalPedidos) * 100) : 0;
+
+        const barEl = document.getElementById('lote-progress-bar');
+        const pctEl = document.getElementById('lote-progress-pct');
+        const statusEl = document.getElementById('lote-status-text');
+        const sucessosEl = document.getElementById('lote-sucessos');
+        const errosEl = document.getElementById('lote-erros');
+        const blocoEl = document.getElementById('lote-bloco');
+
+        if (barEl) barEl.style.width = pct + '%';
+        if (pctEl) pctEl.textContent = pct + '%';
+        if (sucessosEl) sucessosEl.textContent = status.sucessos;
+        if (errosEl) errosEl.textContent = status.erros;
+        if (blocoEl) blocoEl.textContent = status.totalBlocos > 0 ? `${status.blocoAtual}/${status.totalBlocos}` : '-';
+
+        if (status.status === 'running') {
+            if (statusEl) statusEl.innerHTML = `<i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i> Processando bloco ${status.blocoAtual} de ${status.totalBlocos} — ${status.processadosNoBloco}/${status.tamanhoBloco} no bloco atual (${totalProcessados}/${status.totalPedidos} total)`;
+        } else if (status.status === 'completed' || status.status === 'error') {
+            // Finalizado!
+            clearInterval(_lotePollingInterval);
+            _lotePollingInterval = null;
+
+            if (barEl) barEl.style.width = '100%';
+            if (pctEl) pctEl.textContent = '100%';
+
+            if (status.status === 'completed') {
+                if (statusEl) statusEl.innerHTML = `<i class="fas fa-check-circle" style="color:#4CAF50;margin-right:6px;"></i> Processamento concluído! ${status.sucessos} com sucesso, ${status.erros} com erro.`;
+                if (barEl) barEl.style.background = 'linear-gradient(90deg, #4CAF50, #66BB6A)';
+            } else {
+                if (statusEl) statusEl.innerHTML = `<i class="fas fa-exclamation-triangle" style="color:#f44336;margin-right:6px;"></i> Processamento encerrado com erro fatal.`;
+                if (barEl) barEl.style.background = 'linear-gradient(90deg, #f44336, #e53935)';
+            }
+
+            // Mostra log de erros se houver
+            if (status.logErros && status.logErros.length > 0) {
+                const logContainer = document.getElementById('lote-log-container');
+                const logErros = document.getElementById('lote-log-erros');
+                if (logContainer && logErros) {
+                    logContainer.style.display = 'block';
+                    logErros.innerHTML = status.logErros.map(e => `<div style="margin-bottom:3px;"><span style="color:#ff9800;">NFe ${e.nfe}:</span> ${e.message}</div>`).join('');
+                }
+            }
+
+            // Mostra botão fechar
+            const btnFechar = document.getElementById('btn-lote-fechar');
+            if (btnFechar) btnFechar.style.display = 'inline-block';
+
+            // Recarrega as tabelas
+            carregarGestaoConferencia();
+            carregarDadosDashboard();
+        }
+
+    } catch (err) {
+        console.error('Polling erro:', err);
+    }
+}
+
+function fecharModalProgressoLote() {
+    if (_lotePollingInterval) {
+        clearInterval(_lotePollingInterval);
+        _lotePollingInterval = null;
+    }
+    const overlay = document.getElementById('lote-progress-overlay');
+    if (overlay) overlay.remove();
 }
 
 // ==========================================
@@ -767,7 +1035,7 @@ window.confirmarCancelamento = function (id) {
     ModalSystem.confirm(
         'Tem certeza que deseja cancelar esta etiqueta? Ela não irá mais compor o saldo a expedir do dia.',
         'Cancelar Etiqueta',
-        () => alterarStatusEtiqueta(id, 'cancelado')
+        () => alterarStatusEtiqueta(id, 'cancelamento')
     );
 }
 
