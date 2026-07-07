@@ -606,3 +606,102 @@ exports.cancelarNfe = async (req, res) => {
         res.status(500).json({ success: false, message: "Erro interno ao cancelar a NF-e." });
     }
 };
+
+/**
+ * Gera relatório de separação dinamicamente baseado nos filtros e busca do usuário.
+ */
+exports.generateSeparationReport = async (req, res) => {
+    try {
+        const { situacao = '', justificativa = '', search = '' } = req.query;
+
+        let whereClauses = [ `enf.status_para_relacao IN ('justificada_adiada', 'relacionada', 'pendente', 'cancelada', 'alerta')` ];
+        const queryParams = [];
+        let paramIndex = 1;
+
+        if (situacao) {
+            if (situacao === 'Relacionada') whereClauses.push(`enf.status_para_relacao = 'relacionada'`);
+            else if (situacao === 'Pendente') whereClauses.push(`enf.status_para_relacao IN ('pendente', 'justificada_adiada')`);
+            else if (situacao === 'Cancelada') whereClauses.push(`enf.status_para_relacao = 'cancelada'`);
+            else if (situacao === 'Alerta') whereClauses.push(`enf.status_para_relacao = 'alerta'`);
+        }
+        if (justificativa) {
+            if (justificativa === 'SEM_JUSTIFICATIVA') whereClauses.push(`(enf.justificativa IS NULL OR enf.justificativa = '')`);
+            else {
+                whereClauses.push(`enf.justificativa = $${paramIndex++}`);
+                queryParams.push(justificativa);
+            }
+        }
+        if (search) {
+             whereClauses.push(`(enf.nfe_numero ILIKE $${paramIndex} OR enf.transportadora_apelido ILIKE $${paramIndex} OR cn.product_descriptions_list ILIKE $${paramIndex})`);
+             queryParams.push(`%${search}%`);
+             paramIndex++;
+        }
+
+        whereClauses.push(`enf.transportadora_apelido NOT IN ('SHOPEE MAGAZINE', 'NOVO MERCADO LIVRE', 'MERCADO LIVRE ELIANE', 'MERCADO LIVRE MAGAZINE', 'MAGALU ENTREGAS')`);
+        whereClauses.push(`cn.data_emissao IS NOT NULL`);
+
+        const whereCondition = `WHERE ${whereClauses.join(' AND ')}`;
+
+        const reportQuery = `
+            SELECT 
+                enf.nfe_numero,
+                enf.transportadora_apelido,
+                cn.data_emissao,
+                COALESCE(cn.product_descriptions_list, enf.product_descriptions_list) AS produtos
+            FROM emission_nfe_reports enf
+            LEFT JOIN cached_nfe cn ON enf.nfe_chave_acesso_44d = cn.chave_acesso
+            ${whereCondition}
+            ORDER BY cn.data_emissao DESC;
+        `;
+
+        const reportResult = await pool.query(reportQuery, queryParams);
+        const reportData = reportResult.rows;
+
+        // 2. Gera o arquivo Excel
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Relatório de Separação');
+
+        worksheet.columns = [
+            { header: 'Nota Fiscal', key: 'nfe_numero', width: 20 },
+            { header: 'Transportadora', key: 'transportadora_apelido', width: 35 },
+            { header: 'Data Emissão', key: 'data_emissao', width: 20 },
+            { header: 'Produtos', key: 'produtos', width: 80 },
+            { header: 'Foi Separado?', key: 'foi_separado', width: 20 }
+        ];
+
+        worksheet.getRow(1).font = { bold: true };
+
+        const formattedData = reportData.map(row => {
+            let dataEmissaoStr = '';
+            if (row.data_emissao) {
+                const date = new Date(row.data_emissao);
+                if (!isNaN(date.getTime())) {
+                    const day = String(date.getUTCDate()).padStart(2, '0');
+                    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+                    const year = date.getUTCFullYear();
+                    dataEmissaoStr = `${day}/${month}/${year}`;
+                }
+            }
+            return {
+                nfe_numero: row.nfe_numero,
+                transportadora_apelido: row.transportadora_apelido,
+                data_emissao: dataEmissaoStr,
+                produtos: row.produtos || '',
+                foi_separado: '' // Em branco
+            };
+        });
+
+        worksheet.addRows(formattedData);
+
+        // 3. Envia o arquivo para download
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename="Relatorio_Separacao.xlsx"');
+
+        await workbook.xlsx.write(res);
+        res.end();
+
+    } catch (error) {
+        console.error("Erro ao gerar relatório de separação:", error);
+        res.status(500).send("Erro ao gerar o relatório de separação.");
+    }
+};

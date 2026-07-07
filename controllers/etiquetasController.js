@@ -92,6 +92,32 @@ exports.apiGetDashboardExpedicao = async (req, res) => {
     }
 };
 
+exports.apiGetDashboardTabela = async (req, res) => {
+    try {
+        const { dataInicio, dataFim, draw, start, length, search, order, statusInterno, statusMl, statusFoto } = req.query;
+        
+        const params = {
+            dataInicio,
+            dataFim,
+            draw: parseInt(draw) || 1,
+            start: parseInt(start) || 0,
+            length: parseInt(length) || 10,
+            searchValue: search ? search.value : '',
+            orderColIndex: order && order[0] ? order[0].column : null,
+            orderDir: order && order[0] ? order[0].dir : null,
+            statusInterno,
+            statusMl,
+            statusFoto
+        };
+
+        const dadosTabela = await etiquetasService.obterTabelaDashboardExpedicao(params);
+        res.json(dadosTabela);
+    } catch (error) {
+        console.error('[EtiquetasController] Erro ao buscar dados da tabela dashboard:', error);
+        res.status(500).json({ error: 'Erro ao carregar tabela.' });
+    }
+};
+
 exports.apiGetConferenciaGestao = async (req, res) => {
     try {
         const dados = await etiquetasService.obterDadosGestaoConferencia();
@@ -161,6 +187,45 @@ exports.apiSyncBlingConferenciaLoteStatus = async (req, res) => {
     } catch (error) {
         console.error('[EtiquetasController] Erro ao consultar status do lote:', error);
         res.status(500).json({ error: 'Erro ao consultar status.' });
+    }
+};
+
+// --- PEDIDOS COM FOTO (CONFERÊNCIA) ---
+exports.apiGetPedidosComFoto = async (req, res) => {
+    try {
+        const dados = await etiquetasService.obterPedidosComFoto();
+        res.json({ success: true, data: dados });
+    } catch (error) {
+        console.error('[EtiquetasController] Erro ao buscar pedidos com foto:', error);
+        res.status(500).json({ success: false, message: 'Erro ao carregar pedidos com foto.' });
+    }
+};
+
+exports.apiValidarFotoPedido = async (req, res) => {
+    try {
+        const { nfeNumero, acao } = req.body;
+        if (!nfeNumero || !acao) {
+            return res.status(400).json({ success: false, message: 'nfeNumero e acao são obrigatórios.' });
+        }
+        await etiquetasService.validarFotoPedido(nfeNumero, acao);
+        res.json({ success: true, message: `Foto da NF ${nfeNumero} marcada como '${acao}'.` });
+    } catch (error) {
+        console.error('[EtiquetasController] Erro ao validar foto:', error);
+        res.status(500).json({ success: false, message: error.message || 'Erro ao validar foto.' });
+    }
+};
+
+exports.apiCorrigirFlagFoto = async (req, res) => {
+    try {
+        const { nfeNumero } = req.body;
+        if (!nfeNumero) {
+            return res.status(400).json({ success: false, message: 'nfeNumero é obrigatório.' });
+        }
+        await etiquetasService.corrigirFlagFotoPedido(nfeNumero);
+        res.json({ success: true, message: `Flag de foto da NF ${nfeNumero} corrigida para validado.` });
+    } catch (error) {
+        console.error('[EtiquetasController] Erro ao corrigir flag de foto:', error);
+        res.status(500).json({ success: false, message: error.message || 'Erro ao corrigir flag.' });
     }
 };
 
@@ -1190,11 +1255,11 @@ exports.buscarEstruturaGondola = async (req, res) => {
     if (!codigoBipado) return res.status(400).json({ success: false, message: 'Código não fornecido.' });
     const client = await pool.connect();
     try {
-        // Busca a estrutura pelo SKU, GTIN ou GTIN_EMBALAGEM
+        // Busca a estrutura pelo SKU, GTIN, GTIN_EMBALAGEM ou Código Interno
         const structQuery = `
             SELECT component_sku, structure_name
             FROM cached_structures
-            WHERE component_sku = $1 OR gtin = $1 OR gtin_embalagem = $1
+            WHERE component_sku = $1 OR gtin = $1 OR gtin_embalagem = $1 OR cod_interno_1 = $1 OR cod_interno_2 = $1
             LIMIT 1;
         `;
         const structRes = await client.query(structQuery, [codigoBipado]);
@@ -2095,5 +2160,47 @@ exports.atualizarGlobalDashboardEmLote = async (req, res) => {
     } catch (e) {
         console.error('[Dashboard Update Massa]', e);
         res.status(500).json({ success: false, message: e.message || 'Ocorreu um erro ao atualizar os status das etiquetas.' });
+    }
+};
+
+// --- API: FOTOS DE CONFERÊNCIA (DASHBOARD) ---
+
+exports.apiGetPedidosComFoto = async (req, res) => {
+    try {
+        const pedidos = await etiquetasService.obterPedidosComFoto();
+        res.json({ success: true, data: pedidos });
+    } catch (error) {
+        console.error('[Dashboard Fotos] Erro ao buscar pedidos com foto:', error);
+        res.status(500).json({ success: false, message: 'Erro ao buscar dados.' });
+    }
+};
+
+exports.apiValidarFotoPedido = async (req, res) => {
+    try {
+        const { nfeNumero, acao } = req.body;
+        if (!nfeNumero || !acao) {
+            return res.status(400).json({ success: false, message: 'Parâmetros insuficientes.' });
+        }
+        
+        await etiquetasService.validarFotoPedido(nfeNumero, acao);
+        res.json({ success: true, message: `Foto marcada como ${acao} com sucesso.` });
+    } catch (error) {
+        console.error('[Dashboard Fotos] Erro ao validar foto:', error);
+        res.status(400).json({ success: false, message: error.message || 'Erro ao validar foto.' });
+    }
+};
+
+exports.apiCorrigirFlagFoto = async (req, res) => {
+    try {
+        const { nfeNumero } = req.body;
+        if (!nfeNumero) {
+            return res.status(400).json({ success: false, message: 'NF não fornecida.' });
+        }
+        
+        await etiquetasService.corrigirFlagFotoPedido(nfeNumero);
+        res.json({ success: true, message: 'Pedido corrigido e validado com sucesso.' });
+    } catch (error) {
+        console.error('[Dashboard Fotos] Erro ao corrigir flag de foto:', error);
+        res.status(500).json({ success: false, message: error.message || 'Erro ao corrigir flag.' });
     }
 };

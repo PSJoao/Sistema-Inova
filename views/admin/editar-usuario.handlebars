@@ -1,0 +1,307 @@
+{{! views/admin/editar-usuario.handlebars }}
+{{#section "head"}}
+<link rel="stylesheet" href="/public/styles/dashboardExpedicao.css">
+<link rel="stylesheet" href="/public/styles/admin.css">
+{{/section}}
+
+<div class="admin-wrapper">
+    {{!-- Header --}}
+    <div class="admin-header">
+        <div class="admin-header-info">
+            <h1><i class="fas fa-user-shield"></i> {{title}}</h1>
+            <p>Configure as credenciais e o nível de acesso detalhado do usuário.</p>
+        </div>
+        <a href="/admin/usuarios" class="btn-premium outline"><i class="fas fa-arrow-left"></i> Voltar</a>
+    </div>
+
+    {{!-- Mensagem de erro --}}
+    {{#if errorMessage}}
+    <div class="admin-alert-error">
+        <i class="fas fa-exclamation-triangle"></i> <span>{{errorMessage}}</span>
+    </div>
+    {{/if}}
+
+    {{!-- Painel do Formulário --}}
+    <div class="admin-panel">
+        <h4 class="admin-panel-title"><i class="fas fa-id-card"></i> Dados do Usuário</h4>
+
+        <form action="{{#if isEdit}}/admin/usuarios/editar/{{userData.id}}{{else}}/admin/usuarios/novo{{/if}}"
+            method="POST" class="admin-form">
+
+            <div class="admin-form-grid">
+                {{!-- Nome --}}
+                <div class="form-group">
+                    <label for="username">Nome de Usuário</label>
+                    <input type="text" id="username" name="username" value="{{userData.username}}"
+                        class="form-control-dark" placeholder="Ex: joao.silva" required>
+                </div>
+
+                {{!-- Senha --}}
+                <div class="form-group">
+                    <label for="password">Senha</label>
+                    <input type="password" id="password" name="password" class="form-control-dark"
+                        placeholder="{{#if isEdit}}Deixe em branco para manter{{else}}Digite a senha{{/if}}" {{#unless
+                        isEdit}}required{{/unless}}>
+                </div>
+            </div>
+
+            {{!-- Nível de Acesso --}}
+            <div class="form-group">
+                <label for="tipo_conta">Nível de Acesso</label>
+                {{#if isMasterAccount}}
+                <select id="tipo_conta" name="tipo_conta" class="form-control-dark">
+                    <option value="2" {{#if userData.isFuncionario}}selected{{/if}}>Funcionário (Permissão Granular)
+                    </option>
+                    <option value="1" {{#if userData.isAdmin}}selected{{/if}}>Administrador (Acesso Total)</option>
+                    <option value="0" {{#if userData.isMaster}}selected{{/if}}>Administrador Mestre (Total + Controle de
+                        Usuários)</option>
+                </select>
+                {{else}}
+                <select id="tipo_conta" class="form-control-dark" disabled>
+                    <option value="2" {{#if userData.isFuncionario}}selected{{/if}}>Funcionário (Permissão Granular)
+                    </option>
+                    {{#if userData.isAdmin}}<option value="1" selected>Administrador (Acesso Total)</option>{{/if}}
+                    {{#if userData.isMaster}}<option value="0" selected>Administrador Mestre</option>{{/if}}
+                </select>
+                <input type="hidden" name="tipo_conta"
+                    value="{{#if userData.tipo_conta}}{{userData.tipo_conta}}{{else}}2{{/if}}">
+                <span class="form-hint"><i class="fas fa-info-circle"></i> Apenas contas Mestras podem alterar o nível
+                    de privilégio.</span>
+                {{/if}}
+            </div>
+
+            {{!-- Permissões Granulares --}}
+            <div id="permissoes_container" class="permissions-container">
+                <div class="permissions-header">
+                    <h3><i class="fas fa-user-lock"></i> Permissões de Acesso</h3>
+                    <p>Marque individualmente cada recurso que este funcionário poderá acessar.</p>
+                </div>
+
+                <div class="permissions-sections">
+
+                    {{!-- 1. Monitoramento --}}
+                    <div>
+                        <h4 class="perm-section-title"><i class="fas fa-chart-line perm-icon-blue"></i> Monitoramento de
+                            Marketplaces</h4>
+                        <div class="perm-grid">
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="monitoramento_madeira_lucas" {{#if
+                                    has_monitoramento_madeira_lucas}}checked{{/if}}>
+                                <span>Madeira - Lucas</span>
+                            </label>
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="monitoramento_madeira_eliane" {{#if
+                                    has_monitoramento_madeira_eliane}}checked{{/if}}>
+                                <span>Madeira - Eliane</span>
+                            </label>
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="monitoramento_viavarejo" {{#if
+                                    has_monitoramento_viavarejo}}checked{{/if}}>
+                                <span>ViaVarejo</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    {{!-- 2. Notas Fiscais e Faturamento --}}
+                    <div>
+                        <h4 class="perm-section-title"><i class="fas fa-file-invoice perm-icon-red"></i> Notas Fiscais e
+                            Faturamento</h4>
+                        <div class="perm-grid">
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="faturamento_gerenciar_emissoes" {{#if
+                                    has_faturamento_gerenciar_emissoes}}checked{{/if}}>
+                                <span>Gerenciar Emissões</span>
+                            </label>
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="faturamento_gerar_etiquetas" {{#if
+                                    has_faturamento_gerar_etiquetas}}checked{{/if}}>
+                                <span>Gerar Etiquetas NFe</span>
+                            </label>
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="faturamento_automatico" {{#if
+                                    has_faturamento_automatico}}checked{{/if}}>
+                                <span>Faturador Automático</span>
+                            </label>
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="faturamento_gerenciar_pedidos" {{#if
+                                    has_faturamento_gerenciar_pedidos}}checked{{/if}}>
+                                <span>Gerenciar Pedidos</span>
+                            </label>
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="faturamento_assistencias" {{#if
+                                    has_faturamento_assistencias}}checked{{/if}}>
+                                <span>Assistências</span>
+                            </label>
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="faturamento_historico_notas" {{#if
+                                    has_faturamento_historico_notas}}checked{{/if}}>
+                                <span>Histórico de Notas</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    {{!-- 3. Produtos --}}
+                    <div>
+                        <h4 class="perm-section-title"><i class="fas fa-box perm-icon-green"></i> Produtos</h4>
+                        <div class="perm-grid">
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="produtos_gerenciar" {{#if
+                                    has_produtos_gerenciar}}checked{{/if}}>
+                                <span>Gerenciar Produtos</span>
+                            </label>
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="produtos_tipos" {{#if
+                                    has_produtos_tipos}}checked{{/if}}>
+                                <span>Gerenciar Tipos</span>
+                            </label>
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="produtos_sincronizar" {{#if
+                                    has_produtos_sincronizar}}checked{{/if}}>
+                                <span>Sincronizar Produtos</span>
+                            </label>
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="produtos_estoque_dev" {{#if
+                                    has_produtos_estoque_dev}}checked{{/if}}>
+                                <span>Estoque Dev.</span>
+                            </label>
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="produtos_bipagem_pecas" {{#if
+                                    has_produtos_bipagem_pecas}}checked{{/if}}>
+                                <span>Bipagem de Peças</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    {{!-- 4. Expedição e Etiquetas --}}
+                    <div>
+                        <h4 class="perm-section-title"><i class="fas fa-tags perm-icon-yellow"></i> Expedição e
+                            Etiquetas</h4>
+                        <div class="perm-grid">
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="expedicao_ordenador" {{#if
+                                    has_expedicao_ordenador}}checked{{/if}}>
+                                <span>Ordenador de Etiquetas</span>
+                            </label>
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="expedicao_gondolas" {{#if
+                                    has_expedicao_gondolas}}checked{{/if}}>
+                                <span>Gerenciar Gôndolas</span>
+                            </label>
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="expedicao_rel_tarde" {{#if
+                                    has_expedicao_rel_tarde}}checked{{/if}}>
+                                <span>Gerenciar Rel. Tarde</span>
+                            </label>
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="expedicao_bipagem_produtos" {{#if
+                                    has_expedicao_bipagem_produtos}}checked{{/if}}>
+                                <span>Bipagem de Produtos</span>
+                            </label>
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="expedicao_dashboard" {{#if
+                                    has_expedicao_dashboard}}checked{{/if}}>
+                                <span>Painel de Expedição</span>
+                            </label>
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="expedicao_bipagem_exp" {{#if
+                                    has_expedicao_bipagem_exp}}checked{{/if}}>
+                                <span>Expedição Bipagem</span>
+                            </label>
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="expedicao_massa" {{#if
+                                    has_expedicao_massa}}checked{{/if}}>
+                                <span>Alteração em Massa</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    {{!-- 5. Conferência --}}
+                    <div>
+                        <h4 class="perm-section-title"><i class="fas fa-check-circle perm-icon-purple"></i> Conferência
+                        </h4>
+                        <div class="perm-grid">
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="conferencia_bipagem" {{#if
+                                    has_conferencia_bipagem}}checked{{/if}}>
+                                <span>Conferência de Pedidos</span>
+                            </label>
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="conferencia_codigos" {{#if
+                                    has_conferencia_codigos}}checked{{/if}}>
+                                <span>Gerenciar Códigos</span>
+                            </label>
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="conferencia_ml_batch" {{#if
+                                    has_conferencia_ml_batch}}checked{{/if}}>
+                                <span>Conf. para Faturamento</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    {{!-- 6. Transporte e Logística --}}
+                    <div>
+                        <h4 class="perm-section-title"><i class="fas fa-truck perm-icon-teal"></i> Transporte e
+                            Logística</h4>
+                        <div class="perm-grid">
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="logistica_relacoes" {{#if
+                                    has_logistica_relacoes}}checked{{/if}}>
+                                <span>Gerenciar Relações</span>
+                            </label>
+                            <label class="perm-item">
+                                <input type="checkbox" name="modulos" value="logistica_rastreio" {{#if
+                                    has_logistica_rastreio}}checked{{/if}}>
+                                <span>Acompanhamentos</span>
+                            </label>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            {{!-- Ações do Formulário --}}
+            <div class="admin-form-actions">
+                <a href="/admin/usuarios" class="btn-premium outline">Cancelar</a>
+                <button type="submit" class="btn-premium orange"><i class="fas fa-save"></i> Salvar Usuário</button>
+            </div>
+
+        </form>
+    </div>
+</div>
+
+{{#section "scripts"}}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var tipoContaSelect = document.getElementById('tipo_conta');
+        var permContainer = document.getElementById('permissoes_container');
+        var permItems = document.querySelectorAll('.perm-item');
+
+        function togglePermissions() {
+            if (tipoContaSelect.value === '2') {
+                $(permContainer).slideDown(300);
+            } else {
+                $(permContainer).slideUp(250);
+            }
+        }
+
+        tipoContaSelect.addEventListener('change', togglePermissions);
+
+        // Estado visual inicial dos checkboxes
+        permItems.forEach(function (item) {
+            var cb = item.querySelector('input[type="checkbox"]');
+            if (cb.checked) item.classList.add('active');
+
+            cb.addEventListener('change', function () {
+                if (this.checked) {
+                    item.classList.add('active');
+                } else {
+                    item.classList.remove('active');
+                }
+            });
+        });
+
+        // Exibe/oculta no carregamento
+        togglePermissions();
+    });
+</script>
+{{/section}}

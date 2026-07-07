@@ -11,7 +11,24 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 class HubMercadoLivreService {
 
     /**
+     * Resolve o status_envio considerando o histórico de substatus para pegar 'picked_up' 
+     * mesmo quando o status principal do ML ficou travado em 'ready_to_ship'.
+     */
+    resolverStatusEnvio(envioData) {
+        if (!envioData || !envioData.status) return null;
+        let status = envioData.status;
+        if (status === 'ready_to_ship' && envioData.substatus_history) {
+            const hasPickedUp = envioData.substatus_history.some(h => h.substatus === 'picked_up');
+            if (hasPickedUp) {
+                status = 'picked_up';
+            }
+        }
+        return status;
+    }
+
+    /**
      * Executa a 1ª ETAPA: Captura de Novos Pedidos
+
      * Percorre as contas ativas e busca pedidos recentes de forma paginada.
      */
     async capturarNovosPedidos() {
@@ -134,6 +151,7 @@ class HubMercadoLivreService {
                             data_limite_envio: null,
                             id_envio_ml: null,
                             status_envio: null,
+                            tipo_envio: null,
                             etiqueta_zpl: null,
                             itens_pedido: JSON.stringify(itensMapeados),
                             comprador_nickname: pedidoData.buyer?.nickname || null,
@@ -145,7 +163,8 @@ class HubMercadoLivreService {
                             status_envio_dev: null,
                             frete_envio: null,
                             nfe_numero: null,
-                            chave_acesso: null
+                            chave_acesso: null,
+                            pack_id: pedidoData.pack_id ? String(pedidoData.pack_id) : null
                         };
 
                         // Captura a data limite de envio
@@ -165,7 +184,8 @@ class HubMercadoLivreService {
 
                                 if (envioData) {
                                     novoPedido.id_envio_ml = envioData.id;
-                                    novoPedido.status_envio = envioData.status;
+                                    novoPedido.status_envio = this.resolverStatusEnvio(envioData);
+                                    novoPedido.tipo_envio = envioData.logistic_type || null;
 
                                     // --- CAPTURA ISOLADA DE CUSTO (FRETE) ---
                                     try {
@@ -279,6 +299,9 @@ class HubMercadoLivreService {
                         if (nfData) {
                             novoPedido.nfe_numero = nfData.invoiceNumber;
                             novoPedido.chave_acesso = nfData.invoiceKey;
+                            if (!novoPedido.tipo_envio && nfData.logisticType) {
+                                novoPedido.tipo_envio = nfData.logisticType;
+                            }
                         }
 
                         // Salvar no banco
@@ -403,6 +426,7 @@ class HubMercadoLivreService {
                             data_limite_envio: null,
                             id_envio_ml: null,
                             status_envio: null,
+                            tipo_envio: pedido.tipo_envio || null,
                             etiqueta_zpl: pedido.etiqueta_zpl,
                             comprador_nickname: dadosAtualizados.buyer?.nickname || null,
                             frete_envio: null,
@@ -412,7 +436,8 @@ class HubMercadoLivreService {
                             status_dev: pedido.status_dev || null,
                             status_med: pedido.status_med || null,
                             id_envio_dev: pedido.id_envio_dev || null,
-                            status_envio_dev: pedido.status_envio_dev || null
+                            status_envio_dev: pedido.status_envio_dev || null,
+                            pack_id: dadosAtualizados.pack_id ? String(dadosAtualizados.pack_id) : (pedido.pack_id ? String(pedido.pack_id) : null)
                         };
 
                         // Re-mapeamento de Itens (Caso tenha mudado algo)
@@ -440,7 +465,8 @@ class HubMercadoLivreService {
 
                                 if (envioData) {
                                     pedidoAtualizado.id_envio_ml = envioData.id;
-                                    pedidoAtualizado.status_envio = envioData.status;
+                                    pedidoAtualizado.status_envio = this.resolverStatusEnvio(envioData);
+                                    pedidoAtualizado.tipo_envio = envioData.logistic_type || null;
 
                                     try {
                                         const freteUrl = `${ML_API_URL}/shipments/${envioData.id}/costs`;
@@ -546,12 +572,22 @@ class HubMercadoLivreService {
                             if (nfData) {
                                 pedidoAtualizado.nfe_numero = nfData.invoiceNumber;
                                 pedidoAtualizado.chave_acesso = nfData.invoiceKey;
+                                if (!pedidoAtualizado.tipo_envio && nfData.logisticType) {
+                                    pedidoAtualizado.tipo_envio = nfData.logisticType;
+                                }
                                 console.log(`[HUB ML] NF capturada tardiamente para pedido ${pedidoAtualizado.id_pedido_ml}: NF ${nfData.invoiceNumber}`);
                             }
                         } else {
                             // Preserva os dados de NF existentes
                             pedidoAtualizado.nfe_numero = pedido.nfe_numero;
                             pedidoAtualizado.chave_acesso = pedido.chave_acesso;
+
+                            if (!pedidoAtualizado.tipo_envio) {
+                                const nfData = await this.buscarNotaFiscal(pedidoAtualizado.id_pedido_ml, pedido.seller_id, accessToken);
+                                if (nfData && nfData.logisticType) {
+                                    pedidoAtualizado.tipo_envio = nfData.logisticType;
+                                }
+                            }
                         }
 
                         // Salva TUDO (Atualiza datas, itens, etiquetas, status e DEVOLUÇÕES)
@@ -660,6 +696,7 @@ class HubMercadoLivreService {
                             data_limite_envio: null,
                             id_envio_ml: null,
                             status_envio: null,
+                            tipo_envio: pedido.tipo_envio || null,
                             etiqueta_zpl: pedido.etiqueta_zpl,
                             comprador_nickname: dadosAtualizados.buyer?.nickname || null,
                             frete_envio: null,
@@ -669,7 +706,8 @@ class HubMercadoLivreService {
                             status_dev: pedido.status_dev || null,
                             status_med: pedido.status_med || null,
                             id_envio_dev: pedido.id_envio_dev || null,
-                            status_envio_dev: pedido.status_envio_dev || null
+                            status_envio_dev: pedido.status_envio_dev || null,
+                            pack_id: dadosAtualizados.pack_id ? String(dadosAtualizados.pack_id) : (pedido.pack_id ? String(pedido.pack_id) : null)
                         };
 
                         // Re-mapeamento de Itens (Caso tenha mudado algo)
@@ -697,7 +735,8 @@ class HubMercadoLivreService {
 
                                 if (envioData) {
                                     pedidoAtualizado.id_envio_ml = envioData.id;
-                                    pedidoAtualizado.status_envio = envioData.status;
+                                    pedidoAtualizado.status_envio = this.resolverStatusEnvio(envioData);
+                                    pedidoAtualizado.tipo_envio = envioData.logistic_type || null;
 
                                     try {
                                         const freteUrl = `${ML_API_URL}/shipments/${envioData.id}/costs`;
@@ -803,12 +842,22 @@ class HubMercadoLivreService {
                             if (nfData) {
                                 pedidoAtualizado.nfe_numero = nfData.invoiceNumber;
                                 pedidoAtualizado.chave_acesso = nfData.invoiceKey;
+                                if (!pedidoAtualizado.tipo_envio && nfData.logisticType) {
+                                    pedidoAtualizado.tipo_envio = nfData.logisticType;
+                                }
                                 console.log(`[HUB ML] NF capturada tardiamente para pedido ${pedidoAtualizado.id_pedido_ml}: NF ${nfData.invoiceNumber}`);
                             }
                         } else {
                             // Preserva os dados de NF existentes
                             pedidoAtualizado.nfe_numero = pedido.nfe_numero;
                             pedidoAtualizado.chave_acesso = pedido.chave_acesso;
+
+                            if (!pedidoAtualizado.tipo_envio) {
+                                const nfData = await this.buscarNotaFiscal(pedidoAtualizado.id_pedido_ml, pedido.seller_id, accessToken);
+                                if (nfData && nfData.logisticType) {
+                                    pedidoAtualizado.tipo_envio = nfData.logisticType;
+                                }
+                            }
                         }
 
                         // Salva TUDO (Atualiza datas, itens, etiquetas, status e DEVOLUÇÕES)
@@ -919,6 +968,7 @@ class HubMercadoLivreService {
                             data_limite_envio: null,
                             id_envio_ml: null,
                             status_envio: null,
+                            tipo_envio: pedido.tipo_envio || null,
                             etiqueta_zpl: pedido.etiqueta_zpl,
                             comprador_nickname: dadosAtualizados.buyer?.nickname || null,
                             frete_envio: null,
@@ -928,7 +978,8 @@ class HubMercadoLivreService {
                             status_dev: pedido.status_dev || null,
                             status_med: pedido.status_med || null,
                             id_envio_dev: pedido.id_envio_dev || null,
-                            status_envio_dev: pedido.status_envio_dev || null
+                            status_envio_dev: pedido.status_envio_dev || null,
+                            pack_id: dadosAtualizados.pack_id ? String(dadosAtualizados.pack_id) : (pedido.pack_id ? String(pedido.pack_id) : null)
                         };
 
                         // Re-mapeamento de Itens (Caso tenha mudado algo)
@@ -956,7 +1007,8 @@ class HubMercadoLivreService {
 
                                 if (envioData) {
                                     pedidoAtualizado.id_envio_ml = envioData.id;
-                                    pedidoAtualizado.status_envio = envioData.status;
+                                    pedidoAtualizado.status_envio = this.resolverStatusEnvio(envioData);
+                                    pedidoAtualizado.tipo_envio = envioData.logistic_type || null;
 
                                     try {
                                         const freteUrl = `${ML_API_URL}/shipments/${envioData.id}/costs`;
@@ -1223,9 +1275,10 @@ class HubMercadoLivreService {
             if (data) {
                 const invoiceNumber = data.invoice_number ? String(data.invoice_number) : null;
                 const invoiceKey = data.attributes?.invoice_key || null;
+                const logisticType = data.shipment?.logistic_type || null;
 
-                if (invoiceNumber || invoiceKey) {
-                    return { invoiceNumber, invoiceKey };
+                if (invoiceNumber || invoiceKey || logisticType) {
+                    return { invoiceNumber, invoiceKey, logisticType };
                 }
             }
         } catch (err) {
@@ -1250,8 +1303,8 @@ class HubMercadoLivreService {
 
         const query = `
             INSERT INTO pedidos_mercado_livre 
-            (conta_id, id_pedido_ml, date_created, status_pedido, data_limite_envio, id_envio_ml, status_envio, etiqueta_zpl, itens_pedido, comprador_nickname, data_envio_disponivel, data_envio_agendado, data_previsao_entrega, tem_dev, tem_med, status_dev, status_med, id_envio_dev, status_envio_dev, frete_envio, nfe_numero, chave_acesso)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+            (conta_id, id_pedido_ml, date_created, status_pedido, data_limite_envio, id_envio_ml, status_envio, etiqueta_zpl, itens_pedido, comprador_nickname, data_envio_disponivel, data_envio_agendado, data_previsao_entrega, tem_dev, tem_med, status_dev, status_med, id_envio_dev, status_envio_dev, frete_envio, nfe_numero, chave_acesso, tipo_envio, pack_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
             ON CONFLICT (id_pedido_ml) DO UPDATE SET
             status_pedido = EXCLUDED.status_pedido,
             status_envio = EXCLUDED.status_envio,
@@ -1271,6 +1324,8 @@ class HubMercadoLivreService {
             frete_envio = EXCLUDED.frete_envio,
             nfe_numero = COALESCE(EXCLUDED.nfe_numero, pedidos_mercado_livre.nfe_numero),
             chave_acesso = COALESCE(EXCLUDED.chave_acesso, pedidos_mercado_livre.chave_acesso),
+            tipo_envio = EXCLUDED.tipo_envio,
+            pack_id = EXCLUDED.pack_id,
             last_update = NOW()
         `;
 
@@ -1296,7 +1351,9 @@ class HubMercadoLivreService {
             pedido.status_envio_dev || null,
             pedido.frete_envio || null,
             pedido.nfe_numero || null,
-            pedido.chave_acesso || null
+            pedido.chave_acesso || null,
+            pedido.tipo_envio || null,
+            pedido.pack_id ? String(pedido.pack_id) : null
         ];
 
         try {
@@ -1311,12 +1368,12 @@ class HubMercadoLivreService {
         const client = await poolHub.connect();
 
         try {
-            // 1. Buscar pedidos JÁ EXISTENTES no banco (tanto por id_pedido_ml quanto por id_envio_ml)
+            // 1. Buscar pedidos JÁ EXISTENTES no banco (tanto por id_pedido_ml quanto por id_envio_ml ou pack_id)
             const query = `
                 SELECT p.*, c.access_token, c.refresh_token, c.token_expiration, c.id as conta_id_real, c.seller_id, c.nickname
                 FROM pedidos_mercado_livre p
                 JOIN hub_ml_contas c ON p.conta_id = c.id
-                WHERE c.cliente_id = $1 AND (p.id_pedido_ml = ANY($2) OR p.id_envio_ml = ANY($3))
+                WHERE c.cliente_id = $1 AND (p.id_pedido_ml = ANY($2) OR p.id_envio_ml = ANY($3) OR p.pack_id = ANY($2))
             `;
             const result = await client.query(query, [clienteId, idsPedido, idsEnvio]);
             const pedidosEncontrados = result.rows;
@@ -1326,11 +1383,13 @@ class HubMercadoLivreService {
             // Mapeia os IDs encontrados para identificar quais estão faltando
             const pedidosEncontradosIds = new Set();
             const enviosEncontradosIds = new Set();
+            const packsEncontradosIds = new Set();
             pedidosEncontrados.forEach(p => {
                 if (p.id_pedido_ml) pedidosEncontradosIds.add(String(p.id_pedido_ml));
                 if (p.id_envio_ml) enviosEncontradosIds.add(String(p.id_envio_ml));
+                if (p.pack_id) packsEncontradosIds.add(String(p.pack_id));
             });
-            const idsPedidoFaltando = idsPedido.filter(id => !pedidosEncontradosIds.has(String(id)));
+            const idsPedidoFaltando = idsPedido.filter(id => !pedidosEncontradosIds.has(String(id)) && !packsEncontradosIds.has(String(id)));
             const idsEnvioFaltando = idsEnvio.filter(id => !enviosEncontradosIds.has(String(id)));
 
             // 2. Atualizar os pedidos que JÁ EXISTEM no banco (fluxo original)
@@ -1395,6 +1454,7 @@ class HubMercadoLivreService {
                             data_limite_envio: null,
                             id_envio_ml: null,
                             status_envio: null,
+                            tipo_envio: pedido.tipo_envio || null,
                             etiqueta_zpl: pedido.etiqueta_zpl,
                             comprador_nickname: dadosAtualizados.buyer?.nickname || null,
                             frete_envio: null,
@@ -1403,7 +1463,8 @@ class HubMercadoLivreService {
                             status_dev: pedido.status_dev || null,
                             status_med: pedido.status_med || null,
                             id_envio_dev: pedido.id_envio_dev || null,
-                            status_envio_dev: pedido.status_envio_dev || null
+                            status_envio_dev: pedido.status_envio_dev || null,
+                            pack_id: dadosAtualizados.pack_id ? String(dadosAtualizados.pack_id) : (pedido.pack_id ? String(pedido.pack_id) : null)
                         };
 
                         const itensMapeados = (dadosAtualizados.order_items || []).map(itemWrapper => {
@@ -1429,7 +1490,8 @@ class HubMercadoLivreService {
 
                                 if (envioData) {
                                     pedidoAtualizado.id_envio_ml = envioData.id;
-                                    pedidoAtualizado.status_envio = envioData.status;
+                                    pedidoAtualizado.status_envio = this.resolverStatusEnvio(envioData);
+                                    pedidoAtualizado.tipo_envio = envioData.logistic_type || null;
 
                                     try {
                                         const freteUrl = `${ML_API_URL}/shipments/${envioData.id}/costs`;
@@ -1437,7 +1499,7 @@ class HubMercadoLivreService {
                                             headers: { 'Authorization': `Bearer ${accessToken}` }
                                         });
                                         pedidoAtualizado.frete_envio = freteRes.data?.senders?.[0]?.cost || 0;
-                                    } catch (freteError) {}
+                                    } catch (freteError) { }
 
                                     try {
                                         const limiteEnvioUrl = `${ML_API_URL}/shipments/${envioData.id}/sla`;
@@ -1449,7 +1511,7 @@ class HubMercadoLivreService {
                                         if (limiteEnvioData.expected_date) {
                                             pedidoAtualizado.data_limite_envio = limiteEnvioData.expected_date;
                                         }
-                                    } catch (slaError) {}
+                                    } catch (slaError) { }
 
                                     const shippingOption = envioData.shipping_option || {};
                                     const statusHistory = envioData.status_history || {};
@@ -1502,10 +1564,10 @@ class HubMercadoLivreService {
                                                 conteudoEtiqueta = conteudoEtiqueta.toString('utf8');
                                             }
                                             pedidoAtualizado.etiqueta_zpl = conteudoEtiqueta;
-                                        } catch (errLabel) {}
+                                        } catch (errLabel) { }
                                     }
                                 }
-                            } catch (envioError) {}
+                            } catch (envioError) { }
                         }
 
                         if (!pedido.nfe_numero) {
@@ -1513,10 +1575,20 @@ class HubMercadoLivreService {
                             if (nfData) {
                                 pedidoAtualizado.nfe_numero = nfData.invoiceNumber;
                                 pedidoAtualizado.chave_acesso = nfData.invoiceKey;
+                                if (!pedidoAtualizado.tipo_envio && nfData.logisticType) {
+                                    pedidoAtualizado.tipo_envio = nfData.logisticType;
+                                }
                             }
                         } else {
                             pedidoAtualizado.nfe_numero = pedido.nfe_numero;
                             pedidoAtualizado.chave_acesso = pedido.chave_acesso;
+
+                            if (!pedidoAtualizado.tipo_envio) {
+                                const nfData = await this.buscarNotaFiscal(pedidoAtualizado.id_pedido_ml, pedido.seller_id, accessToken);
+                                if (nfData && nfData.logisticType) {
+                                    pedidoAtualizado.tipo_envio = nfData.logisticType;
+                                }
+                            }
                         }
 
                         await this.salvarPedidoNoBanco(pedidoAtualizado);
@@ -1553,6 +1625,11 @@ class HubMercadoLivreService {
 
                             if (!dadosPedido) return;
 
+                            // Verifica se o pedido pertence a este vendedor específico
+                            if (dadosPedido.seller?.id && String(dadosPedido.seller.id) !== String(conta.seller_id)) {
+                                return;
+                            }
+
                             const pedidoNovo = {
                                 conta_id: conta.id,
                                 id_pedido_ml: dadosPedido.id,
@@ -1560,7 +1637,8 @@ class HubMercadoLivreService {
                                 status_pedido: dadosPedido.status,
                                 data_limite_envio: null,
                                 id_envio_ml: envioData ? envioData.id : (dadosPedido.shipping?.id || null),
-                                status_envio: envioData ? envioData.status : null,
+                                status_envio: envioData ? this.resolverStatusEnvio(envioData) : null,
+                                tipo_envio: envioData ? (envioData.logistic_type || null) : null,
                                 etiqueta_zpl: null,
                                 comprador_nickname: dadosPedido.buyer?.nickname || null,
                                 frete_envio: null,
@@ -1569,7 +1647,8 @@ class HubMercadoLivreService {
                                 status_dev: null,
                                 status_med: null,
                                 id_envio_dev: null,
-                                status_envio_dev: null
+                                status_envio_dev: null,
+                                pack_id: dadosPedido.pack_id ? String(dadosPedido.pack_id) : (envioData?.pack_id ? String(envioData.pack_id) : null)
                             };
 
                             const itensMapeados = (dadosPedido.order_items || []).map(itemWrapper => {
@@ -1593,17 +1672,18 @@ class HubMercadoLivreService {
                                     const envioRes = await axios.get(envioUrl, { headers: { 'Authorization': `Bearer ${accessToken}` } });
                                     envioRealData = envioRes.data;
                                     if (envioRealData) {
-                                        pedidoNovo.status_envio = envioRealData.status;
+                                        pedidoNovo.status_envio = this.resolverStatusEnvio(envioRealData);
                                     }
-                                } catch (e) {}
+                                } catch (e) { }
                             }
 
                             if (envioRealData) {
+                                pedidoNovo.tipo_envio = envioRealData.logistic_type || null;
                                 try {
                                     const freteUrl = `${ML_API_URL}/shipments/${envioRealData.id}/costs`;
                                     const freteRes = await axios.get(freteUrl, { headers: { 'Authorization': `Bearer ${accessToken}` } });
                                     pedidoNovo.frete_envio = freteRes.data?.senders?.[0]?.cost || 0;
-                                } catch (freteError) {}
+                                } catch (freteError) { }
 
                                 try {
                                     const slaUrl = `${ML_API_URL}/shipments/${envioRealData.id}/sla`;
@@ -1612,7 +1692,7 @@ class HubMercadoLivreService {
                                     if (slaData?.expected_date) {
                                         pedidoNovo.data_limite_envio = slaData.expected_date;
                                     }
-                                } catch (slaError) {}
+                                } catch (slaError) { }
 
                                 const shippingOption = envioRealData.shipping_option || {};
                                 const statusHistory = envioRealData.status_history || {};
@@ -1656,7 +1736,7 @@ class HubMercadoLivreService {
                                             conteudoEtiqueta = conteudoEtiqueta.toString('utf8');
                                         }
                                         pedidoNovo.etiqueta_zpl = conteudoEtiqueta;
-                                    } catch (errLabel) {}
+                                    } catch (errLabel) { }
                                 }
                             }
 
@@ -1664,6 +1744,9 @@ class HubMercadoLivreService {
                             if (nfData) {
                                 pedidoNovo.nfe_numero = nfData.invoiceNumber;
                                 pedidoNovo.chave_acesso = nfData.invoiceKey;
+                                if (!pedidoNovo.tipo_envio && nfData.logisticType) {
+                                    pedidoNovo.tipo_envio = nfData.logisticType;
+                                }
                             }
 
                             await this.salvarPedidoNoBanco(pedidoNovo);
@@ -1706,7 +1789,7 @@ class HubMercadoLivreService {
                                                 if (o.id && !orderIds.includes(o.id)) orderIds.push(o.id);
                                             }
                                         }
-                                    } catch (packErr) {}
+                                    } catch (packErr) { }
                                 }
 
                                 await Promise.all(orderIds.map(async (orderId) => {
@@ -1724,7 +1807,7 @@ class HubMercadoLivreService {
                         }
                     }));
 
-                    // Busca para IDs de Pedido (numero_loja) usando /orders/search
+                    // Busca para IDs de Pedido (numero_loja) usando /orders/search ou /packs
                     await Promise.all(idsPedidoFaltando.map(async (idFaltante) => {
                         let encontrou = false;
                         for (const conta of contasDisponiveis) {
@@ -1736,13 +1819,48 @@ class HubMercadoLivreService {
                                 continue;
                             }
 
+                            console.log(`ID FALTANTE: ${idFaltante}`)
+                            // 1. Tentar buscar como pack_id
+                            try {
+                                await delay(100);
+                                const packUrl = `${ML_API_URL}/packs/${idFaltante}`;
+                                const packRes = await axios.get(packUrl, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+                                if (packRes.data && packRes.data.orders) {
+                                    let processouAlgum = false;
+                                    await Promise.all(packRes.data.orders.map(async (o) => {
+                                        if (o.id) {
+                                            try {
+                                                console.log(`Tentando buscar pedido ${o.id}`)
+                                                await delay(100);
+                                                const searchUrl = `${ML_API_URL}/orders/search?seller=${conta.seller_id}&q=${o.id}`;
+                                                const searchRes = await axios.get(searchUrl, {
+                                                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                                                });
+                                                if (searchRes.data && searchRes.data.results && searchRes.data.results.length > 0) {
+                                                    await processarOrderEncontrado(o.id, conta, accessToken, null);
+                                                    processouAlgum = true;
+                                                }
+                                            } catch (oErr) {
+                                                // Se der erro, apenas ignora
+                                            }
+                                        }
+                                    }));
+                                    if (processouAlgum) {
+                                        encontrou = true;
+                                        break;
+                                    }
+                                }
+                            } catch (packErr) {
+                                // Silencioso: se falhar, segue para a busca normal por order_id/search
+                            }
+
                             try {
                                 await delay(100);
                                 const searchUrl = `${ML_API_URL}/orders/search?seller=${conta.seller_id}&q=${idFaltante}`;
                                 const searchRes = await axios.get(searchUrl, {
                                     headers: { 'Authorization': `Bearer ${accessToken}` }
                                 });
-                                
+
                                 if (searchRes.data && searchRes.data.results && searchRes.data.results.length > 0) {
                                     await Promise.all(searchRes.data.results.map(async (orderData) => {
                                         await processarOrderEncontrado(orderData.id, conta, accessToken, null);
@@ -1756,7 +1874,7 @@ class HubMercadoLivreService {
                             }
                         }
                         if (!encontrou) {
-                            console.warn(`[HUB ML] Pedido ${idFaltante} não encontrado em nenhuma conta.`);
+                            console.warn(`[HUB ML] Pedido ou Pack ${idFaltante} não encontrado em nenhuma conta.`);
                         }
                     }));
                 }
@@ -1770,7 +1888,7 @@ class HubMercadoLivreService {
 
     async processarWebhookStatus(topic, resource, user_id) {
         if (!topic || !resource || !user_id) return;
-        
+
         // Processar apenas tópicos relacionados a pedidos ou envios
         if (topic !== 'orders_v2' && topic !== 'shipments') return;
 
@@ -1809,7 +1927,7 @@ class HubMercadoLivreService {
             if (!orderId) return;
 
             // 3. Buscar no DB local para ver se o pedido existe e capturar seus status atuais
-            const dbQuery = await client.query('SELECT id_pedido_ml, status_pedido, status_envio FROM pedidos_mercado_livre WHERE id_pedido_ml = $1', [String(orderId)]);
+            const dbQuery = await client.query('SELECT id_pedido_ml, status_pedido, status_envio, tipo_envio FROM pedidos_mercado_livre WHERE id_pedido_ml = $1', [String(orderId)]);
             if (dbQuery.rowCount === 0) return; // Se não existe, a rotina normal do cron fará a inserção. Ignoramos aqui.
             const pedidoBanco = dbQuery.rows[0];
 
@@ -1819,29 +1937,37 @@ class HubMercadoLivreService {
 
             const novoStatusPedido = dadosML.status;
             let novoStatusEnvio = null;
+            let novoTipoEnvio = null;
 
             // Se o pedido tiver dados de envio, buscamos o status atualizado do envio
             if (dadosML.shipping && dadosML.shipping.id) {
                 const shipRes = await axios.get(`${ML_API_URL}/shipments/${dadosML.shipping.id}`, { headers: { Authorization: `Bearer ${accessToken}` } });
-                novoStatusEnvio = shipRes.data.status;
+                novoStatusEnvio = this.resolverStatusEnvio(shipRes.data);
+                novoTipoEnvio = shipRes.data.logistic_type || null;
             }
 
             // 5. INTELIGÊNCIA: Só realiza o UPDATE no banco se houver uma real alteração nos campos alvo
-            if (pedidoBanco.status_pedido !== novoStatusPedido || pedidoBanco.status_envio !== novoStatusEnvio) {
+            if (pedidoBanco.status_pedido !== novoStatusPedido || pedidoBanco.status_envio !== novoStatusEnvio || pedidoBanco.tipo_envio !== novoTipoEnvio) {
                 console.log(`[HUB Webhook] Alteração real detectada no pedido ${orderId} | Status: ${pedidoBanco.status_pedido} -> ${novoStatusPedido} | Envio: ${pedidoBanco.status_envio} -> ${novoStatusEnvio}`);
 
                 const updateQuery = `
                     UPDATE pedidos_mercado_livre
-                    SET status_pedido = $1, status_envio = $2, last_update = NOW()
-                    WHERE id_pedido_ml = $3
+                    SET status_pedido = $1, status_envio = $2, tipo_envio = COALESCE($3, tipo_envio), pack_id = COALESCE($4, pack_id), last_update = NOW()
+                    WHERE id_pedido_ml = $5
                 `;
-                await client.query(updateQuery, [novoStatusPedido, novoStatusEnvio, String(orderId)]);
+                await client.query(updateQuery, [
+                    novoStatusPedido,
+                    novoStatusEnvio,
+                    novoTipoEnvio,
+                    dadosML.pack_id ? String(dadosML.pack_id) : null,
+                    String(orderId)
+                ]);
             }
 
         } catch (error) {
             // Se for 404, o pedido ou envio foi expurgado/não existe, então ignoramos em silêncio.
             if (error.response && error.response.status === 404) {
-                 // Ignore
+                // Ignore
             } else {
                 console.error(`[HUB Webhook] Erro ao processar webhook resource ${resource}:`, error.message);
             }

@@ -5,6 +5,7 @@ const authController = require('../controllers/authController');
 
 // Protegida por login (requireAuth) para segurança
 router.use(authController.requireAuth);
+router.use(authController.requireModule('faturamento_automatico'));
 
 // Rota POST para iniciar o faturamento (Existente)
 router.post('/iniciar', faturamentoController.handleFaturamentoManual);

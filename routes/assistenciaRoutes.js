@@ -5,6 +5,7 @@ const authController = require('../controllers/authController');
 
 // Middleware para garantir que todas as rotas de assistência exijam login
 router.use(authController.requireAuth);
+router.use(authController.requireModule('faturamento_assistencias'));
 
 // --- ROTAS DA API (para consumo do frontend via JavaScript) ---
 router.get('/api/assistencias', assistenciaController.getAssistenciasAPI);

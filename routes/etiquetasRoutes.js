@@ -8,7 +8,43 @@ const multer = require('multer');
 const uploadExcel = multer({ storage: multer.memoryStorage() });
 
 // Protege todas as rotas deste módulo com autenticação
-router.use('/etiquetas', authController.requireAuth);
+router.use(authController.requireAuth);
+
+// Interceptador dinâmico de permissões para Expedição (botão a botão)
+router.use((req, res, next) => {
+    const urlPath = req.path;
+    
+    // 1. Gerenciar Gôndolas
+    if (urlPath.startsWith('/etiquetas/gondola') || urlPath.startsWith('/api/gondola')) {
+        return authController.requireModule('expedicao_gondolas')(req, res, next);
+    }
+    // 2. Gerenciar Rel. Tarde
+    if (urlPath.startsWith('/etiquetas/relatorio-tarde') || urlPath.startsWith('/api/relatorio-tarde')) {
+        return authController.requireModule('expedicao_rel_tarde')(req, res, next);
+    }
+    // 3. Alteração em Massa
+    if (urlPath.startsWith('/etiquetas/bipagem-massa') || urlPath.includes('/bipagem-massa')) {
+        return authController.requireModule('expedicao_massa')(req, res, next);
+    }
+    // 4. Painel de Expedição
+    if (urlPath.startsWith('/etiquetas/dashboard-expedicao') || urlPath.includes('/expedicao/dashboard') || urlPath.includes('/expedicao/conferencia-gestao') || urlPath.includes('/expedicao/historico') || urlPath.includes('/expedicao/data-virtual') || urlPath.includes('/expedicao/avancar-dia') || urlPath.includes('/expedicao/exportar-dinamico') || urlPath.includes('/expedicao/imprimir-lote') || urlPath.includes('/expedicao/bipagem-pdfs')) {
+        return authController.requireModule('expedicao_dashboard')(req, res, next);
+    }
+    // 5. Expedição Bipagem
+    if (urlPath.startsWith('/etiquetas/expedicao/bipagem') || urlPath.includes('/expedicao/hierarquia') || urlPath.includes('/expedicao/nf/movimentar') || urlPath.includes('/expedicao/coletas') || urlPath.includes('/expedicao/paletes') || urlPath.includes('/expedicao/carregadores') || urlPath.includes('/expedicao/registrar-bipagem') || urlPath.includes('/expedicao/identificar-codigo') || urlPath.includes('/expedicao/validar-pin')) {
+        return authController.requireModule('expedicao_bipagem_exp')(req, res, next);
+    }
+    // 6. Bipagem de Produtos
+    if (urlPath.startsWith('/etiquetas/bipagem') || urlPath.includes('/validar-produto-fechado') || urlPath.includes('/finalizar-bipagem') || urlPath.includes('/bipagem/save-state') || urlPath.includes('/bipagem/load-state') || urlPath.includes('/buscar-nf-lote')) {
+        return authController.requireModule('expedicao_bipagem_produtos')(req, res, next);
+    }
+    // 7. Ordenador de Etiquetas (Caso padrão)
+    if (urlPath === '/etiquetas' || urlPath.startsWith('/etiquetas/') || urlPath.includes('/api/etiquetas') || urlPath.includes('/shopee/') || urlPath.includes('/separados-excel') || urlPath.includes('/ondas-excel')) {
+        return authController.requireModule('expedicao_ordenador')(req, res, next);
+    }
+    
+    next();
+});
 
 // Rota para exibir a página de upload de etiquetas
 // GET /etiquetas
@@ -50,7 +86,13 @@ router.get('/etiquetas/dashboard-expedicao', etiquetasController.renderDashboard
 
 // Rotas de API para o Dashboard de Expedição (Tempo Real)
 router.get('/api/expedicao/dashboard-dados', etiquetasController.apiGetDashboardExpedicao);
+router.get('/api/expedicao/dashboard-tabela', etiquetasController.apiGetDashboardTabela);
 router.post('/api/expedicao/atualizar-status', etiquetasController.apiAtualizarStatusPendencia);
+
+// Novas rotas para validação de fotos na expedição
+router.get('/api/expedicao/pedidos-com-foto', etiquetasController.apiGetPedidosComFoto);
+router.post('/api/expedicao/validar-foto', etiquetasController.apiValidarFotoPedido);
+router.post('/api/expedicao/corrigir-flag-foto', etiquetasController.apiCorrigirFlagFoto);
 
 // Rotas de API para a Gestão de Conferência em Massa (Dashboard)
 router.get('/api/expedicao/conferencia-gestao', etiquetasController.apiGetConferenciaGestao);

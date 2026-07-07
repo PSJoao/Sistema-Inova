@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
         searchInput: document.getElementById('nfe-history-search-input'),
         reportBtn: document.getElementById('nfe-history-report-btn'),
         reportJustificationsBtn: document.getElementById('nfe-history-justify-report-btn'),
+        separationReportBtn: document.getElementById('nfe-history-separation-report-btn'),
         cardTemplate: document.getElementById('nfe-history-card-template'),
         missingProductsContainer: document.getElementById('nfe-history-missing-products-container'),
         missingProductsList: document.getElementById('nfe-history-missing-products-list'),
@@ -391,6 +392,51 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.reportJustificationsBtn.disabled = false;
         }
     });
+
+    if (elements.separationReportBtn) {
+        elements.separationReportBtn.addEventListener('click', async () => {
+            const originalButtonText = elements.separationReportBtn.innerHTML;
+            elements.separationReportBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Gerando...';
+            elements.separationReportBtn.disabled = true;
+
+            const params = new URLSearchParams({
+                situacao: state.situacao,
+                justificativa: state.justificativa,
+                search: state.search
+            });
+            const reportUrl = `/historico-nfe/api/report/separation?${params.toString()}`;
+
+            try {
+                const response = await fetch(reportUrl);
+
+                if (!response.ok) {
+                    const errorMessage = await response.text();
+                    throw new Error(errorMessage || 'Erro ao baixar o relatório.');
+                }
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = 'Relatorio_Separacao.xlsx';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+
+            } catch (error) {
+                if (typeof ModalSystem !== 'undefined') {
+                    ModalSystem.alert(error.message, 'Erro ao Gerar Relatório');
+                } else {
+                    alert(error.message);
+                }
+            } finally {
+                elements.separationReportBtn.innerHTML = originalButtonText;
+                elements.separationReportBtn.disabled = false;
+            }
+        });
+    }
 
     // Carga inicial dos dados
     fetchData();

@@ -1,0 +1,84 @@
+{{!--
+  views/estoque/lista-pecas.handlebars
+  Listagem de peças em estoque com filtros, paginação e tabela clássica responsiva.
+--}}
+<link rel="stylesheet" href="/public/styles/estoque.css">
+
+<div class="content-card">
+    {{!-- Cabeçalho da Página --}}
+    <div class="page-header-actions">
+        <h1 class="page-title">{{title}}</h1>
+        <div style="display: flex; justify-content: end; gap: 10px;">
+            <a href="/estoque/bipagem" class="btn btn-outline-accent">
+                <i class="fas fa-barcode me-2"></i>Bipar Peças
+            </a>
+            <a href="/estoque/nova" class="btn btn-accent">
+                <i class="fas fa-plus me-2"></i>Nova Peça
+            </a>
+        </div>
+    </div>
+
+    {{!-- Barra de Filtros --}}
+    <div class="estoque-filters-bar">
+        <div class="estoque-filter-group" style="flex-grow: 1; min-width: 300px;">
+            <label for="buscaGeral">Busca Rápida</label>
+            <input type="text" id="buscaGeral" class="form-control" placeholder="SKU, nº peça, nome, produto pai, cor...">
+        </div>
+        <div class="estoque-filter-group">
+            <label for="filtroFabrica">Fábrica</label>
+            <select id="filtroFabrica" class="form-control" style="min-width: 180px;">
+                <option value="">Todas</option>
+                {{#each fabricas}}
+                    <option value="{{this.id}}">{{this.nome}}</option>
+                {{/each}}
+            </select>
+        </div>
+        <div class="estoque-filter-group">
+            <label for="filtroLimite">Mostrar</label>
+            <select id="filtroLimite" class="form-control" style="min-width: 80px;">
+                <option value="20">20</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+            </select>
+        </div>
+    </div>
+
+    {{!-- Container da Tabela (Clássica e Responsiva) --}}
+    <div class="table-responsive mt-3">
+        <table class="table" id="tabela-estoque" style="width: 100%; white-space: normal; table-layout: auto;">
+            <thead>
+                <tr>
+                    <th class="sortable" data-column="sku" style="cursor: pointer; user-select: none;">SKU</th>
+                    <th class="sortable" data-column="numero_peca" style="cursor: pointer; user-select: none;">Nº Peça</th>
+                    <th class="sortable" data-column="fabrica_nome" style="cursor: pointer; user-select: none;">Fábrica</th>
+                    <th class="sortable" data-column="produto_pai_sku" style="cursor: pointer; user-select: none; max-width: 250px;">Produto</th>
+                    <th class="sortable" data-column="nome_peca" style="cursor: pointer; user-select: none; max-width: 250px;">Peça</th>
+                    <th>Observação</th>
+                    <th>Cor</th>
+                    <th>Medidas</th>
+                    <th class="sortable text-center" data-column="quantidade" style="cursor: pointer; user-select: none;">Qtd.</th>
+                    <th class="sortable" data-column="localizacao" style="cursor: pointer; user-select: none;">Localização</th>
+                    <th class="text-center" style="min-width: 120px;">Ações</th>
+                </tr>
+            </thead>
+            <tbody id="table-body">
+                {{!-- Populado dinamicamente via JS --}}
+            </tbody>
+        </table>
+    </div>
+
+    {{!-- Paginação --}}
+    <div id="pagination-container" class="estoque-pagination"></div>
+
+    {{!-- Estado vazio --}}
+    <div id="empty-state" class="estoque-empty-state" style="display: none;">
+        <i class="fas fa-cogs"></i>
+        <p>Nenhuma peça encontrada.</p>
+        <p style="font-size: 0.85rem;">Cadastre a primeira peça clicando em "Nova Peça".</p>
+    </div>
+</div>
+
+{{#section "scripts"}}
+    <script src="/public/scripts/estoqueListaManager.js"></script>
+{{/section}}

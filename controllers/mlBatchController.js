@@ -10,7 +10,7 @@ const mlBatchService = require('../services/mlBatchService');
 exports.renderUploadPage = (req, res) => {
     res.render('conferencia/ml-batch-upload', {
         title: 'Conferência ML em Lote (Upload)',
-        user: req.session.username // Mantendo o padrão de mostrar o usuário logado
+        user: req.user.username // Mantendo o padrão de mostrar o usuário logado
     });
 };
 
@@ -68,7 +68,7 @@ exports.processUpload = async (req, res) => {
         res.status(500).render('conferencia/ml-batch-upload', {
             title: 'Conferência ML em Lote (Upload)',
             error: 'Erro ao processar a planilha: ' + error.message,
-            user: req.session.username
+            user: req.user.username
         });
     }
 };
@@ -76,7 +76,7 @@ exports.processUpload = async (req, res) => {
 exports.renderMappingPage = (req, res) => {
     res.render('conferencia/ml-mapping-upload', {
         title: 'Mapeamento Pack ID (Upload)',
-        user: req.session.username
+        user: req.user.username
     });
 };
 

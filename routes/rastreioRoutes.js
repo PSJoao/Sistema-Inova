@@ -1,10 +1,13 @@
-// routes/rastreioRoutes.js
-
 const express = require('express');
 const router = express.Router();
 const rastreioController = require('../controllers/rastreioController');
+const authController = require('../controllers/authController');
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage() });
+
+// Protege as rotas deste roteador com login e nível de permissão
+router.use(authController.requireAuth);
+router.use(authController.requireModule('logistica_rastreio'));
 
 // Rota para renderizar a página principal de rastreamento
 // GET /rastreio

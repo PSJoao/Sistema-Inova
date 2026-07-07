@@ -26,105 +26,181 @@
   </header>
 
   <div class="menu-grid-container">
-    {{!-- Monitoramento de Marketplaces (3 itens - módulo médio) --}}
+    {{!-- Monitoramento de Marketplaces --}}
+    {{#if permit_monitoramento}}
     <div class="module-card module-medium">
       <div class="module-header">
         <i class="fas fa-chart-line module-icon"></i>
         <h2>Monitoramento de Marketplaces</h2>
       </div>
       <div class="module-buttons">
+        {{#if permit_monitoramento_madeira_lucas}}
         <a href="/madeira/urls" class="btn btn-accent btn-card"><i class="fas fa-store"></i> Madeira - Lucas</a>
+        {{/if}}
+        {{#if permit_monitoramento_madeira_eliane}}
         <a href="/madeiramadeira/urls" class="btn btn-accent btn-card"><i class="fas fa-store"></i> Madeira - Eliane</a>
+        {{/if}}
+        {{#if permit_monitoramento_viavarejo}}
         <a href="/viavarejo/urls" class="btn btn-accent btn-card"><i class="fas fa-shopping-bag"></i> ViaVarejo</a>
+        {{/if}}
       </div>
     </div>
+    {{/if}}
 
-    {{!-- Notas Fiscais e Faturamento (6 itens - módulo grande) --}}
+    {{!-- Notas Fiscais e Faturamento --}}
+    {{#if permit_faturamento}}
     <div class="module-card module-large">
       <div class="module-header">
         <i class="fas fa-file-invoice module-icon"></i>
         <h2>Notas Fiscais e Faturamento</h2>
       </div>
       <div class="module-buttons">
+        {{#if permit_faturamento_gerenciar_emissoes}}
         <a href="/emissao" class="btn btn-accent btn-card"><i class="fas fa-barcode"></i> Gerenciar Emissões</a>
+        {{/if}}
+        {{#if permit_faturamento_gerar_etiquetas}}
         <a href="/emissao/nfe-management" class="btn btn-accent btn-card"><i class="fas fa-sticky-note"></i> Gerar
           Etiquetas NFe</a>
+        {{/if}}
+        {{#if permit_faturamento_automatico}}
         <a href="/faturamento-automatico" class="btn btn-accent btn-card"><i class="fas fa-chart-line"></i> Faturador
           Automático</a>
+        {{/if}}
+        {{#if permit_faturamento_gerenciar_pedidos}}
         <a href="/acompanhamento/pedidos" class="btn btn-accent btn-card"><i class="fas fa-shopping-cart"></i> Gerenciar
           Pedidos</a>
+        {{/if}}
+        {{#if permit_faturamento_assistencias}}
         <a href="/assistencias" class="btn btn-accent btn-card"><i class="fas fa-file-invoice"></i> Assistências</a>
+        {{/if}}
+        {{#if permit_faturamento_historico_notas}}
         <a href="/historico-nfe" class="btn btn-accent btn-card"><i class="fas fa-history"></i> Histórico de Notas</a>
+        {{/if}}
       </div>
     </div>
+    {{/if}}
 
-    {{!-- Produtos (1 item - módulo pequeno) --}}
-    <div class="module-card module-small">
+    {{!-- Produtos --}}
+    {{#if permit_produtos}}
+    <div class="module-card module-medium">
       <div class="module-header">
-        <i class="fas fa-box module-icon"></i>
+        <i class="fas fa-cogs module-icon"></i>
         <h2>Produtos</h2>
       </div>
       <div class="module-buttons">
-        <a href="/produtos/listagem" class="btn btn-accent btn-card btn-full"><i class="fas fa-box"></i> Gerenciar
-          Produtos</a>
-        <a href="/tipos" class="btn btn-accent btn-card btn-full"><i class="fas fa-file-export"></i> Gerenciar Tipos</a>
-        <a href="/product-sync" class="btn btn-accent btn-card btn-full"><i class="fas fa-sync"></i> Sincronizar
-          Produtos</a>
+        {{#if permit_produtos_gerenciar}}
+        <a href="/produtos/listagem" class="btn btn-accent btn-card"><i class="fas fa-box"></i> Gerenciar Produtos</a>
+        {{/if}}
+        {{#if permit_produtos_tipos}}
+        <a href="/tipos" class="btn btn-accent btn-card"><i class="fas fa-file-export"></i> Gerenciar Tipos</a>
+        {{/if}}
+        {{#if permit_produtos_sincronizar}}
+        <a href="/product-sync" class="btn btn-accent btn-card"><i class="fas fa-sync"></i> Sincronizar Produtos</a>
+        {{/if}}
+        {{#if permit_produtos_estoque_dev}}
+        <a href="/estoque" class="btn btn-accent btn-card"><i class="fas fa-cogs"></i> Estoque Dev.</a>
+        {{/if}}
+        {{#if permit_produtos_bipagem_pecas}}
+        <a href="/estoque/bipagem" class="btn btn-accent btn-card"><i class="fas fa-barcode"></i> Bipagem de Peças</a>
+        {{/if}}
       </div>
     </div>
+    {{/if}}
 
-    {{!-- Expedição e Etiquetas (5 itens - módulo grande) --}}
+    {{!-- Expedição e Etiquetas --}}
+    {{#if permit_expedicao}}
     <div class="module-card module-large">
       <div class="module-header">
         <i class="fas fa-tags module-icon"></i>
         <h2>Expedição e Etiquetas</h2>
       </div>
       <div class="module-buttons">
+        {{#if permit_expedicao_ordenador}}
         <a id="etiquetas-btn" href="/etiquetas" class="btn btn-accent btn-card"><i class="fas fa-tag"></i> Ordenador de
           Etiquetas</a>
+        {{/if}}
+        {{#if permit_expedicao_gondolas}}
         <a href="/etiquetas/gondola" class="btn btn-accent btn-card"><i class="fas fa-border-all"></i> Gerenciar
           Gôndolas</a>
+        {{/if}}
+        {{#if permit_expedicao_rel_tarde}}
         <a href="/etiquetas/relatorio-tarde" class="btn btn-accent btn-card"><i class="far fa-file-alt"></i> Gerenciar
           Rel. Tarde</a>
+        {{/if}}
+        {{#if permit_expedicao_bipagem_produtos}}
         <a href="/etiquetas/bipagem" class="btn btn-accent btn-card"><i class="fas fa-barcode"></i> Bipagem de
           Produtos</a>
-        <!--<a href="/etiquetas/listagem" class="btn btn-accent btn-card"><i class="fas fa-list"></i> Histórico de Etiquetas</a>-->
+        {{/if}}
+        {{#if permit_expedicao_dashboard}}
         <a href="/etiquetas/dashboard-expedicao" class="btn btn-accent btn-card"><i class="fas fa-chart-pie"></i> Painel
           de Expedição</a>
+        {{/if}}
+        {{#if permit_expedicao_bipagem_exp}}
         <a href="/etiquetas/expedicao/bipagem" class="btn btn-accent btn-card"><i class="fas fa-qrcode"></i> Expedição
           Bip.</a>
+        {{/if}}
+        {{#if permit_expedicao_massa}}
         <a href="/etiquetas/bipagem-massa" class="btn btn-accent btn-card"><i class="fas fa-layer-group"></i> Alteração
           em Massa</a>
+        {{/if}}
       </div>
     </div>
+    {{/if}}
 
-    {{!-- Conferência (2 itens - módulo pequeno) --}}
+    {{!-- Conferência --}}
+    {{#if permit_conferencia}}
     <div class="module-card module-small">
       <div class="module-header">
         <i class="fas fa-check-circle module-icon"></i>
         <h2>Conferência</h2>
       </div>
       <div class="module-buttons">
+        {{#if permit_conferencia_bipagem}}
         <a href="/conferencia/bipagem" class="btn btn-accent btn-card"><i class="fas fa-boxes"></i> Conferência de
           Pedidos</a>
+        {{/if}}
+        {{#if permit_conferencia_codigos}}
         <a href="/conferencia/gerenciamento-codigos" class="btn btn-accent btn-card"><i class="fas fa-cog"></i>
           Gerenciar Códigos</a>
+        {{/if}}
+        {{#if permit_conferencia_ml_batch}}
         <a href="/conferencia/ml-batch" class="btn btn-accent btn-card"><i class="fas fas fa-align-left"></i> Conf. para
           Faturamento</a>
+        {{/if}}
       </div>
     </div>
+    {{/if}}
 
-    {{!-- Transporte e Logística (2 itens - módulo pequeno) --}}
+    {{!-- Transporte e Logística --}}
+    {{#if permit_logistica}}
     <div class="module-card module-small">
       <div class="module-header">
         <i class="fas fa-truck module-icon"></i>
         <h2>Transporte e Logística</h2>
       </div>
       <div class="module-buttons">
+        {{#if permit_logistica_relacoes}}
         <a href="/relacoes" class="btn btn-accent btn-card"><i class="fas fa-truck"></i> Gerenciar Relações</a>
+        {{/if}}
+        {{#if permit_logistica_rastreio}}
         <a href="/rastreio" class="btn btn-accent btn-card"><i class="fas fa-paper-plane"></i> Acompanhamentos</a>
+        {{/if}}
       </div>
     </div>
+    {{/if}}
+
+    {{!-- Painel Administrativo (Exclusivo para Administradores) --}}
+    {{#if isAdmin}}
+    <div class="module-card module-small">
+      <div class="module-header">
+        <i class="fas fa-users-cog module-icon"></i>
+        <h2>Administração</h2>
+      </div>
+      <div class="module-buttons">
+        <a href="/admin/usuarios" class="btn btn-accent btn-card"><i class="fas fa-users"></i> Gerenciar Usuários</a>
+      </div>
+    </div>
+    {{/if}}
   </div>
 
   {{!-- Botão de Sair --}}

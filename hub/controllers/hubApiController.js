@@ -13,19 +13,19 @@ exports.login = async (req, res) => {
 
         const cliente = result.rows[0];
         const validPass = await bcrypt.compare(password, cliente.senha_hash);
-        
+
         if (!validPass) return res.status(400).json({ error: 'Senha incorreta' });
 
         // Gera token
         const token = jwt.sign(
             { id: cliente.id, email: cliente.email },
             JWT_SECRET,
-            { expiresIn: '36500d' } 
+            { expiresIn: '36500d' }
         );
 
-        res.json({ 
-            token, 
-            message: 'Guarde este token. Ele é sua chave de acesso à API.' 
+        res.json({
+            token,
+            message: 'Guarde este token. Ele é sua chave de acesso à API.'
         });
 
     } catch (error) {
@@ -36,7 +36,7 @@ exports.login = async (req, res) => {
 
 exports.getPedidos = async (req, res) => {
     const clienteId = req.user.id;
-    
+
     // Filtros e Paginação
     const { status, data_inicio, limit, offset } = req.query;
 
@@ -58,7 +58,7 @@ exports.getPedidos = async (req, res) => {
         query += ` AND p.status_pedido = $${paramCount}`;
         params.push(status);
     }
-    
+
     if (data_inicio) {
         paramCount++;
         query += ` AND p.date_created >= $${paramCount}`;
@@ -87,16 +87,17 @@ exports.getPedidos = async (req, res) => {
                     id_envio_ml: p.id_envio_ml,
                     status_envio: p.status_envio,
                     data_criacao: p.date_created,
-                    data_limite_envio: p.data_limite_envio,        
-                    data_envio_disponivel: p.data_envio_disponivel, 
-                    data_envio_agendado: p.data_envio_agendado, 
+                    data_limite_envio: p.data_limite_envio,
+                    data_envio_disponivel: p.data_envio_disponivel,
+                    data_envio_agendado: p.data_envio_agendado,
                     data_previsao_entrega: p.data_previsao_entrega,
                     comprador_nickname: p.comprador_nickname,
                     etiqueta_zpl: p.etiqueta_zpl,
                     conta_id: p.conta_id,
                     nome_loja: p.nome_loja,
-                    status_pedido_geral: p.status_pedido, 
+                    status_pedido_geral: p.status_pedido,
                     frete_envio: p.frete_envio,
+                    tipo_envio: p.tipo_envio || null,
                     // --- NOVOS CAMPOS ---
                     tem_dev: p.tem_dev || false,
                     tem_med: p.tem_med || false,
@@ -106,6 +107,7 @@ exports.getPedidos = async (req, res) => {
                     status_envio_dev: p.status_envio_dev || null,
                     nfe_numero: p.nfe_numero || null,
                     chave_acesso: p.chave_acesso || null,
+                    pack_id: p.pack_id || null,
                     // --------------------
                     ids_pedidos_originais: [],
                     itens: []
@@ -133,9 +135,9 @@ exports.getPedidos = async (req, res) => {
             // 2. Processa e adiciona os itens
             let itens = p.itens_pedido;
             if (typeof itens === 'string') {
-                try { itens = JSON.parse(itens); } catch(e) { itens = []; }
+                try { itens = JSON.parse(itens); } catch (e) { itens = []; }
             }
-            
+
             if (Array.isArray(itens)) {
                 // Adiciona os itens deste pedido à lista geral do pacote
                 pacote.itens = pacote.itens.concat(itens);
@@ -166,34 +168,45 @@ exports.getEnvioPorId = async (req, res) => {
 
     try {
         // QUERY INTELIGENTE:
-        // 1. A subquery (dentro dos parênteses) descobre qual é o ID DO ENVIO real,
-        //    mesmo que você tenha passado o ID de um Pedido.
-        // 2. A query principal puxa tudo que pertence a esse ID de Envio descoberto.
+        // 1. A subquery (dentro dos parênteses) descobre qual é o ID DO ENVIO real ou pack_id,
+        //    mesmo que você tenha passado o ID de um Pedido ou pack_id.
+        // 2. A query principal puxa tudo que pertence a esse ID de Envio ou pack_id descoberto.
         const query = `
             SELECT p.*, c.nickname as nome_loja
             FROM pedidos_mercado_livre p
             JOIN hub_ml_contas c ON p.conta_id = c.id
-            WHERE p.id_envio_ml = (
-                SELECT id_envio_ml
-                FROM pedidos_mercado_livre p2
-                JOIN hub_ml_contas c2 ON p2.conta_id = c2.id
-                WHERE (p2.id_pedido_ml = $1 OR p2.id_envio_ml = $1) 
-                AND c2.cliente_id = $2
-                LIMIT 1
+            WHERE (
+                (p.id_envio_ml IS NOT NULL AND p.id_envio_ml = (
+                    SELECT id_envio_ml
+                    FROM pedidos_mercado_livre p2
+                    JOIN hub_ml_contas c2 ON p2.conta_id = c2.id
+                    WHERE (p2.id_pedido_ml = $1 OR p2.id_envio_ml = $1 OR p2.pack_id = $1) 
+                    AND c2.cliente_id = $2
+                    LIMIT 1
+                ))
+                OR
+                (p.pack_id IS NOT NULL AND p.pack_id = (
+                    SELECT pack_id
+                    FROM pedidos_mercado_livre p2
+                    JOIN hub_ml_contas c2 ON p2.conta_id = c2.id
+                    WHERE (p2.id_pedido_ml = $1 OR p2.id_envio_ml = $1 OR p2.pack_id = $1) 
+                    AND c2.cliente_id = $2
+                    LIMIT 1
+                ))
             )
             AND c.cliente_id = $2
         `;
-        
+
         const result = await poolHub.query(query, [paramId, clienteId]);
 
         if (result.rows.length === 0) {
-            return res.status(404).json({ 
-                message: 'Envio não encontrado, não possui etiqueta gerada ou não pertence a sua conta.' 
+            return res.status(404).json({
+                message: 'Envio não encontrado, não possui etiqueta gerada ou não pertence a sua conta.'
             });
         }
 
         const pedidos = result.rows;
-        const base = pedidos[0]; 
+        const base = pedidos[0];
 
         // --- LÓGICA DE AGRUPAMENTO (MERGE) ---
         // (Igual à anterior, mas vital para manter o formato de Pacote)
@@ -217,7 +230,7 @@ exports.getEnvioPorId = async (req, res) => {
 
             let itens = p.itens_pedido;
             if (typeof itens === 'string') {
-                try { itens = JSON.parse(itens); } catch(e) { itens = []; }
+                try { itens = JSON.parse(itens); } catch (e) { itens = []; }
             }
             if (Array.isArray(itens)) {
                 todosItens = todosItens.concat(itens);
@@ -237,17 +250,19 @@ exports.getEnvioPorId = async (req, res) => {
             conta_id: base.conta_id,
             nome_loja: base.nome_loja,
             frete_envio: base.frete_envio,
-            
+            tipo_envio: base.tipo_envio || null,
+
             tem_dev: base.tem_dev || false,
             tem_med: base.tem_med || false,
             status_dev: base.status_dev || null,
             status_med: base.status_med || null,
             id_envio_dev: base.id_envio_dev || null,
             status_envio_dev: base.status_envio_dev || null,
+            pack_id: base.pack_id || null,
 
             // Aqui mostramos todos os pedidos que foram achados através daquele ID
-            ids_pedidos_originais: idsPedidos, 
-            itens: todosItens 
+            ids_pedidos_originais: idsPedidos,
+            itens: todosItens
         };
 
         res.json(respostaConsolidada);
@@ -270,7 +285,7 @@ exports.sincronizarProdutos = async (req, res) => {
 
 exports.getProdutos = async (req, res) => {
     const clienteId = req.user.id;
-    
+
     // Filtros e Paginação
     const { status, limit, offset, tipo } = req.query;
 
@@ -301,7 +316,7 @@ exports.getProdutos = async (req, res) => {
             query += ` AND status = $${paramCount}`;
             params.push(status);
         }
-        
+
         if (tipo) {
             paramCount++;
             query += ` AND tipo = $${paramCount}`;
@@ -348,12 +363,12 @@ exports.getProdutoPorId = async (req, res) => {
             AND empresa = ANY($1)
             LIMIT 1
         `;
-        
+
         const result = await poolProdutos.query(query, [empresas, identificador]);
 
         if (result.rows.length === 0) {
-            return res.status(404).json({ 
-                message: 'Produto não encontrado ou não pertence a sua conta.' 
+            return res.status(404).json({
+                message: 'Produto não encontrado ou não pertence a sua conta.'
             });
         }
 
@@ -389,7 +404,7 @@ exports.monitoramentoInstantaneo = async (req, res) => {
             SELECT p.*, c.nickname as nome_loja
             FROM pedidos_mercado_livre p
             JOIN hub_ml_contas c ON p.conta_id = c.id
-            WHERE c.cliente_id = $1 AND (p.id_pedido_ml = ANY($2) OR p.id_envio_ml = ANY($3))
+            WHERE c.cliente_id = $1 AND (p.id_pedido_ml = ANY($2) OR p.id_envio_ml = ANY($3) OR p.pack_id = ANY($2))
         `;
         const result = await poolHub.query(query, [clienteId, pedidosArray, idsArray]);
         const rows = result.rows;
@@ -405,16 +420,17 @@ exports.monitoramentoInstantaneo = async (req, res) => {
                     id_envio_ml: p.id_envio_ml,
                     status_envio: p.status_envio,
                     data_criacao: p.date_created,
-                    data_limite_envio: p.data_limite_envio,        
-                    data_envio_disponivel: p.data_envio_disponivel, 
-                    data_envio_agendado: p.data_envio_agendado, 
+                    data_limite_envio: p.data_limite_envio,
+                    data_envio_disponivel: p.data_envio_disponivel,
+                    data_envio_agendado: p.data_envio_agendado,
                     data_previsao_entrega: p.data_previsao_entrega,
                     comprador_nickname: p.comprador_nickname,
                     etiqueta_zpl: p.etiqueta_zpl,
                     conta_id: p.conta_id,
                     nome_loja: p.nome_loja,
-                    status_pedido_geral: p.status_pedido, 
+                    status_pedido_geral: p.status_pedido,
                     frete_envio: p.frete_envio,
+                    tipo_envio: p.tipo_envio || null,
                     tem_dev: p.tem_dev || false,
                     tem_med: p.tem_med || false,
                     status_dev: p.status_dev || null,
@@ -423,6 +439,7 @@ exports.monitoramentoInstantaneo = async (req, res) => {
                     status_envio_dev: p.status_envio_dev || null,
                     nfe_numero: p.nfe_numero || null,
                     chave_acesso: p.chave_acesso || null,
+                    pack_id: p.pack_id || null,
                     ids_pedidos_originais: [],
                     itens: []
                 });
@@ -445,9 +462,9 @@ exports.monitoramentoInstantaneo = async (req, res) => {
 
             let itens = p.itens_pedido;
             if (typeof itens === 'string') {
-                try { itens = JSON.parse(itens); } catch(e) { itens = []; }
+                try { itens = JSON.parse(itens); } catch (e) { itens = []; }
             }
-            
+
             if (Array.isArray(itens)) {
                 pacote.itens = pacote.itens.concat(itens);
             }
@@ -464,4 +481,4 @@ exports.monitoramentoInstantaneo = async (req, res) => {
         console.error('Erro no monitoramento instantâneo:', error);
         res.status(500).json({ error: 'Erro interno ao realizar monitoramento instantâneo.' });
     }
-};
+};

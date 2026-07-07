@@ -388,7 +388,7 @@ table.dataTable tbody td,
 /* Cabeçalho */
 table.dataTable thead th,
 .dashboard-wrapper .table thead th {
-    background-color: rgba(255, 255, 255, 0.03);
+    background-color: rgba(255, 255, 255, 0.03) !important;
     border-bottom: 2px solid var(--accent-orange, #f07c00) !important;
     color: var(--text-primary, #fff);
     font-weight: 600;
@@ -673,4 +673,83 @@ table.dataTable tbody tr:hover,
         flex-wrap: wrap;
         justify-content: center;
     }
+}
+
+/* ==========================================================================
+   PHOTO STACK / GAVETA EFFECT (Windows folder style)
+   ========================================================================== */
+.photo-stack {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 50px;
+    margin-right: 6px;
+    margin-bottom: 6px;
+    cursor: pointer;
+}
+
+.photo-stack img, .photo-stack .stack-back {
+    position: absolute;
+    width: 44px;
+    height: 44px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1.5px solid var(--accent-orange, #f07c00);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
+}
+
+/* First photo (top-most) */
+.photo-stack img.stack-top {
+    z-index: 3;
+    top: 0;
+    left: 0;
+}
+
+/* Second photo (middle layer) */
+.photo-stack img.stack-mid {
+    z-index: 2;
+    top: 3px;
+    left: 3px;
+    border-color: rgba(240, 124, 0, 0.7);
+    opacity: 0.85;
+}
+
+/* Third photo / placeholder (back layer) */
+.photo-stack .stack-back {
+    z-index: 1;
+    top: 6px;
+    left: 6px;
+    border-color: rgba(240, 124, 0, 0.4);
+    opacity: 0.6;
+}
+
+/* Hover dynamic spread effect (fans the pictures slightly) */
+.photo-stack:hover img.stack-top {
+    transform: translate(-3px, -3px) rotate(-2deg);
+}
+
+.photo-stack:hover img.stack-mid {
+    transform: translate(0px, 0px) rotate(1deg);
+}
+
+.photo-stack:hover .stack-back {
+    transform: translate(3px, 3px) rotate(3deg);
+}
+
+/* Extra count badge (+N) styling */
+.photo-stack .stack-count {
+    position: absolute;
+    bottom: -1px;
+    right: -4px;
+    background: var(--accent-orange, #f07c00);
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 700;
+    border-radius: 10px;
+    padding: 1px 5px;
+    z-index: 4;
+    border: 1px solid var(--bg-secondary, #1e1e1e);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.6);
+    pointer-events: none;
 }

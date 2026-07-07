@@ -634,7 +634,7 @@ exports.removeEmissao = async (req, res) => {
 
 // Função para tentar "trancar" a página de emissão
 exports.acquireEmissionLock = async (req, res) => {
-    const username = req.session.username || 'desconhecido';
+    const username = req.user.username || 'desconhecido';
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -671,7 +671,7 @@ exports.acquireEmissionLock = async (req, res) => {
 
 // Função para "destrancar" a página de emissão
 exports.releaseEmissionLock = async (req, res) => {
-    const username = req.session.username || 'desconhecido';
+    const username = req.user.username || 'desconhecido';
     try {
         // Só libera a trava se o usuário que está liberando for o mesmo que travou
         await pool.query(
@@ -686,7 +686,7 @@ exports.releaseEmissionLock = async (req, res) => {
 };
 
 exports.acquireEmissionLock = async (req, res) => {
-    const username = req.session.username || 'desconhecido';
+    const username = req.user.username || 'desconhecido';
     console.log(`[LOCK] Tentativa de trava por: ${username}`);
     const client = await pool.connect();
     try {
@@ -722,7 +722,7 @@ exports.acquireEmissionLock = async (req, res) => {
 };
 
 exports.releaseEmissionLock = async (req, res) => {
-    const username = req.session.username || 'desconhecido';
+    const username = req.user.username || 'desconhecido';
     console.log(`[LOCK] Tentativa de liberação por: ${username}`);
     try {
         // A trava só é liberada pelo mesmo usuário que a adquiriu, para segurança

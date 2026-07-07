@@ -401,14 +401,16 @@ async function extrairDadosDosPdfs(pdfInputs, ondasMap = []) {
                     if (packIdToVendaMap.has(packId)) {
                         const numeroLoja = packIdToVendaMap.get(packId);
                         console.log(`   > Página ${pageIndex + 1}: Encontrado por HIERARQUIA 3 (Pack ID Mapeado): ${packId} -> ${numeroLoja}`);
-                        // Guarda o Pack ID original para salvar no banco depois
-                        etiquetaData = { tipoId: 'numero_loja', id: numeroLoja, originalPackId: packId };
+                        etiquetaData = { tipoId: 'numero_loja', id: numeroLoja };
                     } else {
                         console.warn(`   > Página ${pageIndex + 1}: AVISO - Pack ID ${packId} encontrado, mas não consta na Folha de Relação.`);
-                        // Se não achou no mapa, não adiciona etiquetaData
                     }
                 } else {
                     console.log(`   > Página ${pageIndex + 1}: Nenhum identificador (NF, Venda ou Pack ID) encontrado.`);
+                }
+
+                if (etiquetaData && packIdMatch) {
+                    etiquetaData.originalPackId = packIdMatch[1];
                 }
 
                 if (etiquetaData) {
@@ -739,40 +741,59 @@ async function getInfoPorNumeroLoja(numeroLoja, pack_id = null) {
         result = await client.query(query, [numeroLoja]);
 
         if (result.rows.length <= 0 && pack_id) {
-            query = 'SELECT nfe_parent_numero FROM cached_pedido_venda WHERE numero_loja = $1';
             result = await client.query(query, [pack_id]);
         }
 
         if (!result.rows.length || !result.rows[0].nfe_parent_numero) {
-            console.log(`   [Cache Miss] Pedido com Numero Loja ${numeroLoja} não encontrado. Solicitando busca no Bling...`);
-            let pedidoFoiEncontrado = await findAndCachePedidoByLojaNumber(numeroLoja, 'lucas');
+            // Define a chave prioritária para busca no Bling (pack_id se disponível, senão numeroLoja)
+            const buscaId = pack_id || numeroLoja;
+            console.log(`   [Cache Miss] Pedido com Numero Loja/Pack ID ${buscaId} não encontrado. Solicitando busca no Bling...`);
+
+            let pedidoFoiEncontrado = await findAndCachePedidoByLojaNumber(buscaId, 'lucas');
             let accountUsed = 'lucas';
 
             if (!pedidoFoiEncontrado) {
-                console.log(`   [Bling Fail] Pedido do Numero Loja ${numeroLoja} não encontrado na conta lucas. Tentando eliane...`);
-                pedidoFoiEncontrado = await findAndCachePedidoByLojaNumber(numeroLoja, 'eliane');
+                console.log(`   [Bling Fail] Pedido do Numero/Pack ${buscaId} não encontrado na conta lucas. Tentando eliane...`);
+                pedidoFoiEncontrado = await findAndCachePedidoByLojaNumber(buscaId, 'eliane');
                 accountUsed = 'eliane';
             }
 
+            // Fallback: Se buscou por pack_id e falhou, tenta buscar pelo numeroLoja original no Bling se forem diferentes
+            if (!pedidoFoiEncontrado && pack_id && numeroLoja && numeroLoja !== pack_id) {
+                console.log(`   [Bling Miss/Fallback] Tentando busca com Numero Loja original ${numeroLoja} na conta lucas...`);
+                pedidoFoiEncontrado = await findAndCachePedidoByLojaNumber(numeroLoja, 'lucas');
+                accountUsed = 'lucas';
+
+                if (!pedidoFoiEncontrado) {
+                    console.log(`   [Bling Fail] Pedido do Numero Loja ${numeroLoja} não encontrado na conta lucas. Tentando eliane...`);
+                    pedidoFoiEncontrado = await findAndCachePedidoByLojaNumber(numeroLoja, 'eliane');
+                    accountUsed = 'eliane';
+                }
+            }
+
             if (pedidoFoiEncontrado) {
-                console.log(`   [Bling Success] Pedido do Numero Loja ${numeroLoja} encontrado na conta ${accountUsed} e cache atualizado.`);
+                console.log(`   [Bling Success] Pedido encontrado na conta ${accountUsed} e cache atualizado.`);
+                // Recarrega o resultado repetindo a lógica hierárquica (numeroLoja -> pack_id)
                 result = await client.query(query, [numeroLoja]);
+                if (result.rows.length <= 0 && pack_id) {
+                    result = await client.query(query, [pack_id]);
+                }
             } else {
-                console.warn(`   [Bling Fail] Pedido do Numero Loja ${numeroLoja} não encontrado no Bling (lucas e eliane).`);
+                console.warn(`   [Bling Fail] Pedido do Numero Loja/Pack ID ${buscaId} não encontrado no Bling (lucas e eliane).`);
                 return null;
             }
         }
 
         if (result.rows.length > 0 && result.rows[0].nfe_parent_numero) {
             const nfeNumero = result.rows[0].nfe_parent_numero;
-            console.log(`   [Cache Hit] Numero Loja ${numeroLoja} mapeado para NFe ${nfeNumero}. Buscando detalhes da nota...`);
+            console.log(`   [Cache Hit] Registro mapeado para NFe ${nfeNumero}. Buscando detalhes da nota...`);
             return await getInfoPorNFe(nfeNumero);
         } else {
             console.warn(`   > AVISO: Mesmo após a busca, não foi possível encontrar a NFe para o Numero Loja ${numeroLoja}.`);
             return null;
         }
     } catch (error) {
-        console.error(`   > ERRO ao processar Numero Loja ${numeroLoja}:`, error);
+        console.error(`   > ERRO ao processar Numero Loja/Pack ID ${numeroLoja}:`, error);
         return null;
     } finally {
         if (client) client.release();
@@ -1346,6 +1367,8 @@ async function validarProdutoPorEstruturas(scannedCodes) { // 1. Parâmetro reno
                OR gtin = $1           -- 2ª Tentativa: GTIN
                OR gtin_embalagem = $1 -- 3ª Tentativa: GTIN Embalagem
                OR codigo_fabrica = $1 -- 4ª Tentativa: Código de Fábrica (Gerenciamento)
+               OR cod_interno_1 = $1  -- 5ª Tentativa: Código Interno 1
+               OR cod_interno_2 = $1  -- 6ª Tentativa: Código Interno 2
             ORDER BY (parent_product_bling_account = 'lucas') DESC
             LIMIT 1;
         `;
@@ -2663,20 +2686,137 @@ async function obterDadosDashboardExpedicao(dataInicio, dataFim) {
         `;
         const statsRes = dateParams.length ? await client.query(statsQuery, dateParams) : await client.query(statsQuery);
 
-        // NFs concluídas hoje (Convencionais via tabela `expedicao_registros` + Massa via `last_processed_at`)
+        // NFs concluídas no período filtrado
         const expedidosQuery = `
             SELECT COUNT(DISTINCT m.nfe_numero) as expedidos_hoje 
             FROM cached_etiquetas_ml m
-            LEFT JOIN expedicao_registros r ON r.nf = m.nfe_numero AND DATE(r.created_at) = data_virtual_expedicao()
             WHERE m.status = 'impresso' 
-              AND (DATE(m.last_processed_at) = data_virtual_expedicao() OR r.id IS NOT NULL)
               ${mDateFilter}
         `;
         const expedidosRes = dateParams.length ? await client.query(expedidosQuery, dateParams) : await client.query(expedidosQuery);
         statsRes.rows[0].expedidos_hoje = parseInt(expedidosRes.rows[0].expedidos_hoje) || 0;
 
-        // Fila Reactiva: Pendentes, Pausadas, ou Impressas (se acabaram de ser impressas hoje)
-        const filaQuery = `
+        // Produtividade: Agrupar pontuação de itens unitários e contagem fracionada de kits
+        const prodQuery = `
+            SELECT 
+                c.id, c.nome as carregador,
+                ROUND(COALESCE(SUM(rc.pontos) FILTER (WHERE r.is_kit = TRUE), 0), 2) as kits_separados,
+                ROUND(COALESCE(SUM(rc.pontos) FILTER (WHERE r.is_kit = FALSE), 0), 2) as itens_unitarios
+            FROM carregadores c
+            LEFT JOIN expedicao_registro_carregadores rc ON c.id = rc.carregador_id
+            LEFT JOIN expedicao_registros r ON rc.registro_id = r.id AND DATE(r.created_at) = data_virtual_expedicao()
+            WHERE c.ativo = TRUE
+            GROUP BY c.id, c.nome
+            ORDER BY itens_unitarios DESC NULLS LAST, kits_separados DESC NULLS LAST
+        `;
+        const prodRes = await client.query(prodQuery);
+
+        return {
+            stats: statsRes.rows[0],
+            produtividade: prodRes.rows
+        };
+    } finally {
+        client.release();
+    }
+}
+
+async function obterTabelaDashboardExpedicao(params) {
+    const client = await pool.connect();
+    try {
+        const { dataInicio, dataFim, start = 0, length = 10, searchValue, orderColIndex, orderDir, statusInterno, statusMl, statusFoto } = params;
+
+        let whereClauses = [];
+        let queryParams = [];
+        let paramIndex = 1;
+
+        if (dataInicio && dataFim) {
+            whereClauses.push(`m.created_at >= $${paramIndex} AND m.created_at <= $${paramIndex + 1}`);
+            queryParams.push(`${dataInicio} 00:00:00`, `${dataFim} 23:59:59`);
+            paramIndex += 2;
+        }
+
+        if (statusInterno) {
+            if (statusInterno === 'Cancelado') whereClauses.push(`m.status = 'cancelamento'`);
+            else if (statusInterno === 'Cancelado Efetivado') whereClauses.push(`m.status = 'cancelado'`);
+            else if (statusInterno === 'Pendente') whereClauses.push(`m.status = 'pendente'`);
+            else if (statusInterno === 'Hub') whereClauses.push(`m.status = 'hub'`);
+            else if (statusInterno === 'Checado') whereClauses.push(`m.status = 'checado'`);
+            else if (statusInterno === 'Sem Estoque') whereClauses.push(`m.status = 'sem_estoque'`);
+            else if (statusInterno === 'Expedido') whereClauses.push(`m.status = 'impresso'`);
+            else if (statusInterno === 'Etiq. Impressa') whereClauses.push(`m.situacao = 'impresso' AND m.status != 'impresso'`);
+            else if (statusInterno === 'Pego, Sem Etiquetar') whereClauses.push(`(m.status = 'sem_nota' OR m.status = 'bip_sem_etiq')`);
+            else if (statusInterno === 'Conferência Envio') whereClauses.push(`m.status = 'conf_envio'`);
+        }
+
+        if (statusMl) {
+            whereClauses.push(`m.status_ml ILIKE $${paramIndex}`);
+            queryParams.push(`%${statusMl}%`);
+            paramIndex++;
+        }
+
+        if (statusFoto === 'Foto: Validado') {
+            whereClauses.push(`m.foto_validacao = 'validado'`);
+        } else if (statusFoto === 'Foto: Erro') {
+            whereClauses.push(`m.foto_validacao = 'erro'`);
+        } else if (statusFoto === 'Foto: Pendente') {
+            whereClauses.push(`m.tem_foto = TRUE AND m.foto_validacao IS NULL`);
+        }
+
+        if (searchValue) {
+            let extraSkusClause = '';
+            
+            const prodRes = await client.query(`
+                SELECT sku 
+                FROM cached_products 
+                WHERE tipo_ml ILIKE $1 OR (tipo_ml || '-' || sku) ILIKE $1
+                LIMIT 50
+            `, [`%${searchValue}%`]);
+
+            if (prodRes.rows.length > 0) {
+                const skuMatches = [];
+                for (const r of prodRes.rows) {
+                    skuMatches.push(`m.skus::text ILIKE $${paramIndex}`);
+                    queryParams.push(`%${r.sku}%`);
+                    paramIndex++;
+                }
+                extraSkusClause = ` OR ${skuMatches.join(' OR ')}`;
+            }
+
+            whereClauses.push(`(
+                m.nfe_numero ILIKE $${paramIndex} OR 
+                COALESCE(m.pack_id, m.numero_loja) ILIKE $${paramIndex} OR
+                cpv.numero ILIKE $${paramIndex} OR
+                m.skus::text ILIKE $${paramIndex}
+                ${extraSkusClause}
+            )`);
+            queryParams.push(`%${searchValue}%`);
+            paramIndex++;
+        }
+
+        const whereString = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+        // Count Total
+        const totalQuery = `SELECT COUNT(id) as total FROM cached_etiquetas_ml`;
+        const totalRes = await client.query(totalQuery);
+        const recordsTotal = parseInt(totalRes.rows[0].total);
+
+        // Count Filtered
+        const countQuery = `
+            SELECT COUNT(DISTINCT m.id) as total
+            FROM cached_etiquetas_ml m
+            LEFT JOIN cached_pedido_venda cpv ON cpv.nfe_parent_numero = m.nfe_numero
+            ${whereString}
+        `;
+        const countRes = await client.query(countQuery, queryParams);
+        const recordsFiltered = parseInt(countRes.rows[0].total);
+
+        // Order mapping
+        let orderClause = `ORDER BY order_status ASC, m.created_at DESC`;
+        if (orderColIndex === '1' && orderDir) orderClause = `ORDER BY m.created_at ${orderDir.toUpperCase()}`;
+        else if (orderColIndex === '2' && orderDir) orderClause = `ORDER BY m.nfe_numero ${orderDir.toUpperCase()}`;
+
+        // Fetch Data
+        const dataQuery = `
             SELECT DISTINCT
                 m.id, 
                 m.nfe_numero, 
@@ -2690,18 +2830,21 @@ async function obterDadosDashboardExpedicao(dataInicio, dataFim) {
                 m.status, 
                 m.created_at, 
                 (DATE(m.created_at) < data_virtual_expedicao() AND m.status NOT IN ('cancelado', 'cancelamento', 'sem_estoque', 'impresso')) as heranca_ontem,
-                CASE WHEN m.status = 'impresso' THEN 1 ELSE 0 END as order_status
+                CASE WHEN m.status = 'impresso' THEN 1 ELSE 0 END as order_status,
+                m.foto_validacao,
+                m.tem_foto
             FROM cached_etiquetas_ml m
-            LEFT JOIN expedicao_registros r ON r.nf = m.nfe_numero AND DATE(r.created_at) = data_virtual_expedicao()
             LEFT JOIN cached_pedido_venda cpv ON cpv.nfe_parent_numero = m.nfe_numero
-            WHERE (m.status != 'impresso'
-               OR (m.status = 'impresso' AND (DATE(m.last_processed_at) = data_virtual_expedicao() OR r.id IS NOT NULL)))
-               ${mDateFilter}
-            ORDER BY 
-               order_status ASC,
-               m.created_at DESC
+            ${whereString}
+            ${orderClause}
+            ${length === -1 ? `OFFSET $${paramIndex}` : `LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`}
         `;
-        const filaRes = dateParams.length ? await client.query(filaQuery, dateParams) : await client.query(filaQuery);
+        if (length === -1) {
+            queryParams.push(start);
+        } else {
+            queryParams.push(length, start);
+        }
+        const filaRes = await client.query(dataQuery, queryParams);
 
         // EXTRAÇÃO: Anexar 'tipo_ml' de cached_products aos SKUs processados (Ordenador Style)
         let uniqueSkus = new Set();
@@ -2710,7 +2853,7 @@ async function obterDadosDashboardExpedicao(dataInicio, dataFim) {
             try {
                 if (typeof row.skus === 'string') {
                     if (row.skus.startsWith('[')) skusObj = JSON.parse(row.skus);
-                    else skusObj = [{ original: row.skus.trim() }]; // Não faz split por vírgula — SKUs podem conter vírgula
+                    else skusObj = [{ original: row.skus.trim() }];
                 } else if (Array.isArray(row.skus)) {
                     skusObj = row.skus;
                 }
@@ -2752,53 +2895,11 @@ async function obterDadosDashboardExpedicao(dataInicio, dataFim) {
             }
         }
 
-        // Produtividade: Agrupar pontuação de itens unitários e contagem fracionada de kits
-        const prodQuery = `
-            SELECT 
-                c.id, c.nome as carregador,
-                ROUND(COALESCE(SUM(rc.pontos) FILTER (WHERE r.is_kit = TRUE), 0), 2) as kits_separados,
-                ROUND(COALESCE(SUM(rc.pontos) FILTER (WHERE r.is_kit = FALSE), 0), 2) as itens_unitarios
-            FROM carregadores c
-            LEFT JOIN expedicao_registro_carregadores rc ON c.id = rc.carregador_id
-            LEFT JOIN expedicao_registros r ON rc.registro_id = r.id AND DATE(r.created_at) = data_virtual_expedicao()
-            WHERE c.ativo = TRUE
-            GROUP BY c.id, c.nome
-            ORDER BY itens_unitarios DESC NULLS LAST, kits_separados DESC NULLS LAST
-        `;
-        const prodRes = await client.query(prodQuery);
-
-        // Ordena a tabela do dashboard considerando o tipo do SKU e ordem alfabética
-        pendenciasTratadas.sort((a, b) => {
-            if (a.order_status !== b.order_status) return a.order_status - b.order_status;
-
-            const getDisplaySkus = (row) => {
-                let parsed = [];
-                try {
-                    parsed = JSON.parse(row.skus);
-                    if (Array.isArray(parsed)) return parsed.map(s => s.display || s.original || s).join(';').toUpperCase();
-                } catch (e) { }
-                return String(row.skus).toUpperCase();
-            };
-
-            const skuA = getDisplaySkus(a);
-            const skuB = getDisplaySkus(b);
-
-            const aComecaComLetra = /^[A-Z]/.test(skuA);
-            const bComecaComLetra = /^[A-Z]/.test(skuB);
-
-            if (aComecaComLetra && !bComecaComLetra) return -1;
-            if (!aComecaComLetra && bComecaComLetra) return 1;
-
-            if (skuA < skuB) return -1;
-            if (skuA > skuB) return 1;
-
-            return new Date(b.created_at) - new Date(a.created_at);
-        });
-
         return {
-            stats: statsRes.rows[0],
-            pendencias: pendenciasTratadas,
-            produtividade: prodRes.rows
+            draw: params.draw || 1,
+            recordsTotal: recordsTotal,
+            recordsFiltered: recordsFiltered,
+            data: pendenciasTratadas
         };
     } finally {
         client.release();
@@ -4511,6 +4612,87 @@ function extrairInfoDaZpl(zplContent) {
     return info;
 }
 
+// ==========================================================
+// SERVIÇOS DE FOTOS DA CONFERÊNCIA
+// ==========================================================
+async function obterPedidosComFoto() {
+    const fsSync = require('fs');
+    const client = await pool.connect();
+    try {
+        const query = `
+            SELECT 
+                m.nfe_numero,
+                COALESCE(m.pack_id, m.numero_loja) AS numero_loja_calc, 
+                cpv.numero AS pedido_numero,
+                m.foto_etiqueta_path,
+                m.foto_produto_path,
+                m.foto_validacao,
+                cr.data_hora AS conferencia_concluida_em
+            FROM cached_etiquetas_ml m
+            LEFT JOIN cached_pedido_venda cpv ON cpv.nfe_parent_numero = m.nfe_numero
+            LEFT JOIN conferencia_relatorio cr ON cr.nfe_numero = m.nfe_numero
+            WHERE m.tem_foto = TRUE
+            ORDER BY cr.data_hora DESC NULLS LAST, m.created_at DESC
+        `;
+        const res = await client.query(query);
+
+        // Filtrar apenas os que ainda têm a foto no disco (para simular a limpeza diária na tabela)
+        const uploadDir = path.join(__dirname, '../uploads/fotos-conferencia');
+        const validos = res.rows.filter(row => {
+            const hasEtiqueta = row.foto_etiqueta_path && fsSync.existsSync(path.join(uploadDir, row.foto_etiqueta_path));
+            
+            let hasProduto = false;
+            if (row.foto_produto_path) {
+                if (row.foto_produto_path.startsWith('[')) {
+                    try {
+                        const parsed = JSON.parse(row.foto_produto_path);
+                        if (Array.isArray(parsed)) {
+                            hasProduto = parsed.some(img => fsSync.existsSync(path.join(uploadDir, img)));
+                        }
+                    } catch (e) {
+                        hasProduto = fsSync.existsSync(path.join(uploadDir, row.foto_produto_path));
+                    }
+                } else {
+                    hasProduto = fsSync.existsSync(path.join(uploadDir, row.foto_produto_path));
+                }
+            }
+            
+            return hasEtiqueta || hasProduto;
+        });
+
+        return validos;
+    } finally {
+        client.release();
+    }
+}
+
+async function validarFotoPedido(nfeNumero, acao) {
+    const client = await pool.connect();
+    try {
+        if (acao !== 'validado' && acao !== 'erro') {
+            throw new Error('Ação inválida.');
+        }
+
+        // Bloqueio de mudança de validado para erro
+        if (acao === 'erro') {
+            const check = await client.query('SELECT foto_validacao FROM cached_etiquetas_ml WHERE nfe_numero = $1', [nfeNumero]);
+            if (check.rows.length > 0 && check.rows[0].foto_validacao === 'validado') {
+                throw new Error('Não é possível marcar como erro um pedido que já foi validado.');
+            }
+        }
+
+        const query = `UPDATE cached_etiquetas_ml SET foto_validacao = $1 WHERE nfe_numero = $2 RETURNING *`;
+        const res = await client.query(query, [acao, nfeNumero]);
+        return res.rows[0];
+    } finally {
+        client.release();
+    }
+}
+
+async function corrigirFlagFotoPedido(nfeNumero) {
+    return validarFotoPedido(nfeNumero, 'validado');
+}
+
 module.exports = {
     processarEtiquetas,
     buscarEtiquetaPorNF,
@@ -4520,6 +4702,7 @@ module.exports = {
     preProcessarEtiquetasService,
     finalizarEtiquetasService,
     obterDadosDashboardExpedicao,
+    obterTabelaDashboardExpedicao,
     atualizarStatusPendenciaExpedicao,
     registrarBipagemExpedicaoFinal,
     registrarProdutividadeConferencia,
@@ -4550,5 +4733,8 @@ module.exports = {
     syncBlingConferenciaMassa,
     syncBlingConferenciaIndividual,
     syncBlingConferenciaLoteInteligente,
-    getStatusBlingLoteJob
+    getStatusBlingLoteJob,
+    obterPedidosComFoto,
+    validarFotoPedido,
+    corrigirFlagFotoPedido
 };

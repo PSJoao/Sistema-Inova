@@ -1,0 +1,119 @@
+{{! views/admin/usuarios.handlebars }}
+{{#section "head"}}
+<link rel="stylesheet" href="/public/styles/dashboardExpedicao.css">
+<link rel="stylesheet" href="/public/styles/admin.css">
+{{/section}}
+
+<div class="admin-wrapper">
+    {{!-- Header --}}
+    <div class="admin-header">
+        <div class="admin-header-info">
+            <h1><i class="fas fa-users-cog"></i> Gerenciamento de Usuários</h1>
+            <p>Visualize, adicione, edite e gerencie as permissões de acesso dos usuários do sistema.</p>
+        </div>
+        <a href="/admin/usuarios/novo" class="btn-premium orange"><i class="fas fa-plus"></i> Novo Usuário</a>
+    </div>
+
+    {{!-- Painel da Tabela --}}
+    <div class="admin-panel">
+        <div class="admin-toolbar">
+            <h4 class="admin-panel-title mb-0" style="border: none; padding: 0;"><i class="fas fa-clipboard-list"></i> Lista de Usuários</h4>
+            <div class="admin-search-bar">
+                <div class="admin-search-input-wrap">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="userSearchInput" class="form-control-dark" placeholder="Buscar usuário...">
+                </div>
+            </div>
+        </div>
+
+        <table id="usersTable" class="table admin-users-table" style="width: 100%;">
+            <thead>
+                <tr>
+                    <th>Usuário</th>
+                    <th>Cargo</th>
+                    <th class="admin-actions">Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{#each users}}
+                <tr>
+                    <td>
+                        <div class="user-cell">
+                            <i class="fas fa-user-circle"></i>
+                            <span>{{this.username}}</span>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge {{#if this.isMaster}}badge-master{{/if}}{{#if this.isAdmin}}badge-admin{{/if}}{{#if this.isFuncionario}}badge-funcionario{{/if}}">
+                            {{this.cargoText}}
+                        </span>
+                    </td>
+                    <td class="admin-actions">
+                        <a href="/admin/usuarios/editar/{{this.id}}" class="btn-action btn-action-accent" title="Gerenciar"><i class="fas fa-cog"></i></a>
+                        {{#if this.isMaster}}
+                            <button class="btn-action btn-action-disabled" title="Conta Mestra"><i class="fas fa-trash-alt"></i></button>
+                        {{else}}
+                            <button onclick="deleteUser({{this.id}}, '{{this.username}}')" class="btn-action btn-action-danger" title="Excluir"><i class="fas fa-trash-alt"></i></button>
+                        {{/if}}
+                    </td>
+                </tr>
+                {{/each}}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{{#section "scripts"}}
+<script>
+$(document).ready(function() {
+    var table = $('#usersTable').DataTable({
+        pageLength: 20,
+        lengthChange: false,
+        searching: true,
+        paging: true,
+        info: false,
+        ordering: true,
+        scrollX: true,
+        order: [[0, 'asc']],
+        language: {
+            zeroRecords: 'Nenhum usuário encontrado',
+            paginate: { next: '›', previous: '‹' }
+        }
+    });
+
+    $('#userSearchInput').on('input', function() {
+        table.search(this.value).draw();
+    });
+});
+
+function deleteUser(id, username) {
+    ModalSystem.confirm(
+        'Tem certeza que deseja excluir permanentemente o usuário <strong>"' + username + '"</strong>? Esta ação não pode ser desfeita.',
+        'Excluir Usuário',
+        function() {
+            // Callback de confirmação
+            ModalSystem.showLoading('Excluindo usuário...', 'Aguarde');
+            fetch('/admin/usuarios/deletar/' + id, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                ModalSystem.hideLoading();
+                if (data.success) {
+                    ModalSystem.alert(data.message, 'Sucesso', function() {
+                        window.location.reload();
+                    });
+                } else {
+                    ModalSystem.alert(data.message, 'Erro');
+                }
+            })
+            .catch(function() {
+                ModalSystem.hideLoading();
+                ModalSystem.alert('Não foi possível completar a exclusão.', 'Erro');
+            });
+        }
+    );
+}
+</script>
+{{/section}}

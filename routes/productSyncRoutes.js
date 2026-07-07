@@ -7,6 +7,7 @@ const multer = require('multer');
 const formParser = multer()
 
 router.use(authController.requireAuth);
+router.use(authController.requireModule('produtos_sincronizar'));
 
 
 // Rota para exibir a página de upload

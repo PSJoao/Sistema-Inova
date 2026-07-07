@@ -1,0 +1,855 @@
+/* public/styles/estoque.css */
+
+/* === FORMULÁRIO DE PEÇAS === */
+
+.estoque-form-section {
+    margin-bottom: 1.5rem;
+}
+
+.estoque-form-section .form-section-title {
+    color: var(--accent-orange);
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--bg-tertiary);
+}
+
+/* Grid responsivo para campos do formulário */
+.estoque-form-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.estoque-form-row.cols-3 {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.estoque-form-row.cols-2 {
+    grid-template-columns: repeat(2, 1fr);
+}
+
+/* Grupo de medidas inline */
+.medidas-group {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+}
+
+.medidas-group .form-group {
+    margin-bottom: 0;
+}
+
+/* === AUTOCOMPLETE / BUSCA PREDITIVA === */
+
+.autocomplete-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.autocomplete-panel {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 1060;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--bg-tertiary);
+    border-top: none;
+    border-radius: 0 0 var(--border-radius-md) var(--border-radius-md);
+    max-height: 280px;
+    overflow-y: auto;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+    display: none;
+}
+
+.autocomplete-panel.visible {
+    display: block;
+}
+
+.autocomplete-item {
+    padding: 0.65rem 0.9rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    transition: background-color var(--transition-fast), color var(--transition-fast);
+    border-bottom: 1px solid var(--bg-tertiary);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.autocomplete-item:last-child {
+    border-bottom: none;
+}
+
+.autocomplete-item:hover,
+.autocomplete-item.active {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.autocomplete-item .ac-sku {
+    font-weight: 600;
+    color: var(--accent-orange);
+    font-size: 0.85rem;
+}
+
+.autocomplete-item .ac-nome {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.autocomplete-no-results {
+    padding: 0.75rem 0.9rem;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-style: italic;
+    text-align: center;
+}
+
+.autocomplete-loading {
+    padding: 0.75rem;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.autocomplete-loading::after {
+    content: '';
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--bg-tertiary);
+    border-top-color: var(--accent-orange);
+    border-radius: 50%;
+    animation: ac-spin 0.6s linear infinite;
+    margin-left: 8px;
+    vertical-align: middle;
+}
+
+@keyframes ac-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* === VALIDAÇÃO EM TEMPO REAL === */
+
+.form-control.input-valid {
+    border-color: var(--color-success) !important;
+}
+
+.form-control.input-valid:focus {
+    box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.25) !important;
+}
+
+.form-control.input-error {
+    border-color: var(--color-danger) !important;
+}
+
+.form-control.input-error:focus {
+    box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25) !important;
+}
+
+.validation-message {
+    font-size: 0.8rem;
+    margin-top: 0.25rem;
+    display: none;
+}
+
+.validation-message.visible {
+    display: block;
+}
+
+.validation-message.error {
+    color: var(--color-danger);
+}
+
+.validation-message.success {
+    color: var(--color-success);
+}
+
+/* === TABELA DE LISTAGEM === */
+
+/* === ESTILOS DA TABELA HTML DO ESTOQUE === */
+#tabela-estoque {
+    border-collapse: collapse;
+    width: 100%;
+    margin-top: 1rem;
+    background-color: var(--bg-secondary);
+    border-radius: var(--border-radius-lg, 8px);
+    overflow: hidden;
+}
+
+#tabela-estoque th {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-weight: 600;
+    padding: 0.85rem 1rem;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.05);
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+#tabela-estoque td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
+    vertical-align: middle;
+    transition: background-color var(--transition-fast);
+}
+
+#tabela-estoque tbody tr:hover td {
+    background-color: rgba(240, 124, 0, 0.05);
+}
+
+.estoque-table-row .col-actions {
+    gap: 6px;
+    justify-content: center;
+}
+
+.estoque-table-row .col-qty {
+    font-weight: 600;
+    color: var(--text-primary);
+    justify-content: center;
+}
+
+.estoque-table-row .col-location {
+    font-size: 0.85rem;
+}
+
+/* Badges de quantidade */
+.qty-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--border-radius-sm);
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.qty-badge.qty-zero {
+    background-color: rgba(220, 53, 69, 0.15);
+    color: var(--color-danger);
+}
+
+.qty-badge.qty-low {
+    background-color: rgba(255, 193, 7, 0.15);
+    color: var(--color-warning);
+}
+
+.qty-badge.qty-ok {
+    background-color: rgba(40, 167, 69, 0.15);
+    color: var(--color-success);
+}
+
+/* === PAGINAÇÃO === */
+
+.estoque-pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 1.25rem;
+    flex-wrap: wrap;
+}
+
+.estoque-pagination button {
+    background-color: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border: 1px solid transparent;
+    padding: 0.4rem 0.75rem;
+    border-radius: var(--border-radius-sm);
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all var(--transition-fast);
+}
+
+.estoque-pagination button:hover:not(:disabled) {
+    background-color: var(--accent-orange);
+    color: var(--accent-orange-text);
+}
+
+.estoque-pagination button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.estoque-pagination button.active {
+    background-color: var(--accent-orange);
+    color: var(--accent-orange-text);
+    font-weight: 600;
+}
+
+.estoque-pagination .pagination-info {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin: 0 0.5rem;
+}
+
+/* Formulário: label obrigatório */
+.form-label .text-danger {
+    color: var(--color-danger);
+}
+
+/* Produto pai selected display */
+.produto-pai-selected {
+    display: none;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--bg-tertiary);
+    border-radius: var(--border-radius-md);
+    margin-top: 0.4rem;
+    font-size: 0.85rem;
+}
+
+.produto-pai-selected.visible {
+    display: flex;
+}
+
+.produto-pai-selected .pp-sku {
+    font-weight: 600;
+    color: var(--accent-orange);
+}
+
+.produto-pai-selected .pp-nome {
+    color: var(--text-secondary);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.produto-pai-selected .btn-clear-pp {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 2px 6px;
+    font-size: 1rem;
+    line-height: 1;
+    transition: color var(--transition-fast);
+}
+
+.produto-pai-selected .btn-clear-pp:hover {
+    color: var(--color-danger);
+}
+
+/* Filtros da listagem */
+.estoque-filters-bar {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    margin-bottom: 1rem;
+}
+
+.estoque-filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.estoque-filter-group label {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+/* Empty state */
+.estoque-empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text-muted);
+}
+
+.estoque-empty-state i {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.4;
+}
+
+.estoque-empty-state p {
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+/* === RESPONSIVIDADE === */
+
+@media (max-width: 768px) {
+    .estoque-form-row {
+        grid-template-columns: 1fr;
+    }
+
+    .estoque-form-row.cols-3,
+    .estoque-form-row.cols-2 {
+        grid-template-columns: 1fr;
+    }
+
+    .medidas-group {
+        grid-template-columns: 1fr;
+    }
+
+    .estoque-filters-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .estoque-filter-group {
+        width: 100%;
+    }
+
+    .estoque-filter-group .form-control {
+        max-width: none;
+    }
+
+    #tabela-estoque {
+        font-size: 0.8rem;
+    }
+
+    #tabela-estoque th,
+    #tabela-estoque td {
+        padding: 0.6rem 0.5rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .medidas-group {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+
+    .page-header-actions {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
+/* === ORDENAÇÃO DE COLUNAS === */
+#tabela-estoque th.sortable {
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    padding-right: 1.5rem !important;
+}
+
+#tabela-estoque th.sortable::after {
+    content: '\f0dc';
+    font-family: 'Font Awesome 5 Free';
+    font-weight: 900;
+    position: absolute;
+    right: 0.5rem;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    opacity: 0.3;
+}
+
+#tabela-estoque th.sortable.asc::after {
+    content: '\f0de';
+    color: var(--accent-orange);
+    opacity: 1;
+}
+
+#tabela-estoque th.sortable.desc::after {
+    content: '\f0dd';
+    color: var(--accent-orange);
+    opacity: 1;
+}
+
+/* === BOTÕES MODERNOS DE AÇÃO (Estilo Dashboard) === */
+.btn-action {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-action:hover {
+    transform: translateY(-2px);
+}
+
+.btn-action:active {
+    transform: translateY(0) scale(0.95);
+}
+
+.btn-action-accent {
+    background: rgba(240, 124, 0, 0.15);
+    color: var(--accent-orange, #f07c00);
+}
+
+.btn-action-accent:hover {
+    background: var(--accent-orange, #f07c00);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(240, 124, 0, 0.35);
+}
+
+.btn-action-danger {
+    background: rgba(220, 53, 69, 0.15);
+    color: #dc3545;
+}
+
+.btn-action-danger:hover {
+    background: #dc3545;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.35);
+}
+
+.btn-action-print {
+    background: rgba(156, 39, 176, 0.15);
+    color: #9C27B0;
+}
+
+.btn-action-print:hover {
+    background: #9C27B0;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(156, 39, 176, 0.35);
+}
+
+.btn-action-clone {
+    background: rgba(0, 123, 255, 0.15);
+    color: #007bff;
+}
+
+.btn-action-clone:hover {
+    background: #007bff;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(0, 123, 255, 0.35);
+}
+
+/* === LAYOUT DA TELA DE BIPAGEM === */
+.bipagem-pecas-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.bipagem-card-input {
+    background-color: var(--bg-secondary);
+    padding: 2rem;
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--box-shadow-soft);
+    border: 1px solid var(--bg-tertiary);
+    text-align: center;
+}
+
+.bipagem-mode-selector {
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.bipagem-mode-option {
+    position: relative;
+    cursor: pointer;
+    user-select: none;
+}
+
+.bipagem-mode-option input {
+    position: absolute;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.bipagem-mode-label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem 2.5rem;
+    border-radius: var(--border-radius-lg);
+    background-color: var(--bg-primary);
+    border: 2px solid var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-weight: 600;
+    transition: all var(--transition-fast);
+    min-width: 150px;
+}
+
+.bipagem-mode-option:hover .bipagem-mode-label {
+    border-color: var(--text-muted);
+}
+
+.bipagem-mode-option input:checked+.bipagem-mode-label.mode-entrada {
+    border-color: var(--color-success);
+    background-color: rgba(40, 167, 69, 0.1);
+    color: var(--color-success);
+}
+
+.bipagem-mode-option input:checked+.bipagem-mode-label.mode-saida {
+    border-color: var(--color-danger);
+    background-color: rgba(220, 53, 69, 0.1);
+    color: var(--color-danger);
+}
+
+.bipagem-mode-label i {
+    font-size: 1.5rem;
+}
+
+.bipagem-input-wrapper {
+    position: relative;
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+.bipagem-input-wrapper .bipagem-input-icon {
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    font-size: 1.25rem;
+}
+
+.bipagem-input-wrapper .form-control {
+    padding-left: 50px;
+    height: 50px;
+    font-size: 1.15rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-align: center;
+}
+
+.bipagem-input-wrapper .form-control:focus {
+    border-color: var(--accent-orange);
+}
+
+.bipagem-logs-card {
+    background-color: var(--bg-secondary);
+    padding: 1.5rem;
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--box-shadow-soft);
+    border: 1px solid var(--bg-tertiary);
+    display: flex;
+    flex-direction: column;
+    height: 350px;
+}
+
+.bipagem-logs-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--bg-tertiary);
+    padding-bottom: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.bipagem-logs-header h4 {
+    margin: 0;
+    font-size: 1.1rem;
+    color: var(--text-primary);
+}
+
+.bipagem-logs-list {
+    flex-grow: 1;
+    overflow-y: auto;
+    overflow-x: auto; /* Rolagem horizontal */
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding-right: 5px;
+    padding-bottom: 5px;
+    width: 100%;
+    min-width: 0;
+}
+
+.bipagem-log-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border-radius: var(--border-radius-md);
+    background-color: var(--bg-primary);
+    border: 1px solid var(--bg-tertiary);
+    white-space: nowrap; /* Não quebra linhas */
+    min-width: max-content; /* Permite esticar horizontalmente */
+    animation: logFadeIn 0.3s ease-out;
+}
+
+@keyframes logFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.bipagem-log-item.log-entrada {
+    border-left: 4px solid var(--color-success);
+}
+
+.bipagem-log-item.log-saida {
+    border-left: 4px solid var(--color-danger);
+}
+
+.bipagem-log-item.log-erro {
+    border-left: 4px solid var(--color-warning);
+    background-color: rgba(220, 53, 69, 0.05);
+}
+
+.bipagem-log-icon {
+    font-size: 1.1rem;
+    margin-top: 2px;
+}
+
+.log-entrada .bipagem-log-icon {
+    color: var(--color-success);
+}
+
+.log-saida .bipagem-log-icon {
+    color: var(--color-danger);
+}
+
+.log-erro .bipagem-log-icon {
+    color: var(--color-danger);
+}
+
+.bipagem-log-content {
+    flex-grow: 1;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.bipagem-log-content strong {
+    color: var(--text-primary);
+}
+
+.bipagem-log-time {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.bipagem-logs-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-muted);
+    text-align: center;
+    gap: 0.75rem;
+}
+
+.bipagem-logs-placeholder i {
+    font-size: 2.5rem;
+    opacity: 0.3;
+}
+
+/* === RESPONSIVIDADE E MODERNIZAÇÃO GERAL DA BIPAGEM === */
+.bipagem-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    max-width: 1400px;
+    margin: 0 auto;
+    box-sizing: border-box;
+}
+
+.bipagem-header {
+    display: flex;
+    align-items: center;
+    background: linear-gradient(135deg, rgba(240, 124, 0, 0.15) 0%, rgba(30, 30, 30, 0.8) 100%);
+    border-left: 4px solid var(--accent-orange, #f07c00);
+    padding: 0.75rem 1.25rem; /* Padding reduzido para espessura perfeita */
+    border-radius: var(--border-radius-lg, 12px);
+    box-shadow: var(--box-shadow-soft, 0 4px 6px rgba(0, 0, 0, 0.1));
+}
+
+
+.bipagem-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    align-items: stretch;
+}
+
+.bipagem-panel {
+    background: var(--bg-secondary);
+    border-radius: var(--border-radius-lg);
+    padding: 1.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: var(--box-shadow-medium);
+    display: flex;
+    flex-direction: column;
+    height: 380px; /* Altura fixa de simetria no desktop */
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0; /* Impede que filhos estiquem a largura do painel */
+    overflow: hidden; /* Corta e força o scroll interno nos filhos */
+}
+
+.bipagem-panel-logs {
+    height: 380px;
+    max-height: 380px;
+}
+
+@media (max-width: 992px) {
+    .bipagem-grid {
+        grid-template-columns: 1fr;
+        /* Empilha no mobile e tablets */
+    }
+
+    .bipagem-panel {
+        height: auto !important;
+        max-height: none !important;
+    }
+
+    .bipagem-panel-logs {
+        height: 300px !important;
+        max-height: 300px !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .bipagem-header {
+        display: none !important; /* Oculta totalmente o header no mobile */
+    }
+
+    .bipagem-wrapper {
+        gap: 1rem;
+    }
+
+    .bipagem-panel {
+        padding: 1rem;
+    }
+
+    .bipagem-mode-selector {
+        gap: 0.75rem;
+    }
+
+    .bipagem-mode-label {
+        padding: 0.75rem 1rem !important;
+        min-width: auto !important;
+        flex: 1;
+        font-size: 0.9rem;
+    }
+
+    .bipagem-input-wrapper .form-control {
+        height: 46px !important;
+        font-size: 1rem !important;
+    }
+}

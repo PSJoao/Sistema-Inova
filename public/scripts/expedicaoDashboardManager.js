@@ -3,6 +3,7 @@
 let tabelaPendencias; // Variável global para armazenar a instância do DataTables
 let tabelaBipagemPdfs; // Tabela de PDFs gerados pela bipagem
 let tabelaGestaoConferencia; // Tabela de Gestão de Conferência
+let tabelaPedidosComFoto; // Tabela de Pedidos com Foto
 
 let selectedNFs = new Set();
 let isMassaMode = false;
@@ -15,6 +16,38 @@ document.addEventListener('DOMContentLoaded', () => {
     initExportButtons();
     setupMassaModeListeners(); // Novo painel
     initGestaoConferenciaListeners(); // Gestão de conferência
+
+    // Inicializa carregamento de pedidos com foto e listeners de ações de foto
+    carregarPedidosComFoto();
+
+    // Event listener para abrir o lightbox usando atributos data (evitando problemas de escape de aspas)
+    $(document).on('click', '.lightbox-trigger', function(e) {
+        e.preventDefault();
+        const nfe = $(this).attr('data-nfe');
+        const etiqueta = $(this).attr('data-etiqueta') || '';
+        const rawProduto = $(this).attr('data-produto') || '';
+        const type = $(this).attr('data-type');
+        const index = parseInt($(this).attr('data-index') || '0');
+        
+        const produto = rawProduto ? decodeURIComponent(rawProduto) : '';
+        abrirLightboxFoto(nfe, etiqueta, produto, type, index);
+    });
+
+    // Ajusta as colunas de todas as DataTables quando a sidebar for alternada (recolhida/expandida)
+    $('#sidebarToggleBtn').on('click', function() {
+        setTimeout(() => {
+            if (tabelaPendencias) tabelaPendencias.columns.adjust();
+            if (tabelaGestaoConferencia) tabelaGestaoConferencia.columns.adjust();
+            if (tabelaPedidosComFoto) tabelaPedidosComFoto.columns.adjust();
+        }, 250); // Aguarda o fim da animação de transição da sidebar (250ms)
+    });
+
+    // Ajusta as colunas de todas as DataTables em redimensionamento de janela
+    $(window).on('resize', function() {
+        if (tabelaPendencias) tabelaPendencias.columns.adjust();
+        if (tabelaGestaoConferencia) tabelaGestaoConferencia.columns.adjust();
+        if (tabelaPedidosComFoto) tabelaPedidosComFoto.columns.adjust();
+    });
 });
 
 /**
@@ -206,6 +239,106 @@ function initCarregadoresForm() {
     loadCarregadores();
 }
 
+function formatarLinhaTabela(item) {
+    const dataFmt = new Date(item.created_at).toLocaleString('pt-BR');
+    const herancaIcon = item.heranca_ontem ? '<i class="fas fa-history" title="Herança" style="color:var(--color-warning); margin-left: 5px;"></i>' : '';
+
+    let statusMlBadge = '-';
+    if (item.status_ml) {
+        if (item.status_ml === 'Pronto para enviar') {
+            statusMlBadge = '<span class="badge" style="background-color: #28a745; color: #fff;">Pronto para enviar</span>';
+        } else if (item.status_ml === 'Enviado') {
+            statusMlBadge = '<span class="badge" style="background-color: #007bff; color: #fff;">Enviado</span>';
+        } else if (item.status_ml === 'Entregue') {
+            statusMlBadge = '<span class="badge" style="background-color: #17a2b8; color: #fff;">Entregue</span>';
+        } else if (item.status_ml === 'Cancelado') {
+            statusMlBadge = '<span class="badge" style="background-color: #dc3545; color: #fff;">Cancelado</span>';
+        } else {
+            statusMlBadge = `<span class="badge badge-secondary">${item.status_ml}</span>`;
+        }
+    }
+
+    let statusBadge = '';
+    if (item.status === 'pendente') statusBadge = '<span class="badge badge-orange">Pendente</span>';
+    else if (item.status === 'hub') statusBadge = '<span class="badge" style="background-color: #7f00ff; color: #fff; font-weight: bold;">Hub</span>';
+    else if (item.status === 'sem_nota' || item.status === 'bip_sem_etiq') statusBadge = '<span class="badge" style="background-color: #6c757d; color: #fff;">Pego, Sem Etiquetar</span>';
+    else if (item.status === 'conf_envio') statusBadge = '<span class="badge" style="background-color: #6f42c1; color: #fff;">Conferência Envio</span>';
+    else if (item.status === 'checado') statusBadge = '<span class="badge" style="background-color: #0dcaf0; color: #1e1e2f;">Checado</span>';
+    else if (item.status === 'sem_estoque') statusBadge = '<span class="badge" style="background-color: var(--color-warning); color: #1e1e2f;">Sem Estoque</span>';
+    else if (item.status === 'cancelamento') statusBadge = '<span class="badge" style="background-color: var(--color-danger); color: #fff;">Cancelado</span>';
+    else if (item.status === 'cancelado') statusBadge = '<span class="badge" style="background-color: #8b0000; color: #fff;">Cancelado Efetivado</span>';
+    else if (item.status === 'impresso') statusBadge = '<span class="badge" style="background-color: #4CAF50; color: #fff;">Expedido</span>';
+
+    if (item.situacao === 'impresso' && item.status !== 'impresso') {
+        statusBadge += ' <span title="Etiqueta impressa pela Bipagem de Produtos" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#9C27B0;margin-left:4px;vertical-align:middle;"><i class="fas fa-print" style="color:#fff;font-size:0.6rem;"></i></span><span style="display:none;">Etiq. Impressa</span>';
+    }
+
+    const nfNumero = item.nfe_numero || '';
+
+    // Badge de Foto Validação
+    if (item.tem_foto) {
+        if (item.foto_validacao === 'validado') {
+            statusBadge += ' <span class="badge" style="background-color: #28a745; color: #fff; margin-left: 5px; cursor: pointer;" title="Fotos Validadas" onclick="abrirDetalhesFoto(\'' + nfNumero + '\')"><i class="fas fa-camera"></i></span>';
+        } else if (item.foto_validacao === 'erro') {
+            statusBadge += ' <span class="badge" style="background-color: #dc3545; color: #fff; margin-left: 5px; cursor: pointer;" title="Erro nas Fotos. Clique para corrigir." onclick="corrigirFlagFotoPedido(\'' + nfNumero + '\')"><i class="fas fa-exclamation-triangle"></i></span>';
+        } else {
+            // Tem foto, mas não foi avaliado
+            statusBadge += ' <span class="badge" style="background-color: #ff9800; color: #fff; margin-left: 5px; cursor: pointer;" title="Aguardando Validação das Fotos" onclick="abrirDetalhesFoto(\'' + nfNumero + '\')"><i class="fas fa-camera"></i></span>';
+        }
+    }
+
+    const acoes = `
+        <div style="display:flex;gap:4px;align-items:center;justify-content:center;">
+        ${item.status !== 'impresso' ? `
+            ${(item.status !== 'pendente' && item.status !== 'hub')
+                ? `<button class="btn-action btn-action-accent" onclick="alterarStatusEtiqueta(${item.id}, '${item.origem === 'hub' ? 'hub' : 'pendente'}')" title="Retomar / Despausar"><i class="fas fa-play"></i></button>`
+                : `<button class="btn-action btn-action-warning" onclick="alterarStatusEtiqueta(${item.id}, 'sem_estoque')" title="Pausar (Sem Estoque)"><i class="fas fa-pause"></i></button>`
+            }
+            <button class="btn-action btn-action-danger" onclick="confirmarCancelamento(${item.id})" title="Cancelar"><i class="fas fa-times"></i></button>
+        ` : `
+            <button class="btn-action btn-action-disabled" title="Expedido"><i class="fas fa-play"></i></button>
+            <button class="btn-action btn-action-disabled" title="Expedido"><i class="fas fa-times"></i></button>
+        `}
+            <button class="btn-action btn-action-print" onclick="imprimirEtiquetaIndividual('${nfNumero}')" title="Imprimir Etiqueta"><i class="fas fa-print"></i></button>
+        </div>
+    `;
+
+    let skuFormatted = '-';
+    let estoqueFormatted = '-';
+    if (item.skus) {
+        if (Array.isArray(item.skus)) {
+            skuFormatted = item.skus.map(s => s.display || s.original || s).join(', ');
+            estoqueFormatted = item.skus.map(s => s.estoque !== undefined ? s.estoque : '-').join(', ');
+        } else if (typeof item.skus === 'string') {
+            try {
+                const parsed = JSON.parse(item.skus);
+                skuFormatted = Array.isArray(parsed) ? parsed.map(s => s.display || s.original || s).join(', ') : item.skus;
+                estoqueFormatted = Array.isArray(parsed) ? parsed.map(s => s.estoque !== undefined ? s.estoque : '-').join(', ') : '-';
+            } catch (e) {
+                skuFormatted = item.skus;
+            }
+        }
+    } else if (item.sku) {
+        skuFormatted = item.sku;
+    }
+
+    return {
+        nf_numero: item.nfe_numero || item.nf || '-',
+        dataEntrada: `${dataFmt} ${herancaIcon}`,
+        dataEntradaRaw: item.created_at,
+        nfHtml: `<strong>${item.nfe_numero || item.nf || '-'}</strong>`,
+        pedidoId: item.pedido_numero || item.pack_id || '-',
+        numeroLoja: item.numero_loja_calc || item.numero_loja || '-',
+        sku: skuFormatted,
+        estoque: estoqueFormatted,
+        localizacao: item.locations || '-',
+        skusOriginal: item.skus,
+        statusMlBadge: statusMlBadge,
+        statusBadge: statusBadge,
+        acoes: acoes
+    };
+}
+
 /**
  * Inicializa as instâncias das DataTables
  */
@@ -277,7 +410,7 @@ function initTabelas() {
     // Tabela de Gestão de Conferência em Massa
     tabelaGestaoConferencia = $('#tabela-gestao-conferencia').DataTable({
         language: dataTablesLangBR,
-        pageLength: 5,
+        pageLength: 10,
         ordering: true,
         order: [[3, "desc"]], // Ordenar por data
         columns: [
@@ -297,8 +430,30 @@ function initTabelas() {
         language: dataTablesLangBR,
         pageLength: 10,
         scrollX: true,
-        ordering: true, // Mantém a ordem decrescente obrigatoriamente
-        order: [[1, "desc"]], // Ordena pela Data Entrada (coluna 1) decrescente
+        serverSide: true,
+        processing: false,
+        ajax: {
+            url: '/api/expedicao/dashboard-tabela',
+            type: 'GET',
+            data: function (d) {
+                d._ = Date.now();
+                const dataInicioEl = document.getElementById('filtro-data-inicio');
+                const dataFimEl = document.getElementById('filtro-data-fim');
+                d.dataInicio = dataInicioEl ? dataInicioEl.value : '';
+                d.dataFim = dataFimEl ? dataFimEl.value : '';
+                d.statusInterno = $('#filtro-status-tabela').val();
+                d.statusMl = $('#filtro-status-ml-tabela').val();
+                d.statusFoto = $('#filtro-status-foto-tabela').val();
+            },
+            dataSrc: function (json) {
+                if (!json || !json.data) {
+                    console.error("Erro no carregamento da tabela ou sem dados:", json);
+                    return [];
+                }
+                return json.data.map(formatarLinhaTabela);
+            }
+        },
+        ordering: true,
         columns: [
             {
                 data: null,
@@ -311,9 +466,9 @@ function initTabelas() {
                     return `<input type="checkbox" class="chk-massa-row" value="${nfBase}" style="cursor: pointer; width: 16px; height: 16px; margin-top: 5px;" ${checked}>`;
                 }
             },
-            { 
+            {
                 data: 'dataEntrada',
-                render: function(data, type, row) {
+                render: function (data, type, row) {
                     if (type === 'sort' || type === 'type') {
                         return row.dataEntradaRaw || '';
                     }
@@ -332,6 +487,23 @@ function initTabelas() {
         ]
     });
 
+    // Tabela Pedidos com Foto
+    tabelaPedidosComFoto = $('#tabela-pedidos-foto').DataTable({
+        language: dataTablesLangBR,
+        pageLength: 10,
+        scrollX: true,
+        ordering: true,
+        columns: [
+            { data: 'nfe' },
+            { data: 'loja' },
+            { data: 'data_conferencia' },
+            { data: 'foto_etiqueta', className: 'text-center' },
+            { data: 'foto_produto', className: 'text-center' },
+            { data: 'validacao' },
+            { data: 'acao', orderable: false, className: 'text-center' }
+        ]
+    });
+
     // Filtro de Data Global (Próximo à Busca Global)
     const searchWrapper = $('#tabela-pendencias_filter');
     if (searchWrapper.length) {
@@ -342,7 +514,7 @@ function initTabelas() {
             'justify-content': 'flex-end',
             'gap': '15px'
         });
-        
+
         // Remove a margem inferior padrão da label de busca do DataTables (Bootstrap as vezes adiciona)
         searchWrapper.find('label').css('margin-bottom', '0');
 
@@ -350,13 +522,13 @@ function initTabelas() {
         const hoje = new Date();
         const trintaDiasAtras = new Date();
         trintaDiasAtras.setDate(hoje.getDate() - 30);
-        
+
         const formatData = (d) => {
             const tzOffset = d.getTimezoneOffset() * 60000; // offset in milliseconds
             const localISOTime = (new Date(d.getTime() - tzOffset)).toISOString().slice(0, 10);
             return localISOTime;
         };
-        
+
         const dateFilterHtml = `
             <div id="data-filter-wrapper" style="display:flex; align-items: center; gap: 5px;">
                 <label style="margin: 0; font-size: 0.9rem; color: var(--text-secondary);">Período:</label>
@@ -366,10 +538,11 @@ function initTabelas() {
             </div>
         `;
         searchWrapper.prepend(dateFilterHtml);
-        
+
         // Recarregar os dados ao alterar a data
-        $('#filtro-data-inicio, #filtro-data-fim').on('change', function() {
+        $('#filtro-data-inicio, #filtro-data-fim').on('change', function () {
             carregarDadosDashboard();
+            tabelaPendencias.ajax.reload(null, true); // Reset page on date change
             carregarGestaoConferencia();
         });
     }
@@ -406,41 +579,26 @@ function initTabelas() {
     });
 
     // Evento de Filtro via Combobox
-    $('#filtro-status-tabela').on('change', function () {
-        // A coluna 9 é 'statusBadge'
-        let val = this.value;
-        if (val === 'Cancelado') {
-            // Regex para buscar 'Cancelado' mas não 'Cancelado Efetivado'
-            // O DataTables usa o texto puro sem HTML, então pode ter 'Cancelado Etiq. Impressa'
-            tabelaPendencias.column(9).search('^Cancelado(?! Efetivado)', true, false).draw();
-        } else if (val) {
-            tabelaPendencias.column(9).search(val, false, false).draw();
-        } else {
-            tabelaPendencias.column(9).search('', false, false).draw();
-        }
-    });
-
-    $('#filtro-status-ml-tabela').on('change', function () {
-        // A coluna 8 é 'statusMlBadge'
-        tabelaPendencias.column(8).search(this.value, false, false).draw();
+    $('#filtro-status-tabela, #filtro-status-ml-tabela, #filtro-status-foto-tabela').on('change', function () {
+        tabelaPendencias.ajax.reload();
     });
 
     // Evento de Clique nos Cards de Balanço do Dia (Filtro Rápido)
-    $('.stat-card-clickable').on('click', function() {
+    $('.stat-card-clickable').on('click', function () {
         const filterValue = $(this).attr('data-filter-status') || '';
-        
+
         // Atualiza visualmente o card ativo
         $('.stat-card-clickable').removeClass('stat-card-active');
         if (filterValue !== "") {
             $(this).addClass('stat-card-active');
         }
-        
+
         // Atualiza o select do filtro interno e dispara o change para o DataTables
         $('#filtro-status-tabela').val(filterValue).trigger('change');
-        
+
         // Reseta o filtro ML para não conflitar com o clique rápido (opcional)
         $('#filtro-status-ml-tabela').val('').trigger('change');
-        
+
         // Rola a tela suavemente até a tabela
         $('html, body').animate({
             scrollTop: $('.table-toolbar').offset().top - 20
@@ -479,9 +637,80 @@ function setupMassaModeListeners() {
     btnClear.addEventListener('click', () => {
         selectedNFs.clear();
         $('#chk-master-massa').prop('checked', false);
+        const chkTotal = document.getElementById('chk-massa-selecao-total');
+        if (chkTotal) chkTotal.checked = false;
         $('input.chk-massa-row', tabelaPendencias.rows().nodes()).prop('checked', false);
         updateMassaPanelCount();
     });
+
+    // Lógica para Seleção Total Dinâmica
+    const chkSelecaoTotal = document.getElementById('chk-massa-selecao-total');
+    if (chkSelecaoTotal) {
+        chkSelecaoTotal.addEventListener('change', async function () {
+            const isChecked = this.checked;
+
+            if (isChecked) {
+                // Bloqueia a interface e mostra loading
+                ModalSystem.showLoading('Buscando todas as notas filtradas...');
+                try {
+                    // Pega os parâmetros atuais do filtro
+                    const dataInicio = document.getElementById('filtro-data-inicio') ? document.getElementById('filtro-data-inicio').value : '';
+                    const dataFim = document.getElementById('filtro-data-fim') ? document.getElementById('filtro-data-fim').value : '';
+                    const statusInterno = $('#filtro-status-tabela').val();
+                    const statusMl = $('#filtro-status-ml-tabela').val();
+                    const searchWrapper = $('#tabela-pendencias_filter input');
+                    const searchValue = searchWrapper.length ? searchWrapper.val() : '';
+
+                    // Monta a query string com length=-1 para trazer TODOS os registros
+                    const queryParams = new URLSearchParams({
+                        dataInicio: dataInicio,
+                        dataFim: dataFim,
+                        statusInterno: statusInterno || '',
+                        statusMl: statusMl || '',
+                        draw: 1,
+                        start: 0,
+                        length: -1,
+                    });
+
+                    if (searchValue) {
+                        queryParams.append('search[value]', searchValue);
+                    }
+
+                    const response = await fetch(`/api/expedicao/dashboard-tabela?${queryParams.toString()}`);
+                    if (!response.ok) throw new Error('Erro ao buscar dados totais.');
+
+                    const result = await response.json();
+
+                    if (result && result.data) {
+                        selectedNFs.clear();
+                        result.data.forEach(item => {
+                            const num = item.nfe_numero || item.nf_numero;
+                            if (num) {
+                                selectedNFs.add(String(num));
+                            }
+                        });
+
+                        // Atualiza os checkboxes da página atual
+                        $('input.chk-massa-row', tabelaPendencias.rows({ search: 'applied' }).nodes()).prop('checked', true);
+                        $('#chk-master-massa').prop('checked', true);
+                        updateMassaPanelCount();
+                    }
+
+                    ModalSystem.hideLoading();
+                } catch (e) {
+                    ModalSystem.hideLoading();
+                    ModalSystem.alert('Falha ao buscar seleção total: ' + e.message, 'Erro');
+                    this.checked = false;
+                }
+            } else {
+                // Se desmarcar, limpa tudo
+                selectedNFs.clear();
+                $('#chk-master-massa').prop('checked', false);
+                $('input.chk-massa-row', tabelaPendencias.rows().nodes()).prop('checked', false);
+                updateMassaPanelCount();
+            }
+        });
+    }
 
     // Aplicar aos selecionados
     btnApply.addEventListener('click', async () => {
@@ -513,8 +742,8 @@ function setupMassaModeListeners() {
                 selectedNFs.clear();
                 updateMassaPanelCount();
                 $('#chk-master-massa').prop('checked', false);
-                // Sai do modo? Ou continua pra ver as recarregadas? Vamos só recarregar.
                 carregarDadosDashboard();
+                tabelaPendencias.ajax.reload(null, false);
 
                 ModalSystem.alert(data.message, 'Operação Concluída');
 
@@ -550,7 +779,9 @@ function initDashboardRealTime() {
     carregarGestaoConferencia();
     setInterval(() => {
         carregarDadosDashboard();
+        if (tabelaPendencias) tabelaPendencias.ajax.reload(null, false);
         carregarGestaoConferencia();
+        carregarPedidosComFoto();
     }, 30000); // Atualiza a cada 30 segundos
 }
 
@@ -562,7 +793,7 @@ async function carregarDadosDashboard() {
         let url = '/api/expedicao/dashboard-dados';
         const dataInicioEl = document.getElementById('filtro-data-inicio');
         const dataFimEl = document.getElementById('filtro-data-fim');
-        
+
         if (dataInicioEl && dataFimEl && dataInicioEl.value && dataFimEl.value) {
             url += `?dataInicio=${dataInicioEl.value}&dataFim=${dataFimEl.value}`;
         }
@@ -589,100 +820,6 @@ async function carregarDadosDashboard() {
         if (document.getElementById('dash-expedidos')) {
             document.getElementById('dash-expedidos').innerText = data.stats.expedidos_hoje || 0;
         }
-
-        const linhasFormatadas = data.pendencias.map(item => {
-            const dataFmt = new Date(item.created_at).toLocaleString('pt-BR');
-            const herancaIcon = item.heranca_ontem ? '<i class="fas fa-history" title="Herança" style="color:var(--color-warning); margin-left: 5px;"></i>' : '';
-
-            let statusMlBadge = '-';
-            if (item.status_ml) {
-                if (item.status_ml === 'Pronto para enviar') {
-                    statusMlBadge = '<span class="badge" style="background-color: #28a745; color: #fff;">Pronto para enviar</span>';
-                } else if (item.status_ml === 'Enviado') {
-                    statusMlBadge = '<span class="badge" style="background-color: #007bff; color: #fff;">Enviado</span>';
-                } else if (item.status_ml === 'Entregue') {
-                    statusMlBadge = '<span class="badge" style="background-color: #17a2b8; color: #fff;">Entregue</span>';
-                } else if (item.status_ml === 'Cancelado') {
-                    statusMlBadge = '<span class="badge" style="background-color: #dc3545; color: #fff;">Cancelado</span>';
-                } else {
-                    statusMlBadge = `<span class="badge badge-secondary">${item.status_ml}</span>`;
-                }
-            }
-
-            let statusBadge = '';
-            if (item.status === 'pendente') statusBadge = '<span class="badge badge-orange">Pendente</span>';
-            else if (item.status === 'hub') statusBadge = '<span class="badge" style="background-color: #7f00ff; color: #fff; font-weight: bold;">Hub</span>';
-            else if (item.status === 'sem_nota' || item.status === 'bip_sem_etiq') statusBadge = '<span class="badge" style="background-color: #6c757d; color: #fff;">Pego, Sem Etiquetar</span>';
-            else if (item.status === 'conf_envio') statusBadge = '<span class="badge" style="background-color: #6f42c1; color: #fff;">Conferência Envio</span>';
-            else if (item.status === 'checado') statusBadge = '<span class="badge" style="background-color: #0dcaf0; color: #1e1e2f;">Checado</span>';
-            else if (item.status === 'sem_estoque') statusBadge = '<span class="badge" style="background-color: var(--color-warning); color: #1e1e2f;">Sem Estoque</span>';
-            else if (item.status === 'cancelamento') statusBadge = '<span class="badge" style="background-color: var(--color-danger); color: #fff;">Cancelado</span>';
-            else if (item.status === 'cancelado') statusBadge = '<span class="badge" style="background-color: #8b0000; color: #fff;">Cancelado Efetivado</span>';
-            else if (item.status === 'impresso') statusBadge = '<span class="badge" style="background-color: #4CAF50; color: #fff;">Expedido</span>';
-
-            // Flag visual: etiqueta impressa pela bipagem de produtos (situacao=impresso mas status NÃO é impresso/expedido)
-            if (item.situacao === 'impresso' && item.status !== 'impresso') {
-                statusBadge += ' <span title="Etiqueta impressa pela Bipagem de Produtos" style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#9C27B0;margin-left:4px;vertical-align:middle;"><i class="fas fa-print" style="color:#fff;font-size:0.6rem;"></i></span><span style="display:none;">Etiq. Impressa</span>';
-            }
-
-            const nfNumero = item.nfe_numero || '';
-            const acoes = `
-                <div style="display:flex;gap:4px;align-items:center;justify-content:center;">
-                ${item.status !== 'impresso' ? `
-                    ${(item.status !== 'pendente' && item.status !== 'hub')
-                        ? `<button class="btn-action btn-action-accent" onclick="alterarStatusEtiqueta(${item.id}, '${item.origem === 'hub' ? 'hub' : 'pendente'}')" title="Retomar / Despausar"><i class="fas fa-play"></i></button>`
-                        : `<button class="btn-action btn-action-warning" onclick="alterarStatusEtiqueta(${item.id}, 'sem_estoque')" title="Pausar (Sem Estoque)"><i class="fas fa-pause"></i></button>`
-                    }
-                    <button class="btn-action btn-action-danger" onclick="confirmarCancelamento(${item.id})" title="Cancelar"><i class="fas fa-times"></i></button>
-                ` : `
-                    <button class="btn-action btn-action-disabled" title="Expedido"><i class="fas fa-play"></i></button>
-                    <button class="btn-action btn-action-disabled" title="Expedido"><i class="fas fa-times"></i></button>
-                `}
-                    <button class="btn-action btn-action-print" onclick="imprimirEtiquetaIndividual('${nfNumero}')" title="Imprimir Etiqueta"><i class="fas fa-print"></i></button>
-                </div>
-            `;
-
-            let skuFormatted = '-';
-            let estoqueFormatted = '-';
-            if (item.skus) {
-                if (Array.isArray(item.skus)) {
-                    // Extract the values
-                    skuFormatted = item.skus.map(s => s.display || s.original || s).join(', ');
-                    estoqueFormatted = item.skus.map(s => s.estoque !== undefined ? s.estoque : '-').join(', ');
-                } else if (typeof item.skus === 'string') {
-                    // It might be a stringified JSON
-                    try {
-                        const parsed = JSON.parse(item.skus);
-                        skuFormatted = Array.isArray(parsed) ? parsed.map(s => s.display || s.original || s).join(', ') : item.skus;
-                        estoqueFormatted = Array.isArray(parsed) ? parsed.map(s => s.estoque !== undefined ? s.estoque : '-').join(', ') : '-';
-                    } catch (e) {
-                        skuFormatted = item.skus;
-                    }
-                }
-            } else if (item.sku) {
-                skuFormatted = item.sku;
-            }
-
-            return {
-                nf_numero: item.nfe_numero || item.nf || '-',
-                dataEntrada: `${dataFmt} ${herancaIcon}`,
-                dataEntradaRaw: item.created_at,
-                nfHtml: `<strong>${item.nfe_numero || item.nf || '-'}</strong>`,
-                pedidoId: item.pedido_numero || item.pack_id || '-',
-                numeroLoja: item.numero_loja_calc || item.numero_loja || '-',
-                sku: skuFormatted,
-                estoque: estoqueFormatted,
-                localizacao: item.locations || '-',
-                skusOriginal: item.skus,
-                statusMlBadge: statusMlBadge,
-                statusBadge: statusBadge,
-                acoes: acoes
-            };
-        });
-
-        // Limpa a tabela e adiciona os novos dados renderizando corretamente
-        // Limpa a tabela e adiciona os novos dados mantendo a página atual (draw(false))
-        tabelaPendencias.clear().rows.add(linhasFormatadas).draw(false);
 
         // Renderiza produtividade
         if (data.produtividade) {
@@ -770,9 +907,26 @@ async function carregarGestaoConferencia() {
 // ==========================================
 // ENVIO INDIVIDUAL AO BLING
 // ==========================================
-window.enviarIndividualBling = async function(nfeNumero) {
+window.enviarIndividualBling = async function (nfeNumero) {
     // Já temos referência indireta. Mas pra facilitar delegação de evento:
 };
+
+function toggleSyncButtonState(disabled) {
+    const btnSync = document.getElementById('btn-sync-conferencia-bling');
+    if (btnSync) {
+        if (disabled) {
+            btnSync.disabled = true;
+            btnSync.style.opacity = '0.5';
+            btnSync.style.pointerEvents = 'none';
+            btnSync.style.cursor = 'not-allowed';
+        } else {
+            btnSync.disabled = false;
+            btnSync.style.opacity = '1';
+            btnSync.style.pointerEvents = 'auto';
+            btnSync.style.cursor = 'pointer';
+        }
+    }
+}
 
 function initGestaoConferenciaListeners() {
     // --- Delegação de Evento: Envio Individual ---
@@ -814,6 +968,12 @@ function initGestaoConferenciaListeners() {
         btnSync.addEventListener('click', async () => {
             if (!tabelaGestaoConferencia) return;
 
+            // Bloqueia se já houver um job rodando localmente
+            if (localStorage.getItem('bling_lote_active_job_id')) {
+                ToastSystem.warning('Já existe um processamento em lote em andamento.');
+                return;
+            }
+
             // Conta quantas pendentes/erro existem na tabela
             const todasLinhas = tabelaGestaoConferencia.rows().data().toArray();
             const pendentesCount = todasLinhas
@@ -838,6 +998,35 @@ function initGestaoConferenciaListeners() {
             );
         });
     }
+
+    // --- Botão Ver Status do Envio ---
+    const btnVerProgresso = document.getElementById('btn-ver-progresso-lote');
+    if (btnVerProgresso) {
+        btnVerProgresso.addEventListener('click', () => {
+            abrirModalProgressoLote();
+        });
+    }
+
+    // --- Listeners de fechamento do Modal de Lote ---
+    const btnLoteCloseX = document.getElementById('loteProgressCloseBtn');
+    if (btnLoteCloseX) {
+        btnLoteCloseX.addEventListener('click', esconderVisualModalProgresso);
+    }
+    const btnLoteCloseBtn = document.getElementById('btn-lote-fechar');
+    if (btnLoteCloseBtn) {
+        btnLoteCloseBtn.addEventListener('click', esconderVisualModalProgresso);
+    }
+    const overlayLote = document.getElementById('loteProgressOverlay');
+    if (overlayLote) {
+        overlayLote.addEventListener('click', esconderVisualModalProgresso);
+    }
+
+    // --- Auto-retomada de Polling ao Carregar ---
+    const activeJobId = localStorage.getItem('bling_lote_active_job_id');
+    if (activeJobId) {
+        toggleSyncButtonState(true);
+        retomarPollingLote(activeJobId);
+    }
 }
 
 // ==========================================
@@ -847,6 +1036,8 @@ let _lotePollingInterval = null;
 
 async function iniciarEnvioLoteInteligente() {
     try {
+        toggleSyncButtonState(true);
+
         // 1. Dispara o job no backend
         const res = await fetch('/api/expedicao/conferencia-sync-bling-lote', {
             method: 'POST',
@@ -856,87 +1047,152 @@ async function iniciarEnvioLoteInteligente() {
 
         if (!data.success || !data.jobId) {
             ToastSystem.error(data.message || 'Erro ao iniciar processamento em lote.');
+            toggleSyncButtonState(false);
             return;
         }
 
         const jobId = data.jobId;
+        localStorage.setItem('bling_lote_active_job_id', jobId);
 
-        // 2. Abre o modal de progresso
+        // 2. Abre o modal de progresso e inicia o polling
         abrirModalProgressoLote(jobId);
 
     } catch (err) {
         ToastSystem.error('Erro de rede ao iniciar processamento em lote.');
+        toggleSyncButtonState(false);
+    }
+}
+
+function mostrarVisualModalProgresso() {
+    const overlay = document.getElementById('loteProgressOverlay');
+    const modal = document.getElementById('loteProgressModal');
+    if (overlay && modal) {
+        overlay.style.display = 'block';
+        modal.style.display = 'block';
+        void modal.offsetHeight; // Força reflow para transição CSS
+        overlay.classList.add('visible');
+        modal.classList.add('visible');
+    }
+}
+
+function esconderVisualModalProgresso() {
+    const overlay = document.getElementById('loteProgressOverlay');
+    const modal = document.getElementById('loteProgressModal');
+    if (overlay && modal) {
+        overlay.classList.remove('visible');
+        modal.classList.remove('visible');
+        setTimeout(() => {
+            if (!overlay.classList.contains('visible')) {
+                overlay.style.display = 'none';
+            }
+            if (!modal.classList.contains('visible')) {
+                modal.style.display = 'none';
+            }
+        }, 200);
     }
 }
 
 function abrirModalProgressoLote(jobId) {
-    // Cria o overlay e modal
-    const overlay = document.createElement('div');
-    overlay.id = 'lote-progress-overlay';
-    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;';
+    const activeJobId = jobId || localStorage.getItem('bling_lote_active_job_id');
 
-    overlay.innerHTML = `
-        <div style="background:var(--bg-secondary, #1e1e2f);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:2rem;width:90%;max-width:550px;color:#fff;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
-            <h4 style="margin:0 0 1.5rem;font-size:1.2rem;display:flex;align-items:center;gap:8px;">
-                <i class="fas fa-cloud-upload-alt" style="color:var(--accent-orange,#ff9800);"></i> Envio em Lote — Progresso
-            </h4>
+    mostrarVisualModalProgresso();
 
-            <div id="lote-status-text" style="font-size:0.95rem;margin-bottom:1rem;color:var(--text-secondary,#aaa);">
-                Iniciando processamento...
-            </div>
+    if (activeJobId) {
+        retomarPollingLote(activeJobId);
+    } else {
+        exibirResultadosUltimoEnvio();
+    }
+}
 
-            <div style="background:rgba(255,255,255,0.05);border-radius:10px;overflow:hidden;height:24px;margin-bottom:0.8rem;border:1px solid rgba(255,255,255,0.08);">
-                <div id="lote-progress-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#ff9800,#ff5722);transition:width 0.4s ease;border-radius:10px;display:flex;align-items:center;justify-content:center;">
-                    <span id="lote-progress-pct" style="font-size:0.7rem;font-weight:bold;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.5);"></span>
-                </div>
-            </div>
-
-            <div style="display:flex;gap:1.5rem;margin-bottom:1rem;">
-                <div style="flex:1;background:rgba(76,175,80,0.08);border:1px solid rgba(76,175,80,0.2);border-radius:8px;padding:0.6rem;text-align:center;">
-                    <div id="lote-sucessos" style="font-size:1.4rem;font-weight:bold;color:#4CAF50;">0</div>
-                    <div style="font-size:0.75rem;color:#aaa;">Sucessos</div>
-                </div>
-                <div style="flex:1;background:rgba(244,67,54,0.08);border:1px solid rgba(244,67,54,0.2);border-radius:8px;padding:0.6rem;text-align:center;">
-                    <div id="lote-erros" style="font-size:1.4rem;font-weight:bold;color:#f44336;">0</div>
-                    <div style="font-size:0.75rem;color:#aaa;">Erros</div>
-                </div>
-                <div style="flex:1;background:rgba(255,152,0,0.08);border:1px solid rgba(255,152,0,0.2);border-radius:8px;padding:0.6rem;text-align:center;">
-                    <div id="lote-bloco" style="font-size:1.4rem;font-weight:bold;color:#ff9800;">-</div>
-                    <div style="font-size:0.75rem;color:#aaa;">Bloco</div>
-                </div>
-            </div>
-
-            <div id="lote-log-container" style="display:none;max-height:150px;overflow-y:auto;background:rgba(0,0,0,0.3);border-radius:8px;padding:0.6rem;margin-bottom:1rem;font-size:0.8rem;font-family:monospace;">
-                <div style="color:#f44336;font-weight:bold;margin-bottom:4px;">Erros encontrados:</div>
-                <div id="lote-log-erros"></div>
-            </div>
-
-            <div style="text-align:right;">
-                <button id="btn-lote-fechar" class="btn-premium orange" style="padding:0.4rem 1.2rem;font-size:0.9rem;border-radius:6px;display:none;">
-                    Fechar
-                </button>
-            </div>
-        </div>
-    `;
-
-    document.body.appendChild(overlay);
-
-    // Botão Fechar
-    document.getElementById('btn-lote-fechar').addEventListener('click', () => {
-        fecharModalProgressoLote();
-    });
-
-    // 3. Inicia polling a cada 2 segundos
+function retomarPollingLote(jobId) {
+    if (_lotePollingInterval) {
+        clearInterval(_lotePollingInterval);
+    }
     _lotePollingInterval = setInterval(() => pollStatusLote(jobId), 2000);
-    // Faz a primeira checagem imediata
-    setTimeout(() => pollStatusLote(jobId), 500);
+    pollStatusLote(jobId);
+}
+
+function exibirResultadosUltimoEnvio() {
+    const statusTextEl = document.getElementById('lote-status-text');
+    const barEl = document.getElementById('lote-progress-bar');
+    const pctEl = document.getElementById('lote-progress-pct');
+    const sucessosEl = document.getElementById('lote-sucessos');
+    const errosEl = document.getElementById('lote-erros');
+    const blocoEl = document.getElementById('lote-bloco');
+    const logContainer = document.getElementById('lote-log-container');
+    const logErros = document.getElementById('lote-log-erros');
+
+    const lastStatusRaw = localStorage.getItem('bling_lote_last_job_status');
+
+    if (lastStatusRaw) {
+        try {
+            const status = JSON.parse(lastStatusRaw);
+
+            if (statusTextEl) {
+                statusTextEl.innerHTML = `<i class="fas fa-check-circle" style="color:#4CAF50;margin-right:6px;"></i> Não há nenhum envio ocorrendo no momento.<br><span style="font-size: 0.85rem; color: var(--text-secondary);">Resultados do último envio (finalizado em ${status.concluido ? new Date(status.concluido).toLocaleString('pt-BR') : 'data desconhecida'}):</span>`;
+            }
+            if (barEl) {
+                barEl.style.width = '100%';
+                barEl.style.background = status.status === 'completed'
+                    ? 'linear-gradient(90deg, #4CAF50, #66BB6A)'
+                    : 'linear-gradient(90deg, #f44336, #e53935)';
+            }
+            if (pctEl) pctEl.textContent = '100%';
+            if (sucessosEl) sucessosEl.textContent = status.sucessos || 0;
+            if (errosEl) errosEl.textContent = status.erros || 0;
+            if (blocoEl) blocoEl.textContent = status.totalBlocos ? `${status.blocoAtual}/${status.totalBlocos}` : '-';
+
+            if (status.logErros && status.logErros.length > 0) {
+                if (logContainer && logErros) {
+                    logContainer.style.display = 'block';
+                    logErros.innerHTML = status.logErros.map(e => `<div style="margin-bottom:3px;"><span style="color:#ff9800;">NFe ${e.nfe}:</span> ${e.message}</div>`).join('');
+                }
+            } else {
+                if (logContainer) logContainer.style.display = 'none';
+            }
+        } catch (e) {
+            console.error('Erro ao analisar lastStatusRaw:', e);
+            resetModalProgressoUI('Não há nenhum envio ocorrendo no momento.');
+        }
+    } else {
+        resetModalProgressoUI('Não há nenhum envio ocorrendo no momento.');
+    }
+}
+
+function resetModalProgressoUI(message) {
+    const statusTextEl = document.getElementById('lote-status-text');
+    const barEl = document.getElementById('lote-progress-bar');
+    const pctEl = document.getElementById('lote-progress-pct');
+    const sucessosEl = document.getElementById('lote-sucessos');
+    const errosEl = document.getElementById('lote-erros');
+    const blocoEl = document.getElementById('lote-bloco');
+    const logContainer = document.getElementById('lote-log-container');
+    const logErros = document.getElementById('lote-log-erros');
+
+    if (statusTextEl) statusTextEl.textContent = message;
+    if (barEl) {
+        barEl.style.width = '0%';
+        barEl.style.background = 'linear-gradient(90deg,#ff9800,#ff5722)';
+    }
+    if (pctEl) pctEl.textContent = '0%';
+    if (sucessosEl) sucessosEl.textContent = '0';
+    if (errosEl) errosEl.textContent = '0';
+    if (blocoEl) blocoEl.textContent = '-';
+    if (logContainer) logContainer.style.display = 'none';
+    if (logErros) logErros.innerHTML = '';
 }
 
 async function pollStatusLote(jobId) {
     try {
         const res = await fetch(`/api/expedicao/conferencia-sync-bling-lote/status?jobId=${encodeURIComponent(jobId)}`);
         if (!res.ok) {
-            console.warn('Polling: resposta não ok', res.status);
+            if (res.status === 404) {
+                clearInterval(_lotePollingInterval);
+                _lotePollingInterval = null;
+                localStorage.removeItem('bling_lote_active_job_id');
+                toggleSyncButtonState(false);
+                resetModalProgressoUI('O processamento expirou ou não foi encontrado.');
+            }
             return;
         }
         const status = await res.json();
@@ -986,9 +1242,10 @@ async function pollStatusLote(jobId) {
                 }
             }
 
-            // Mostra botão fechar
-            const btnFechar = document.getElementById('btn-lote-fechar');
-            if (btnFechar) btnFechar.style.display = 'inline-block';
+            // Persiste estado de finalizado e libera botão
+            localStorage.setItem('bling_lote_last_job_status', JSON.stringify(status));
+            localStorage.removeItem('bling_lote_active_job_id');
+            toggleSyncButtonState(false);
 
             // Recarrega as tabelas
             carregarGestaoConferencia();
@@ -998,15 +1255,6 @@ async function pollStatusLote(jobId) {
     } catch (err) {
         console.error('Polling erro:', err);
     }
-}
-
-function fecharModalProgressoLote() {
-    if (_lotePollingInterval) {
-        clearInterval(_lotePollingInterval);
-        _lotePollingInterval = null;
-    }
-    const overlay = document.getElementById('lote-progress-overlay');
-    if (overlay) overlay.remove();
 }
 
 // ==========================================
@@ -1022,7 +1270,9 @@ async function alterarStatusEtiqueta(id, novoStatus) {
         });
 
         if (response.ok) {
-            carregarDadosDashboard(); // Recarrega a tabela imediatamente após sucesso
+            carregarDadosDashboard();
+            tabelaPendencias.ajax.reload(null, false); // Recarrega a tabela DataTables sem perder a página atual
+            carregarPedidosComFoto(); // Atualiza também a tabela de fotos
         } else {
             throw new Error('Falha na resposta da API.');
         }
@@ -1160,18 +1410,54 @@ function initExportButtons() {
 async function solicitarPlanilhaDinamica(type) {
     if (!tabelaPendencias) return;
 
-    // Obtém as linhas visíveis da tabela, já filtradas pela pesquisa e select!
-    const dadosVisiveis = tabelaPendencias.rows({ search: 'applied' }).data().toArray();
+    ModalSystem.showLoading('Buscando todos os registros filtrados do servidor...', 'Aguarde');
 
-    if (dadosVisiveis.length === 0) {
-        ModalSystem.alert('A tabela atual não possui dados com os filtros aplicados para poder exportar.', 'Tabela Vazia');
-        return;
+    let jsonResponse;
+    try {
+        const dataInicioEl = document.getElementById('filtro-data-inicio');
+        const dataFimEl = document.getElementById('filtro-data-fim');
+
+        let orderCol = 1;
+        let orderDir = 'desc';
+        if (tabelaPendencias.order().length > 0) {
+            orderCol = tabelaPendencias.order()[0][0];
+            orderDir = tabelaPendencias.order()[0][1];
+        }
+
+        const params = new URLSearchParams({
+            dataInicio: dataInicioEl ? dataInicioEl.value : '',
+            dataFim: dataFimEl ? dataFimEl.value : '',
+            statusInterno: $('#filtro-status-tabela').val() || '',
+            statusMl: $('#filtro-status-ml-tabela').val() || '',
+            start: 0,
+            length: -1, // Retorna TODOS os registros
+            'search[value]': tabelaPendencias.search() || '',
+            'order[0][column]': orderCol,
+            'order[0][dir]': orderDir
+        });
+
+        const fetchRes = await fetch(`/api/expedicao/dashboard-tabela?${params.toString()}`);
+        jsonResponse = await fetchRes.json();
+    } catch (e) {
+        ModalSystem.hideLoading();
+        return ModalSystem.alert('Erro ao buscar todos os dados filtrados.', 'Erro de Rede');
+    }
+
+    if (!jsonResponse || !jsonResponse.data) {
+        throw new Error('Retorno vazio do servidor.');
+    }
+
+    const dadosBuscados = jsonResponse.data.map(formatarLinhaTabela);
+
+    if (dadosBuscados.length === 0) {
+        ModalSystem.hideLoading();
+        return ModalSystem.alert('A tabela atual não possui dados com os filtros aplicados para poder exportar.', 'Tabela Vazia');
     }
 
     const htmlStripper = /(<([^>]+)>)/gi;
 
     // Constrói o payload limpo das classes HTML
-    const payloadExtraido = dadosVisiveis.map(row => {
+    const payloadExtraido = dadosBuscados.map(row => {
         let pureSkus = row.sku;
         let skuArray = [];
 
@@ -1294,12 +1580,47 @@ async function solicitarPlanilhaDinamica(type) {
 
 async function imprimirPendenciasLote() {
     if (!tabelaPendencias) return;
-    const dadosVisiveis = tabelaPendencias.rows({ search: 'applied' }).data().toArray();
 
-    if (dadosVisiveis.length === 0) {
-        ModalSystem.alert('A tabela atual não possui dados aplicáveis para impressão.', 'Tabela Vazia');
-        return;
+    ModalSystem.showLoading('Buscando registros filtrados do servidor...', 'Aguarde');
+
+    let jsonResponse;
+    try {
+        const dataInicioEl = document.getElementById('filtro-data-inicio');
+        const dataFimEl = document.getElementById('filtro-data-fim');
+
+        let orderCol = 1;
+        let orderDir = 'desc';
+        if (tabelaPendencias.order().length > 0) {
+            orderCol = tabelaPendencias.order()[0][0];
+            orderDir = tabelaPendencias.order()[0][1];
+        }
+
+        const params = new URLSearchParams({
+            dataInicio: dataInicioEl ? dataInicioEl.value : '',
+            dataFim: dataFimEl ? dataFimEl.value : '',
+            statusInterno: $('#filtro-status-tabela').val() || '',
+            statusMl: $('#filtro-status-ml-tabela').val() || '',
+            start: 0,
+            length: -1, // Retorna TODOS os registros
+            'search[value]': tabelaPendencias.search() || '',
+            'order[0][column]': orderCol,
+            'order[0][dir]': orderDir
+        });
+
+        const fetchRes = await fetch(`/api/expedicao/dashboard-tabela?${params.toString()}`);
+        jsonResponse = await fetchRes.json();
+    } catch (e) {
+        ModalSystem.hideLoading();
+        return ModalSystem.alert('Erro ao buscar todos os dados filtrados.', 'Erro de Rede');
     }
+
+    if (!jsonResponse || !jsonResponse.data || jsonResponse.data.length === 0) {
+        ModalSystem.hideLoading();
+        return ModalSystem.alert('A tabela atual não possui dados aplicáveis para impressão.', 'Tabela Vazia');
+    }
+
+    const dadosVisiveis = jsonResponse.data.map(formatarLinhaTabela);
+
 
     const htmlStripper = /(<([^>]+)>)/gi;
     const nfsExtraidas = [];
@@ -1348,4 +1669,285 @@ async function imprimirPendenciasLote() {
         ModalSystem.hideLoading();
         ModalSystem.alert(err.message, 'Erro na Geração PDF');
     }
+}
+
+// ===============================================
+// TABELA DE PEDIDOS COM FOTO E VALIDAÇÃO
+// ===============================================
+
+async function carregarPedidosComFoto() {
+    if (!tabelaPedidosComFoto) return;
+    
+    try {
+        const response = await fetch('/api/expedicao/pedidos-com-foto?_=' + Date.now());
+        const result = await response.json();
+        
+        if (result.success) {
+            const formatado = result.data.map(item => {
+                const encodedProdutoPath = item.foto_produto_path ? encodeURIComponent(item.foto_produto_path) : '';
+                
+                const btnEtiqueta = item.foto_etiqueta_path 
+                    ? `<img src="/conferencia/api/foto/${item.foto_etiqueta_path}" class="lightbox-trigger" data-nfe="${item.nfe_numero}" data-etiqueta="${item.foto_etiqueta_path}" data-produto="${encodedProdutoPath}" data-type="etiqueta" style="width: 50px; height: 50px; object-fit: cover; border-radius: 4px; cursor: pointer; border: 1px solid var(--accent-orange);">` 
+                    : '<span class="text-muted">Sem foto</span>';
+                    
+                let fotoProdutoHtml = '<span class="text-muted">Sem foto</span>';
+                if (item.foto_produto_path) {
+                    let photos = [];
+                    if (item.foto_produto_path.startsWith('[')) {
+                        try {
+                            photos = JSON.parse(item.foto_produto_path);
+                        } catch (e) {
+                            photos = [item.foto_produto_path];
+                        }
+                    } else {
+                        photos = [item.foto_produto_path];
+                    }
+
+                    if (Array.isArray(photos) && photos.length > 0) {
+                        const topPhoto = photos[0];
+                        if (photos.length > 1) {
+                            const midPhoto = photos[1];
+                            const backPhoto = photos[2] || null;
+                            let backImgHtml = '';
+                            if (backPhoto) {
+                                backImgHtml = `<img src="/conferencia/api/foto/${backPhoto}" class="stack-back">`;
+                            } else {
+                                backImgHtml = `<div class="stack-back" style="background: rgba(240, 124, 0, 0.08); border: 1.5px solid rgba(240,124,0,0.2);"></div>`;
+                            }
+                            
+                            fotoProdutoHtml = `
+                                <div class="photo-stack lightbox-trigger" data-nfe="${item.nfe_numero}" data-etiqueta="${item.foto_etiqueta_path || ''}" data-produto="${encodedProdutoPath}" data-type="produto" data-index="0">
+                                    ${backImgHtml}
+                                    <img src="/conferencia/api/foto/${midPhoto}" class="stack-mid">
+                                    <img src="/conferencia/api/foto/${topPhoto}" class="stack-top">
+                                    <span class="stack-count">+${photos.length}</span>
+                                </div>
+                            `;
+                        } else {
+                            fotoProdutoHtml = `<img src="/conferencia/api/foto/${topPhoto}" class="lightbox-trigger" data-nfe="${item.nfe_numero}" data-etiqueta="${item.foto_etiqueta_path || ''}" data-produto="${encodedProdutoPath}" data-type="produto" data-index="0" style="width: 50px; height: 50px; object-fit: cover; border-radius: 4px; cursor: pointer; border: 1px solid var(--accent-orange);">`;
+                        }
+                    }
+                }
+
+                let validacaoBadge = '<span class="badge badge-secondary" style="color: #fff !important;">Pendente</span>';
+                if (item.foto_validacao === 'validado') {
+                    validacaoBadge = '<span class="badge badge-success" style="background-color: #28a745; color: #fff !important;">Validado</span>';
+                } else if (item.foto_validacao === 'erro') {
+                    validacaoBadge = '<span class="badge badge-danger" style="background-color: #dc3545; color: #fff !important;">Erro</span>';
+                }
+
+                let acoes = '';
+                if (item.foto_validacao !== 'validado') {
+                    acoes = `
+                        <button class="btn-action btn-action-accent" style="background: rgba(40,167,69,0.1); color: #28a745; border-color: rgba(40,167,69,0.2);" onclick="validarFotoPedido('${item.nfe_numero}', 'validado')" title="Marcar como Validado"><i class="fas fa-check"></i></button>
+                        ${item.foto_validacao !== 'erro' ? `<button class="btn-action btn-action-warning" style="background: rgba(220,53,69,0.1); color: #dc3545; border-color: rgba(220,53,69,0.2);" onclick="validarFotoPedido('${item.nfe_numero}', 'erro')" title="Marcar Erro"><i class="fas fa-times"></i></button>` : ''}
+                    `;
+                } else {
+                    acoes = '<i class="fas fa-check-circle text-success" title="Já validado" style="color: #28a745; font-size: 1.2rem;"></i>';
+                }
+
+                return {
+                    nfe: `<strong>${item.nfe_numero}</strong>`,
+                    loja: item.numero_loja_calc || '-',
+                    data_conferencia: item.conferencia_concluida_em ? new Date(item.conferencia_concluida_em).toLocaleString('pt-BR') : '-',
+                    foto_etiqueta: btnEtiqueta,
+                    foto_produto: fotoProdutoHtml,
+                    validacao: validacaoBadge,
+                    acao: `<div style="display:flex;gap:4px;align-items:center;justify-content:center;">${acoes}</div>`
+                };
+            });
+            tabelaPedidosComFoto.clear().rows.add(formatado).draw(false);
+        }
+    } catch (e) {
+        console.error('Erro ao carregar pedidos com foto:', e);
+    }
+}
+
+// Escopo global para onclick no HTML
+window.validarFotoPedido = async function(nfeNumero, acao) {
+    if (acao === 'erro') {
+        ModalSystem.confirm(`Tem certeza que deseja marcar erro nas fotos da NF ${nfeNumero}?`, 'Marcar Erro', async () => {
+            await executarValidacaoFoto(nfeNumero, acao);
+        });
+    } else {
+        await executarValidacaoFoto(nfeNumero, acao);
+    }
+}
+
+async function executarValidacaoFoto(nfeNumero, acao) {
+    try {
+        ModalSystem.showLoading('Salvando validação...');
+        const res = await fetch('/api/expedicao/validar-foto', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nfeNumero, acao })
+        });
+        const result = await res.json();
+        ModalSystem.hideLoading();
+        
+        if (result.success) {
+            ToastSystem.success(result.message);
+            carregarPedidosComFoto();
+            tabelaPendencias.ajax.reload(null, false);
+            fecharLightboxFoto(); // Fecha se estiver aberto
+        } else {
+            ToastSystem.error(result.message);
+        }
+    } catch (e) {
+        ModalSystem.hideLoading();
+        ToastSystem.error('Erro de conexão.');
+    }
+}
+
+window.corrigirFlagFotoPedido = function(nfeNumero) {
+    ModalSystem.confirm(`Deseja dar a NF ${nfeNumero} como foto validada? (Isso não pode ser desfeito).`, 'Corrigir Flag de Erro', async () => {
+        try {
+            ModalSystem.showLoading('Corrigindo flag...');
+            const res = await fetch('/api/expedicao/corrigir-flag-foto', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nfeNumero })
+            });
+            const result = await res.json();
+            ModalSystem.hideLoading();
+            
+            if (result.success) {
+                ToastSystem.success(result.message);
+                carregarPedidosComFoto();
+                tabelaPendencias.ajax.reload(null, false);
+            } else {
+                ToastSystem.error(result.message);
+            }
+        } catch (e) {
+            ModalSystem.hideLoading();
+            ToastSystem.error('Erro de conexão.');
+        }
+    });
+}
+
+// Lightbox
+let lightboxState = { files: [], currentIdx: 0, nfe: '', rotation: 0 };
+
+window.abrirLightboxFoto = function(nfe, fotoEtiqueta, fotoProduto, targetType, productIndex = 0) {
+    lightboxState.nfe = nfe;
+    lightboxState.files = [];
+    lightboxState.rotation = 0;
+    
+    let targetIdx = 0;
+    
+    if (fotoEtiqueta) {
+        lightboxState.files.push({ type: 'Etiqueta', path: fotoEtiqueta });
+    }
+    
+    if (fotoProduto) {
+        if (fotoProduto.startsWith('[')) {
+            try {
+                const parsed = JSON.parse(fotoProduto);
+                if (Array.isArray(parsed)) {
+                    parsed.forEach((img, idx) => {
+                        if (targetType === 'produto' && idx === productIndex) {
+                            targetIdx = lightboxState.files.length;
+                        }
+                        lightboxState.files.push({ type: `Produto ${idx + 1}`, path: img });
+                    });
+                }
+            } catch (e) {
+                if (targetType === 'produto') {
+                    targetIdx = lightboxState.files.length;
+                }
+                lightboxState.files.push({ type: 'Produto', path: fotoProduto });
+            }
+        } else {
+            if (targetType === 'produto') {
+                targetIdx = lightboxState.files.length;
+            }
+            lightboxState.files.push({ type: 'Produto', path: fotoProduto });
+        }
+    }
+    
+    if (lightboxState.files.length === 0) return;
+    
+    if (targetType === 'etiqueta') {
+        targetIdx = 0;
+    }
+    
+    lightboxState.currentIdx = targetIdx;
+    
+    document.getElementById('lightbox-foto').style.display = 'flex';
+    atualizarLightboxUI();
+}
+
+window.fecharLightboxFoto = function() {
+    document.getElementById('lightbox-foto').style.display = 'none';
+}
+
+function atualizarLightboxUI() {
+    const file = lightboxState.files[lightboxState.currentIdx];
+    const img = document.getElementById('lightbox-img');
+    if (img) {
+        img.src = `/conferencia/api/foto/${file.path}`;
+        img.style.transform = `rotate(${lightboxState.rotation}deg)`;
+        img.style.transition = 'transform 0.2s ease-in-out';
+    }
+    document.getElementById('lightbox-nfe').textContent = `NF ${lightboxState.nfe}`;
+    document.getElementById('lightbox-tipo').textContent = file.type;
+    
+    // Gerar indicadores dinamicamente
+    const indicatorsContainer = document.querySelector('.lightbox-indicators');
+    if (indicatorsContainer) {
+        indicatorsContainer.innerHTML = lightboxState.files.map((f, i) => {
+            const activeClass = i === lightboxState.currentIdx ? 'active' : '';
+            const bgColor = i === lightboxState.currentIdx ? 'var(--accent-orange)' : 'rgba(255,255,255,0.3)';
+            return `<span class="indicator ${activeClass}" data-idx="${i}" style="width: 12px; height: 12px; border-radius: 50%; background: ${bgColor}; transition: 0.3s; cursor: pointer;"></span>`;
+        }).join('');
+        
+        // Adicionar click listener nos novos indicadores
+        indicatorsContainer.querySelectorAll('.indicator').forEach(el => {
+            el.addEventListener('click', function() {
+                const idx = parseInt(this.getAttribute('data-idx'));
+                lightboxState.currentIdx = idx;
+                lightboxState.rotation = 0; // reset
+                atualizarLightboxUI();
+            });
+        });
+    }
+    
+    // Setas
+    document.querySelector('.lightbox-nav.btn-prev').style.display = lightboxState.files.length > 1 ? 'block' : 'none';
+    document.querySelector('.lightbox-nav.btn-next').style.display = lightboxState.files.length > 1 ? 'block' : 'none';
+}
+
+document.querySelector('.lightbox-nav.btn-next')?.addEventListener('click', () => {
+    if (lightboxState.files.length > 1) {
+        lightboxState.currentIdx = (lightboxState.currentIdx + 1) % lightboxState.files.length;
+        lightboxState.rotation = 0; // reset
+        atualizarLightboxUI();
+    }
+});
+
+document.querySelector('.lightbox-nav.btn-prev')?.addEventListener('click', () => {
+    if (lightboxState.files.length > 1) {
+        lightboxState.currentIdx = (lightboxState.currentIdx - 1 + lightboxState.files.length) % lightboxState.files.length;
+        lightboxState.rotation = 0; // reset
+        atualizarLightboxUI();
+    }
+});
+
+document.getElementById('btn-fechar-lightbox')?.addEventListener('click', fecharLightboxFoto);
+
+document.getElementById('btn-rotacionar-lightbox')?.addEventListener('click', () => {
+    lightboxState.rotation = (lightboxState.rotation + 90) % 360;
+    const img = document.getElementById('lightbox-img');
+    if (img) {
+        img.style.transform = `rotate(${lightboxState.rotation}deg)`;
+    }
+});
+
+window.abrirDetalhesFoto = function(nfeNumero) {
+    // Apenas faz um scroll para a tabela de fotos, ou poderia abrir modal customizado
+    $('html, body').animate({
+        scrollTop: $('#tabela-pedidos-foto').offset().top - 100
+    }, 500);
+    // Filtrar a tabela de fotos pela nfe (usando a busca nativa do DT)
+    tabelaPedidosComFoto.search(nfeNumero).draw();
 }

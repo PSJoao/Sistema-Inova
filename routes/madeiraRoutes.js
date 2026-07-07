@@ -8,6 +8,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 //Rota de login
 router.use(authController.requireAuth);
+router.use(authController.requireModule('monitoramento_madeira_lucas'));
 // Rotas para o módulo Madeira Madeira
 router.get('/madeira/monitoring', monitoringController.getMonitoringProducts);
 router.get('/madeira/non-competitive-products', monitoringController.getNonCompetitiveProducts);

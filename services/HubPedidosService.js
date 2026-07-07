@@ -159,12 +159,12 @@ async function processarPacote(clientMon, pacote) {
     if (!pacote.etiqueta_zpl) return null;
 
     // Ignorar pacotes cancelados/entregues/enviados
-    if (pacote.status_envio === 'cancelled' || pacote.status_envio === 'delivered' || pacote.status_envio === 'shipped' ||
+    if (pacote.status_envio === 'cancelled' || pacote.status_envio === 'delivered' || pacote.status_envio === 'shipped' || pacote.status_envio === 'picked_up' ||
         pacote.status_pedido_geral === 'cancelled') {
         if (pacote.status_envio === 'cancelled' || pacote.status_pedido_geral === 'cancelled') {
             return await marcarCanceladoSeExiste(clientMon, pacote);
         }
-        if (pacote.status_envio === 'shipped' || pacote.status_pedido_geral === 'shipped' || pacote.status_envio === 'delivered') {
+        if (pacote.status_envio === 'shipped' || pacote.status_pedido_geral === 'shipped' || pacote.status_envio === 'delivered' || pacote.status_envio === 'picked_up') {
             return await marcarEnviadoSeExiste(clientMon, pacote);
         }
         return null;
@@ -173,6 +173,7 @@ async function processarPacote(clientMon, pacote) {
     // O id_pedido_ml do Hub é, na prática, o numero_loja do sistema manual
     const numeroLoja = pacote.ids_pedidos_originais?.[0] ? String(pacote.ids_pedidos_originais[0]) : null;
     const idEnvio = pacote.id_envio_ml ? String(pacote.id_envio_ml) : null;
+    const packId = pacote.pack_id ? String(pacote.pack_id) : null;
 
     if (!numeroLoja && !idEnvio) return null;
 
@@ -207,10 +208,10 @@ async function processarPacote(clientMon, pacote) {
     }
 
     // Busca 3: pelo pack_id (fallback se numero_loja não bateu)
-    if (!registroExistente && numeroLoja) {
+    if (!registroExistente && packId) {
         const res3 = await clientMon.query(
             'SELECT id, status, nfe_numero, chave_acesso, numero_loja, pack_id FROM cached_etiquetas_ml WHERE pack_id = $1 LIMIT 1',
-            [numeroLoja]
+            [packId]
         );
         registroExistente = res3.rows[0] || null;
     }
@@ -242,9 +243,9 @@ async function processarPacote(clientMon, pacote) {
         }
 
         // Preencher pack_id se estava vazio
-        if (numeroLoja && !registroExistente.pack_id) {
+        if (packId && !registroExistente.pack_id) {
             updateFields.push(`pack_id = $${paramIdx++}`);
-            updateValues.push(numeroLoja);
+            updateValues.push(packId);
         }
 
         // Preencher id_envio_ml
@@ -316,7 +317,8 @@ async function processarPacote(clientMon, pacote) {
 async function marcarCanceladoSeExiste(clientMon, pacote) {
     const numeroLoja = pacote.ids_pedidos_originais?.[0] ? String(pacote.ids_pedidos_originais[0]) : null;
     const nfeNumero = pacote.nfe_numero || null;
-    if (!numeroLoja && !nfeNumero) return null;
+    const packId = pacote.pack_id ? String(pacote.pack_id) : null;
+    if (!numeroLoja && !nfeNumero && !packId) return null;
 
     let res = { rows: [] };
 
@@ -327,8 +329,8 @@ async function marcarCanceladoSeExiste(clientMon, pacote) {
     if (res.rows.length === 0 && numeroLoja) {
         res = await clientMon.query('SELECT id, status FROM cached_etiquetas_ml WHERE numero_loja = $1 LIMIT 1', [numeroLoja]);
     }
-    if (res.rows.length === 0 && numeroLoja) {
-        res = await clientMon.query('SELECT id, status FROM cached_etiquetas_ml WHERE pack_id = $1 LIMIT 1', [numeroLoja]);
+    if (res.rows.length === 0 && packId) {
+        res = await clientMon.query('SELECT id, status FROM cached_etiquetas_ml WHERE pack_id = $1 LIMIT 1', [packId]);
     }
 
     if (res.rows.length > 0 && res.rows[0].status !== 'cancelado') {
@@ -346,7 +348,8 @@ async function marcarCanceladoSeExiste(clientMon, pacote) {
 async function marcarEnviadoSeExiste(clientMon, pacote) {
     const numeroLoja = pacote.ids_pedidos_originais?.[0] ? String(pacote.ids_pedidos_originais[0]) : null;
     const nfeNumero = pacote.nfe_numero || null;
-    if (!numeroLoja && !nfeNumero) return null;
+    const packId = pacote.pack_id ? String(pacote.pack_id) : null;
+    if (!numeroLoja && !nfeNumero && !packId) return null;
 
     let res = { rows: [] };
 
@@ -357,8 +360,8 @@ async function marcarEnviadoSeExiste(clientMon, pacote) {
     if (res.rows.length === 0 && numeroLoja) {
         res = await clientMon.query('SELECT id, status FROM cached_etiquetas_ml WHERE numero_loja = $1 LIMIT 1', [numeroLoja]);
     }
-    if (res.rows.length === 0 && numeroLoja) {
-        res = await clientMon.query('SELECT id, status FROM cached_etiquetas_ml WHERE pack_id = $1 LIMIT 1', [numeroLoja]);
+    if (res.rows.length === 0 && packId) {
+        res = await clientMon.query('SELECT id, status FROM cached_etiquetas_ml WHERE pack_id = $1 LIMIT 1', [packId]);
     }
 
     if (res.rows.length > 0 && res.rows[0].status !== 'impresso') {
@@ -380,6 +383,7 @@ async function inserirNovoPedido(clientMon, pacote, numeroLoja) {
     const nfeNumero = pacote.nfe_numero || null;
     const chaveAcesso = pacote.chave_acesso || null;
     const statusInicial = 'hub';
+    const packId = pacote.pack_id ? String(pacote.pack_id) : null;
 
     // Limpar etiqueta ZPL de null bytes
     const etiquetaLimpa = pacote.etiqueta_zpl
@@ -392,7 +396,6 @@ async function inserirNovoPedido(clientMon, pacote, numeroLoja) {
     const quantidadeTotal = itens.reduce((sum, i) => sum + (i.quantidade || 1), 0);
 
     // INSERT na cached_etiquetas_ml
-    // numero_loja e pack_id recebem o mesmo valor (ids_pedidos_originais[0])
     const insertQuery = `
         INSERT INTO cached_etiquetas_ml (
             nfe_numero, chave_acesso, skus, quantidade_total,
@@ -412,7 +415,7 @@ async function inserirNovoPedido(clientMon, pacote, numeroLoja) {
         quantidadeTotal,
         etiquetaLimpa,
         numeroLoja,
-        numeroLoja,
+        packId,
         pacote.id_envio_ml ? String(pacote.id_envio_ml) : null,
         statusInicial
     ]);
@@ -488,6 +491,7 @@ const MAPA_STATUS_ML = {
     'pending': 'Aguardando',
     'cancelled': 'Cancelado',
     'shipped': 'Enviado',
+    'picked_up': 'Enviado',
     'delivered': 'Entregue'
 };
 
@@ -539,13 +543,17 @@ async function executarMonitoramentoPorLote(pedidos, token) {
                     const statusTraduzido = MAPA_STATUS_ML[statusMl] || statusMl;
                     const idPedidoStr = item.id_pedido_ml ? String(item.id_pedido_ml) : null;
                     const idEnvioStr = item.id_envio_ml ? String(item.id_envio_ml) : null;
+                    const packIdStr = item.pack_id ? String(item.pack_id) : null;
 
                     const updateRes = await clientMon.query(
                         `UPDATE cached_etiquetas_ml 
-                         SET status_ml = $1 
-                         WHERE numero_loja = $2::text
-                            OR ($3::text IS NOT NULL AND (id_envio_ml = $3::text OR pack_id = $3::text))`,
-                        [statusTraduzido, idPedidoStr, idEnvioStr]
+                         SET status_ml = $1,
+                             id_envio_ml = COALESCE(id_envio_ml, $2::text),
+                             pack_id = COALESCE(pack_id, $3::text)
+                         WHERE numero_loja = $4::text
+                            OR ($2::text IS NOT NULL AND (id_envio_ml = $2::text OR pack_id = $2::text))
+                            OR ($3::text IS NOT NULL AND (numero_loja = $3::text OR pack_id = $3::text))`,
+                        [statusTraduzido, idEnvioStr, packIdStr, idPedidoStr]
                     );
                     atualizados += updateRes.rowCount;
                 }
@@ -576,7 +584,14 @@ async function monitorarPorConta(pedidos) {
     // Separa os pedidos por conta
     const gruposPorConta = {};
     for (const pedido of pedidos) {
-        const idx = identificarContaPorNfe(pedido.nfe_numero);
+        let idx = null;
+        if (pedido.bling_account === 'eliane') {
+            idx = 0;
+        } else if (pedido.bling_account === 'lucas') {
+            idx = 1;
+        } else {
+            idx = identificarContaPorNfe(pedido.nfe_numero);
+        }
         if (idx === null || idx >= HUB_ACCOUNTS.length) continue;
         if (!gruposPorConta[idx]) gruposPorConta[idx] = [];
         gruposPorConta[idx].push(pedido);
@@ -611,9 +626,17 @@ async function monitorarPadrao() {
         try {
             clientMon = await poolMon.connect();
             const res = await clientMon.query(`
-                SELECT id, nfe_numero, id_envio_ml, pack_id, numero_loja
-                FROM cached_etiquetas_ml
-                WHERE status != 'cancelado' AND status != 'impresso'
+                SELECT 
+                    m.id, 
+                    m.nfe_numero, 
+                    m.id_envio_ml, 
+                    m.pack_id, 
+                    m.numero_loja,
+                    COALESCE(n.bling_account, p.bling_account) as bling_account
+                FROM cached_etiquetas_ml m
+                LEFT JOIN cached_nfe n ON m.nfe_numero = n.nfe_numero
+                LEFT JOIN cached_pedido_venda p ON m.numero_loja = p.numero_loja OR m.pack_id = p.numero_loja
+                WHERE m.status != 'cancelado' AND m.status != 'impresso'
             `);
             console.log(`[HubPedidos] Monitoramento Padrão: ${res.rows.length} pedidos encontrados.`);
             if (res.rows.length > 0) {
@@ -636,9 +659,17 @@ async function monitorarAprofundado() {
         try {
             clientMon = await poolMon.connect();
             const res = await clientMon.query(`
-                SELECT id, nfe_numero, id_envio_ml, pack_id, numero_loja
-                FROM cached_etiquetas_ml
-                WHERE created_at >= NOW() - INTERVAL '120 days'
+                SELECT 
+                    m.id, 
+                    m.nfe_numero, 
+                    m.id_envio_ml, 
+                    m.pack_id, 
+                    m.numero_loja,
+                    COALESCE(n.bling_account, p.bling_account) as bling_account
+                FROM cached_etiquetas_ml m
+                LEFT JOIN cached_nfe n ON m.nfe_numero = n.nfe_numero
+                LEFT JOIN cached_pedido_venda p ON m.numero_loja = p.numero_loja OR m.pack_id = p.numero_loja
+                WHERE m.created_at >= NOW() - INTERVAL '120 days'
             `);
             console.log(`[HubPedidos] Monitoramento Aprofundado: ${res.rows.length} pedidos encontrados.`);
             if (res.rows.length > 0) {

@@ -4,8 +4,8 @@ const mercadoLivreService = require('../services/mercadoLivreService');
 exports.showOrganizerPage = (req, res) => {
     res.render('mercado-livre/organizer', {
         title: 'Organizador de Etiquetas Mercado Livre',
-        username: req.session.username,
-        cargo: req.session.role
+        username: req.user.username,
+        cargo: req.user.role
     });
 };
 

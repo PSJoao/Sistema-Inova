@@ -395,15 +395,23 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        if (state.activeNfe.fotos && state.activeNfe.fotos.etiqueta) {
+            sounds.error.play().catch(e => console.log(e));
+            ToastSystem.warning("Bipagem por código bloqueada! Capture a foto do produto para bipá-lo.");
+            if (elements.input) elements.input.focus();
+            return;
+        }
+
         const volumes = state.activeNfe.volumes;
 
-        // [ATENÇÃO] Lógica de Match Atualizada para incluir component_sku
         const matchIndex = volumes.findIndex(v =>
             !v.checked && (
                 v.gtin === code ||
                 v.gtin_embalagem === code ||
                 v.codigo_fabrica === code ||
-                v.component_sku === code // Garante que o SKU da estrutura seja aceito
+                v.component_sku === code || // Garante que o SKU da estrutura seja aceito
+                v.cod_interno_1 === code ||
+                v.cod_interno_2 === code
             )
         );
 
@@ -422,7 +430,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 v.checked && (
                     v.gtin === code ||
                     v.codigo_fabrica === code ||
-                    v.component_sku === code
+                    v.component_sku === code ||
+                    v.cod_interno_1 === code ||
+                    v.cod_interno_2 === code
                 )
             );
 
@@ -560,7 +570,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({
                     nfeNumero: nfe.numero,
                     pedidoBlingId: nfe.pedidoBlingId,
-                    carregadores: carregadores
+                    carregadores: carregadores,
+                    fotoEtiquetaPath: nfe.fotos ? nfe.fotos.etiqueta : null,
+                    fotoProdutoPath: nfe.fotos && nfe.fotos.produtos ? Object.values(nfe.fotos.produtos) : []
                 })
             });
 
@@ -655,9 +667,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Botão de copiar SKU
                 const copyBtn = `<button class="btn-copy-sku" data-sku="${vol.component_sku}" title="Copiar SKU" style="background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 0 4px; font-size: 0.75rem; transition: color 0.2s;"><i class="fas fa-copy"></i></button>`;
 
-                // Item clicável se sem EAN e não conferido
-                const clickable = semEan && !vol.checked;
-                const clickAttr = clickable ? `data-manual-check-idx="${idx}" style="cursor: pointer;" title="Clique para marcar como bipado (sem EAN)"` : '';
+                // Item clicável se não conferido
+                const clickable = !vol.checked;
+                const clickAttr = clickable ? `data-manual-check-idx="${idx}" style="cursor: pointer;" title="Clique para bipar por foto"` : '';
 
                 return `
                 <div class="volume-item ${vol.checked ? 'conferido' : ''}" ${clickAttr}>
@@ -688,7 +700,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             });
 
-            // Event listeners para marcar manualmente itens sem EAN (dupla confirmação)
+            // Event listeners para marcar manualmente itens por foto
             elements.volumesList.querySelectorAll('[data-manual-check-idx]').forEach(el => {
                 el.addEventListener('click', (e) => {
                     if (e.target.closest('.btn-copy-sku')) return; // Ignora se clicou no copiar
@@ -696,26 +708,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const vol = state.activeNfe.volumes[idx];
                     if (!vol || vol.checked) return;
 
-                    // 1º Modal: Pergunta inicial
-                    ModalSystem.confirm(
-                        `Deseja marcar o item <strong>${vol.component_sku}</strong> como bipado manualmente?<br><small style="color:#dc3545;">Este item não possui EAN cadastrado.</small>`,
-                        'Bipagem Manual',
-                        () => {
-                            // 2º Modal: Confirmação de segurança
-                            ModalSystem.confirm(
-                                `<strong>Confirmação de segurança:</strong><br>Tem certeza que o item <strong>${vol.component_sku}</strong> está fisicamente presente e conferido?`,
-                                'Confirmar Bipagem Manual',
-                                () => {
-                                    vol.checked = true;
-                                    sounds.success.play().catch(() => {});
-                                    ToastSystem.success(`${vol.component_sku} marcado como conferido!`);
-                                    saveState();
-                                    renderUI();
-                                    checkCompletion();
-                                }
-                            );
-                        }
-                    );
+                    iniciarFluxoFotoProduto(idx, vol);
                 });
             });
 
@@ -1002,4 +995,191 @@ document.addEventListener('DOMContentLoaded', () => {
         if (btnPalete) btnPalete.addEventListener('click', abrirModalPaletes);
         if (btnNovo) btnNovo.addEventListener('click', criarNovoPalete);
     }, 100);
+
+    // ==========================================
+    // FOTOS DA CONFERÊNCIA (MODAIS DINÂMICOS)
+    // ==========================================
+
+    function iniciarFluxoFotoProduto(idx, vol) {
+        const nfe = state.activeNfe;
+        if (!nfe) return;
+
+        // 1. Verificar se a etiqueta já tem foto
+        if (!nfe.fotos || !nfe.fotos.etiqueta) {
+            // Não tem foto da etiqueta. Primeiro pede ela!
+            abrirModalCapturaFoto(
+                "Foto da Etiqueta Necessária",
+                "etiqueta",
+                async (etiquetaPath) => {
+                    if (!nfe.fotos) nfe.fotos = { etiqueta: null, produtos: {} };
+                    nfe.fotos.etiqueta = etiquetaPath;
+                    saveState();
+                    renderUI();
+                    ToastSystem.success("Foto da etiqueta salva! Agora capture a foto do produto.");
+                    
+                    // Após salvar a etiqueta, abre imediatamente o modal do produto clicado!
+                    setTimeout(() => {
+                        iniciarFluxoFotoProduto(idx, vol);
+                    }, 500);
+                },
+                () => {
+                    ToastSystem.info("Operação cancelada. A foto da etiqueta é necessária para bipar por foto.");
+                }
+            );
+        } else {
+            // Já tem foto da etiqueta. Pede a foto do produto!
+            const label = vol.component_sku || vol.codigo_fabrica || `Produto ${idx + 1}`;
+            abrirModalCapturaFoto(
+                `Foto do Produto: ${label}`,
+                `produto_${idx}`,
+                async (produtoPath) => {
+                    if (!nfe.fotos.produtos) nfe.fotos.produtos = {};
+                    nfe.fotos.produtos[`produto_${idx}`] = produtoPath;
+                    
+                    // Marca o produto como checked
+                    vol.checked = true;
+                    
+                    saveState();
+                    renderUI();
+                    checkCompletion();
+                    
+                    sounds.success.play().catch(() => {});
+                    ToastSystem.success(`${label} conferido com sucesso por foto!`);
+                },
+                () => {
+                    ToastSystem.info("Operação cancelada.");
+                }
+            );
+        }
+    }
+
+    function abrirModalCapturaFoto(titulo, idTipo, onSucesso, onCancelar = null) {
+        const messageHtml = `
+            <div class="modal-photo-capture-container" style="text-align: center; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+                <p style="color: var(--text-secondary); margin-bottom: 15px; font-size: 0.95rem;">Clique no quadro abaixo para capturar a imagem:</p>
+                <div class="foto-slot" id="slot-modal-foto-${idTipo}" style="margin: 0 auto; width: 180px; height: 180px; border: 2px dashed rgba(255,255,255,0.2); border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; overflow: hidden; background: rgba(255,255,255,0.02); transition: all 0.2s;">
+                    <input type="file" id="input-modal-foto-${idTipo}" accept="image/*" capture="environment" style="display: none;">
+                    <div class="foto-slot-content" style="text-align: center; padding: 10px;">
+                        <i class="fas fa-camera fa-2x" style="color: rgba(255,255,255,0.3); margin-bottom: 10px;"></i>
+                        <div style="font-size: 0.85rem; color: var(--text-secondary); font-weight: bold; width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Tirar Foto</div>
+                        <div style="font-size: 0.7rem; color: #888;">Toque para câmera</div>
+                    </div>
+                    <img id="preview-modal-foto-${idTipo}" src="" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;">
+                </div>
+                <div style="margin-top: 15px; font-size: 0.8rem; color: #aaa;" id="status-modal-foto-${idTipo}">Nenhuma foto selecionada</div>
+            </div>
+        `;
+
+        let tempFilePath = null;
+
+        ModalSystem.confirm(
+            messageHtml,
+            titulo,
+            () => {
+                if (tempFilePath) {
+                    if (onSucesso) onSucesso(tempFilePath);
+                } else {
+                    ToastSystem.error("Você precisa capturar a foto antes de confirmar!");
+                    setTimeout(() => abrirModalCapturaFoto(titulo, idTipo, onSucesso, onCancelar), 300);
+                }
+            },
+            () => {
+                if (tempFilePath) {
+                    fetch(`/conferencia/api/delete-foto?filename=${tempFilePath}`, { method: 'DELETE' }).catch(console.error);
+                }
+                if (onCancelar) onCancelar();
+            },
+            { isHtml: true }
+        );
+
+        setTimeout(() => {
+            const btnConfirm = document.getElementById('customModalBtnConfirm');
+            if (btnConfirm) btnConfirm.style.display = 'none';
+
+            const slot = document.getElementById(`slot-modal-foto-${idTipo}`);
+            const input = document.getElementById(`input-modal-foto-${idTipo}`);
+            const preview = document.getElementById(`preview-modal-foto-${idTipo}`);
+            const content = slot ? slot.querySelector('.foto-slot-content') : null;
+            const statusText = document.getElementById(`status-modal-foto-${idTipo}`);
+
+            if (slot && input) {
+                slot.addEventListener('click', () => {
+                    input.click();
+                });
+
+                input.addEventListener('change', async (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        if (statusText) statusText.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando foto...';
+                        if (slot) slot.style.pointerEvents = 'none';
+                        try {
+                            const compressedBlob = await compressImage(file, 1200, 0.8);
+                            const formData = new FormData();
+                            formData.append('foto', compressedBlob, `${state.activeNfe.numero}_modal_${idTipo}.jpg`);
+                            
+                            const response = await fetch('/conferencia/api/upload-foto', {
+                                method: 'POST',
+                                body: formData
+                            });
+                            
+                            const data = await response.json();
+                            if (slot) slot.style.pointerEvents = 'auto';
+
+                            if (data.success) {
+                                tempFilePath = data.filePath;
+                                if (preview) {
+                                    preview.src = `/conferencia/api/foto/${data.filePath}`;
+                                    preview.style.display = 'block';
+                                    if (content) content.style.opacity = '0';
+                                }
+                                if (statusText) statusText.textContent = "Foto carregada com sucesso!";
+                                ToastSystem.success("Foto carregada!");
+                                if (btnConfirm) btnConfirm.style.display = 'inline-block';
+                            } else {
+                                ToastSystem.error(data.message || "Erro ao fazer upload.");
+                                if (statusText) statusText.textContent = "Erro no upload.";
+                            }
+                        } catch (err) {
+                            console.error(err);
+                            if (slot) slot.style.pointerEvents = 'auto';
+                            ToastSystem.error("Erro ao processar imagem.");
+                            if (statusText) statusText.textContent = "Erro ao processar.";
+                        }
+                    }
+                    input.value = '';
+                });
+            }
+        }, 150);
+    }
+
+    function compressImage(file, maxWidth, quality) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = event => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > maxWidth) {
+                        height = Math.round((height * maxWidth) / width);
+                        width = maxWidth;
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    canvas.toBlob(blob => resolve(blob), 'image/jpeg', quality);
+                };
+                img.onerror = error => reject(error);
+            };
+            reader.onerror = error => reject(error);
+        });
+    }
+
 });

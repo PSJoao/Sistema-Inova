@@ -181,7 +181,7 @@ exports.renderEditEstruturaPage = async (req, res) => {
     try {
         // Busca a estrutura com este component_sku, priorizando 'lucas'
         const query = `
-            SELECT id, component_sku, component_location, structure_name, gtin, gtin_embalagem
+            SELECT id, component_sku, component_location, structure_name, gtin, gtin_embalagem, cod_interno_1, cod_interno_2
             FROM cached_structures 
             WHERE component_sku = $1 
             ORDER BY 
@@ -263,7 +263,7 @@ exports.updateProduto = async (req, res) => {
  */
 exports.updateEstrutura = async (req, res) => {
     // Campos editáveis
-    const { old_component_sku, component_sku, structure_name, component_location, gtin, gtin_embalagem } = req.body;
+    const { old_component_sku, component_sku, structure_name, component_location, gtin, gtin_embalagem, cod_interno_1, cod_interno_2 } = req.body;
 
     if (!old_component_sku) {
         req.flash('error_msg', 'SKU original não encontrado. Não foi possível salvar.');
@@ -283,16 +283,20 @@ exports.updateEstrutura = async (req, res) => {
                 structure_name = $2,
                 component_location = $3, 
                 gtin = $4, 
-                gtin_embalagem = $5
-            WHERE component_sku = $6;
+                gtin_embalagem = $5,
+                cod_interno_1 = $6,
+                cod_interno_2 = $7
+            WHERE component_sku = $8;
         `;
         
         // Converte para null se estiver vazio
         const locVal = component_location ? component_location.trim() : null;
         const gtinVal = gtin ? gtin.trim() : null;
         const gtinEmbVal = gtin_embalagem ? gtin_embalagem.trim() : null;
+        const cod1Val = cod_interno_1 ? cod_interno_1.trim() : null;
+        const cod2Val = cod_interno_2 ? cod_interno_2.trim() : null;
 
-        await pool.query(query, [component_sku.trim(), structure_name, locVal, gtinVal, gtinEmbVal, old_component_sku]);
+        await pool.query(query, [component_sku.trim(), structure_name, locVal, gtinVal, gtinEmbVal, cod1Val, cod2Val, old_component_sku]);
 
         req.flash('success_msg', `Estrutura SKU ${old_component_sku} atualizada para ${component_sku} com sucesso.`);
         res.redirect('/produtos/listagem?tipo=estrutura'); // Volta para a listagem de estruturas

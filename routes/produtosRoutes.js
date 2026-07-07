@@ -5,7 +5,7 @@ const produtosController = require('../controllers/produtosController');
 const authController = require('../controllers/authController');
 
 // Protege todas as rotas deste módulo
-router.use('/produtos', authController.requireAuth);
+router.use('/produtos', authController.requireAuth, authController.requireModule('produtos_gerenciar'));
 
 // --- Rotas de Renderização de View (Handlebars) ---
 

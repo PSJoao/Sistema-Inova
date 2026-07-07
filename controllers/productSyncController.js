@@ -99,7 +99,7 @@ exports.handleProductSyncUpload = async (req, res) => {
             return res.status(400).json({ success: false, message: `Erro no upload: ${err.message}` });
         }
 
-        const username = req.session.username || 'desconhecido';
+        const username = req.user.username || 'desconhecido';
 
         // 1. Tenta adquirir a trava ANTES de processar os arquivos
         const lockResult = await acquireProductSyncLock(username);
@@ -207,7 +207,7 @@ exports.handleProductSyncUpload = async (req, res) => {
 };
 
 exports.handleProductSyncByName = async (req, res) => {
-    const username = req.session.username || 'desconhecido';
+    const username = req.user.username || 'desconhecido';
     const { productName } = req.body;
 
     if (!productName || productName.trim() === '') {

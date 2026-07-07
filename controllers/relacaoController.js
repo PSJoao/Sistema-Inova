@@ -597,7 +597,7 @@ exports.getPendentesApi = async (req, res) => {
 exports.finalizeRelacao = async (req, res) => {
     const { transportadoraApelido } = req.params;
     const { bipadoItems, naoBipadoItems, editingRelationId } = req.body; 
-    const username = req.session.username || 'sistema';
+    const username = req.user.username || 'sistema';
 
     if (!transportadoraApelido) return res.status(400).json({ message: "Apelido da transportadora não fornecido." });
     
@@ -1034,7 +1034,7 @@ exports.updateNfeStatusApi = async (req, res) => {
 
 exports.validateRelacao = async (req, res) => {
     const relationId = parseInt(req.params.relationId, 10);
-    const username = req.session.username || 'sistema';
+    const username = req.user.username || 'sistema';
 
     if (isNaN(relationId)) {
         return res.status(400).json({ message: "ID da Relação inválido." });
@@ -1061,7 +1061,7 @@ exports.validateRelacao = async (req, res) => {
 
 exports.checkRelacao = async (req, res) => {
     const relationId = parseInt(req.params.relationId, 10);
-    const username = req.session.username || 'sistema';
+    const username = req.user.username || 'sistema';
 
     if (isNaN(relationId)) {
         return res.status(400).json({ message: "ID da Relação inválido." });

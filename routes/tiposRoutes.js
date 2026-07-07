@@ -19,7 +19,7 @@ const upload = multer({
 }).single('tiposPlanilha'); // 'tiposPlanilha' é o 'name' do input no form
 
 // Protege todas as rotas de tipos
-router.use('/tipos', authController.requireAuth);
+router.use('/tipos', authController.requireAuth, authController.requireModule('produtos_tipos'));
 
 // Rota para renderizar a página de gerenciamento
 // GET /tipos

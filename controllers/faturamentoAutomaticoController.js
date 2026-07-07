@@ -14,9 +14,9 @@ exports.handleFaturamentoManual = async (req, res) => {
     const { accountName } = req.body;
 
     if (!accountName || (accountName !== 'lucas' && accountName !== 'eliane')) {
-        return res.status(400).json({ 
-            success: false, 
-            message: 'Conta inválida. Informe "lucas" ou "eliane".' 
+        return res.status(400).json({
+            success: false,
+            message: 'Conta inválida. Informe "lucas" ou "eliane".'
         });
     }
 
@@ -30,9 +30,9 @@ exports.handleFaturamentoManual = async (req, res) => {
             console.error(`[Controller] Erro não tratado no ciclo de faturamento de ${accountName}:`, err);
         });
 
-    return res.status(200).json({ 
-        success: true, 
-        message: `Processo de Faturamento Automático (${accountName}) iniciado! Pode demorar alguns minutos para finalizar...` 
+    return res.status(200).json({
+        success: true,
+        message: `Processo de Faturamento Automático (${accountName}) iniciado! Pode demorar alguns minutos para finalizar...`
     });
 };
 
@@ -56,7 +56,7 @@ exports.getPendingNotes = async (req, res) => {
         const page = parseInt(req.query.page) || 1;
         const limit = 20;
         const offset = (page - 1) * limit;
-        
+
         const search = req.query.search || '';
         const isManual = req.query.isManual; // 'true', 'false', ou ''
 
@@ -95,10 +95,10 @@ exports.getPendingNotes = async (req, res) => {
             ORDER BY data_emissao DESC, last_updated_at DESC
             LIMIT $${valueCounter} OFFSET $${valueCounter + 1}
         `;
-        
+
         // Adiciona limit e offset aos values
         const dataValues = [...values, limit, offset];
-        
+
         const result = await pool.query(dataQuery, dataValues);
 
         res.json({
@@ -178,7 +178,7 @@ exports.generateReport = async (req, res) => {
 
         // Estilização básica cabeçalho
         worksheet.getRow(1).font = { bold: true };
-        
+
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', 'attachment; filename=Relatorio_Faturamento_Pendentes.xlsx');
 

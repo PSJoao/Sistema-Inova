@@ -8,6 +8,7 @@ const multer = require('multer');
 
 const upload = multer({ storage: multer.memoryStorage() });
 router.use(authController.requireAuth);
+router.use(authController.requireModule('faturamento_gerenciar_pedidos'));
 
 // --- ROTAS ATUALIZADAS ---
 // Rota principal para a NOVA dashboard com a tabela de pedidos

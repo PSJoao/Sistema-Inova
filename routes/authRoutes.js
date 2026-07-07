@@ -24,4 +24,12 @@ router.get('/login', (req, res) => {
 router.post('/login', authController.login);
 router.get('/logout', authController.logout);
 
+// --- Rotas de Gerenciamento de Usuários (Painel Administrativo) ---
+router.get('/admin/usuarios', authController.requireAuth, authController.requireAdmin, authController.listUsers);
+router.get('/admin/usuarios/novo', authController.requireAuth, authController.requireAdmin, authController.renderCreateUser);
+router.post('/admin/usuarios/novo', authController.requireAuth, authController.requireAdmin, authController.createUser);
+router.get('/admin/usuarios/editar/:id', authController.requireAuth, authController.requireAdmin, authController.renderEditUser);
+router.post('/admin/usuarios/editar/:id', authController.requireAuth, authController.requireAdmin, authController.updateUser);
+router.post('/admin/usuarios/deletar/:id', authController.requireAuth, authController.requireAdmin, authController.deleteUser);
+
 module.exports = router;

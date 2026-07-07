@@ -7,6 +7,7 @@ const authController = require('../controllers/authController');
 
 // Middleware de autenticação para todas as rotas deste arquivo
 router.use(authController.requireAuth);
+router.use(authController.requireModule('faturamento_historico_notas'));
 
 /**
  * Rota principal para renderizar a nova página de Histórico de NF-e.
@@ -39,5 +40,7 @@ router.get('/api/nfe/generate-report', nfeHistoryController.generateMissingProdu
 router.get('/api/nfe/generate-report-justifications', nfeHistoryController.generateJustificationsReport);
 
 router.get('/api/report/pending-products-by-carrier', nfeHistoryController.generatePendingProductsByCarrierReport);
+
+router.get('/api/report/separation', nfeHistoryController.generateSeparationReport);
 
 module.exports = router;

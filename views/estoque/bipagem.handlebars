@@ -1,0 +1,70 @@
+{{!--
+views/estoque/bipagem.handlebars
+Interface moderna e responsiva de bipagem rápida de peças para controle de entrada/saída.
+Segue o padrão visual da bipagem de conferência de pedidos do sistema.
+--}}
+<link rel="stylesheet" href="/public/styles/estoque.css">
+<link rel="stylesheet" href="/public/styles/dashboardExpedicao.css">
+
+<div class="bipagem-wrapper">
+    <div class="dashboard-header">
+        <h1 class="page-title-dark">Bipagem de Peças</h1>
+    </div>
+
+    {{!-- Grid Principal de duas colunas (responsivo via CSS) --}}
+    <div class="bipagem-grid">
+
+        {{!-- Painel Esquerdo: Controle de Entrada --}}
+        <div class="bipagem-panel">
+            <div style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center; gap: 2rem;">
+                {{!-- Seletor de Modo (Entrada/Saída) --}}
+                <div class="bipagem-mode-selector">
+                    <label class="bipagem-mode-option">
+                        <input type="radio" name="bipagem_mode" value="entrada" checked>
+                        <div class="bipagem-mode-label mode-entrada">
+                            <i class="fas fa-arrow-circle-down"></i>
+                            <span>Entrada (+)</span>
+                        </div>
+                    </label>
+
+                    <label class="bipagem-mode-option">
+                        <input type="radio" name="bipagem_mode" value="saida">
+                        <div class="bipagem-mode-label mode-saida">
+                            <i class="fas fa-arrow-circle-up"></i>
+                            <span>Saída (-)</span>
+                        </div>
+                    </label>
+                </div>
+
+                {{!-- Input de Bipagem Gigante --}}
+                <div class="bipagem-input-wrapper">
+                    <i class="fas fa-barcode bipagem-input-icon"></i>
+                    <input type="text" id="bipagemCodigo" class="form-control" placeholder="Bipe SKU ou Nº Peça"
+                        autocomplete="off" autofocus>
+                </div>
+            </div>
+        </div>
+
+        {{!-- Painel Direito: Histórico de Logs --}}
+        <div class="bipagem-panel bipagem-panel-logs">
+            <div class="bipagem-logs-header">
+                <h4>
+                    <span>Movimentações na Sessão</span>
+                </h4>
+            </div>
+
+            <div class="bipagem-logs-list" id="logsList">
+                <div class="bipagem-logs-placeholder" id="logsPlaceholder">
+                    <i class="fas fa-barcode-read"></i>
+                    <p>Nenhum bip registrado.</p>
+                    <p>Bipe um produto para alterar seu saldo no estoque.</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+{{#section "scripts"}}
+<script src="/public/scripts/estoqueBipagemManager.js"></script>
+{{/section}}

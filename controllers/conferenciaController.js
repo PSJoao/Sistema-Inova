@@ -20,7 +20,7 @@ const pool = new Pool({
 exports.renderBipagemPage = (req, res) => {
     res.render('conferencia/bipagem', {
         title: 'Conferência de Pedidos',
-        user: req.session.username
+        user: req.user.username
     });
 };
 
@@ -34,7 +34,7 @@ exports.renderGerenciamentoPage = (req, res) => {
 
 exports.getState = async (req, res) => {
     try {
-        const userId = req.session.userId || 0;
+        const userId = req.user.userId || 0;
 
         const result = await pool.query(
             'SELECT state_json FROM conferencia_expedicao_state WHERE user_id = $1',
@@ -54,7 +54,7 @@ exports.getState = async (req, res) => {
 
 exports.saveState = async (req, res) => {
     try {
-        const userId = req.session.userId || 0;
+        const userId = req.user.userId || 0;
         const stateData = req.body;
 
         const query = `
@@ -149,6 +149,7 @@ exports.searchNfeByChave = async (req, res) => {
                 SELECT 
                     s.id, s.parent_product_bling_id, s.component_sku, s.structure_name,
                     s.gtin, s.gtin_embalagem, s.codigo_fabrica, s.escondido, s.quantidade,
+                    s.cod_interno_1, s.cod_interno_2,
                     p.nome as parent_name, p.sku as parent_sku
                 FROM cached_products p
                 LEFT JOIN cached_structures s ON s.parent_product_bling_id = p.bling_id
@@ -237,6 +238,7 @@ exports.searchNfeByChave = async (req, res) => {
                     SELECT 
                         s.id, s.parent_product_bling_id, s.component_sku, s.structure_name,
                         s.gtin, s.gtin_embalagem, s.codigo_fabrica, s.escondido, s.quantidade,
+                        s.cod_interno_1, s.cod_interno_2,
                         p.nome as parent_name, p.sku as parent_sku
                     FROM cached_structures s
                     JOIN cached_products p ON s.parent_product_bling_id = p.bling_id AND p.bling_account = 'lucas'
@@ -257,6 +259,7 @@ exports.searchNfeByChave = async (req, res) => {
                 SELECT 
                     s.id, s.parent_product_bling_id, s.component_sku, s.structure_name,
                     s.gtin, s.gtin_embalagem, s.codigo_fabrica, s.escondido, s.quantidade,
+                    s.cod_interno_1, s.cod_interno_2,
                     p.nome as parent_name, p.sku as parent_sku
                 FROM cached_structures s
                 JOIN cached_products p ON s.parent_product_bling_id = p.bling_id
@@ -296,7 +299,8 @@ exports.searchNfeByChave = async (req, res) => {
 // --- API: FINALIZAÇÃO (ATUALIZAÇÃO BLING E BANCO LOCAL) ---
 
 exports.finalizeConferencia = async (req, res) => {
-    const { nfeNumero, pedidoBlingId, carregadores } = req.body;
+    const { nfeNumero, pedidoBlingId, carregadores, fotoEtiquetaPath, fotoProdutoPath } = req.body;
+    console.log("[Conferência Backend] finalizeConferencia req.body:", req.body);
 
     if (!nfeNumero || !pedidoBlingId) {
         return res.status(400).json({ message: 'Dados insuficientes para finalizar.' });
@@ -316,16 +320,29 @@ exports.finalizeConferencia = async (req, res) => {
         // 2. Integração com Expedição e Tabela de Gestão de Conferência
         // Seta passou_conferencia_bipagem = true para a nota ir pra gestão
         // e status = checado para seguir o fluxo de expedição
+        
+        let extraUpdate = "";
+        let params = [nfeNumero];
+        if (fotoEtiquetaPath || (fotoProdutoPath && fotoProdutoPath.length > 0)) {
+            let produtoPathForDb = fotoProdutoPath;
+            if (Array.isArray(fotoProdutoPath)) {
+                produtoPathForDb = JSON.stringify(fotoProdutoPath);
+            }
+            extraUpdate = `, tem_foto = true, foto_etiqueta_path = $2, foto_produto_path = $3, foto_validacao = NULL`;
+            params.push(fotoEtiquetaPath, produtoPathForDb);
+        }
+
         await client.query(`
             UPDATE cached_etiquetas_ml 
             SET status = 'checado',
                 passou_conferencia_bipagem = true,
                 bling_sync_status = 'pending'
+                ${extraUpdate}
             WHERE nfe_numero = $1 AND status != 'expedido'
-        `, [nfeNumero]);
+        `, params);
 
         // 3. Grava no Relatório Histórico
-        const username = req.session.username || 'Sistema';
+        const username = req.user.username || 'Sistema';
         await client.query(`
             INSERT INTO conferencia_relatorio (nfe_numero, usuario)
             VALUES ($1, $2)
@@ -356,6 +373,57 @@ exports.finalizeConferencia = async (req, res) => {
     }
 };
 
+
+// --- API: FOTOS DE CONFERÊNCIA ---
+
+const fs = require('fs');
+const path = require('path');
+
+exports.uploadFoto = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: 'Nenhuma foto enviada.' });
+        }
+        res.json({ success: true, filePath: req.file.filename });
+    } catch (error) {
+        console.error('Erro no upload de foto:', error);
+        res.status(500).json({ success: false, message: 'Erro ao fazer upload da foto.' });
+    }
+};
+
+exports.deleteFoto = async (req, res) => {
+    const { filename } = req.query;
+    if (!filename) {
+        return res.status(400).json({ success: false, message: 'Nome do arquivo não fornecido.' });
+    }
+    
+    // Proteção básica de path traversal
+    const safeFilename = path.basename(filename);
+    const filePath = path.join(__dirname, '../uploads/fotos-conferencia', safeFilename);
+    
+    try {
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+        }
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Erro ao deletar foto:', error);
+        res.status(500).json({ success: false, message: 'Erro ao deletar foto.' });
+    }
+};
+
+exports.getFoto = (req, res) => {
+    const { filename } = req.params;
+    // Proteção básica de path traversal
+    const safeFilename = path.basename(filename);
+    const filePath = path.join(__dirname, '../uploads/fotos-conferencia', safeFilename);
+    
+    if (fs.existsSync(filePath)) {
+        res.sendFile(filePath);
+    } else {
+        res.status(404).send('Foto não encontrada.');
+    }
+};
 
 // --- API: GERENCIAMENTO DE PRODUTOS SEM EAN ---
 
@@ -390,10 +458,32 @@ exports.getProdutosSemEanApi = async (req, res) => {
               AND (t2.gtin_embalagem IS NOT NULL AND t2.gtin_embalagem <> '')
         `;
 
+        const syncCodInterno1Query = `
+            UPDATE cached_structures t1
+            SET cod_interno_1 = t2.cod_interno_1
+            FROM cached_structures t2
+            WHERE t1.component_sku = t2.component_sku 
+              AND t1.structure_name = t2.structure_name
+              AND (t1.cod_interno_1 IS NULL OR t1.cod_interno_1 = '')
+              AND (t2.cod_interno_1 IS NOT NULL AND t2.cod_interno_1 <> '')
+        `;
+
+        const syncCodInterno2Query = `
+            UPDATE cached_structures t1
+            SET cod_interno_2 = t2.cod_interno_2
+            FROM cached_structures t2
+            WHERE t1.component_sku = t2.component_sku 
+              AND t1.structure_name = t2.structure_name
+              AND (t1.cod_interno_2 IS NULL OR t1.cod_interno_2 = '')
+              AND (t2.cod_interno_2 IS NOT NULL AND t2.cod_interno_2 <> '')
+        `;
+
         // Executamos as correções em paralelo
         await Promise.all([
             pool.query(syncGtinQuery),
-            pool.query(syncGtinEmbQuery)
+            pool.query(syncGtinEmbQuery),
+            pool.query(syncCodInterno1Query),
+            pool.query(syncCodInterno2Query)
         ]);
 
         // [ALTERAÇÃO] Filtro Base Reforçado:

@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const flash = require('connect-flash');
 const bodyParser = require('body-parser');
+const cookieParser = require('cookie-parser');
 const exphbs = require('express-handlebars');
 const emissaoRoutes = require('./routes/emissaoRoutes');
 const monitoringRoutes = require('./routes/monitoringRoutes');
@@ -26,6 +27,7 @@ const prodSyncRoutes = require('./routes/productSyncRoutes');
 const conferenciaRoutes = require('./routes/conferenciaRoutes.js');
 const produtosRoutes = require('./routes/produtosRoutes');
 const faturamentoAutomaticoRoutes = require('./routes/faturamentoAutomaticoRoutes');
+const estoqueRoutes = require('./routes/estoqueRoutes');
 const { syncBlingProductsLucas, syncBlingProductsEliane, syncEstoqueBling } = require('./blingSyncService.js');
 const hubProdutosService = require('./hub/services/hubProdutosService');
 const { updateUrlCostsAndData } = require('./costUpdater.js');
@@ -62,10 +64,15 @@ app.set('views', __dirname + '/views');
 app.use('/public', express.static('public'));
 app.use(favicon(path.join(__dirname, 'public/icons', 'favicon.ico')));
 
+// Cookie parser para ler JWT dos cookies
+app.use(cookieParser());
+
+// Middleware JWT: popula req.user a partir do cookie token (antes de qualquer rota)
+app.use(authController.jwtMiddleware);
+
 app.use('/hub', hubRoutes);
 
-// Rotas de login
-app.use('/', authRoutes);
+// Sessão mantida apenas para connect-flash e fluxo PKCE do Mercado Livre
 app.use(authController.sessionMiddleware);
 app.use(flash());
 
@@ -74,27 +81,94 @@ app.use((req, res, next) => {
     res.locals.error_msg = req.flash('error');     // Para mensagens de erro
     res.locals.info_msg = req.flash('info');       // Para mensagens de aviso/info
 
-    // Dados da Sessão para as Views
-    if (req.session && req.session.userId) { // Verifica se o usuário está logado
+    // Dados do JWT para as Views
+    if (req.user) { // Verifica se o usuário está logado (via JWT)
         res.locals.isAuthenticated = true; // Uma flag útil para o template
-        res.locals.username = req.session.username; // Torna {{username}} disponível
-        res.locals.cargo = req.session.role;    // Torna {{userCargo}} disponível (para usar como {{userCargo}} nos templates)
-        // Se quiser usar {{cargo}} como na rota do mainMenu, pode ser res.locals.cargo = req.session.role;
+        res.locals.username = req.user.username; // Torna {{username}} disponível
+        res.locals.cargo = req.user.role;    // Torna {{cargo}} disponível nos templates
+        res.locals.tipo_conta = req.user.tipo_conta;
+        
+        // Flags de nível de permissão
+        const isAdmin = req.user.tipo_conta === 0 || req.user.tipo_conta === 1;
+        res.locals.isAdmin = isAdmin;
+        res.locals.isMaster = req.user.tipo_conta === 0;
+
+        // Permissões granulares detalhadas (botão a botão)
+        const modulos = req.user.modulos_permitidos || [];
+        
+        // Monitoramento
+        res.locals.permit_monitoramento_madeira_lucas = isAdmin || modulos.includes('monitoramento_madeira_lucas');
+        res.locals.permit_monitoramento_madeira_eliane = isAdmin || modulos.includes('monitoramento_madeira_eliane');
+        res.locals.permit_monitoramento_viavarejo = isAdmin || modulos.includes('monitoramento_viavarejo');
+        
+        // Faturamento
+        res.locals.permit_faturamento_gerenciar_emissoes = isAdmin || modulos.includes('faturamento_gerenciar_emissoes');
+        res.locals.permit_faturamento_gerar_etiquetas = isAdmin || modulos.includes('faturamento_gerar_etiquetas');
+        res.locals.permit_faturamento_automatico = isAdmin || modulos.includes('faturamento_automatico');
+        res.locals.permit_faturamento_gerenciar_pedidos = isAdmin || modulos.includes('faturamento_gerenciar_pedidos');
+        res.locals.permit_faturamento_assistencias = isAdmin || modulos.includes('faturamento_assistencias');
+        res.locals.permit_faturamento_historico_notas = isAdmin || modulos.includes('faturamento_historico_notas');
+        
+        // Produtos
+        res.locals.permit_produtos_gerenciar = isAdmin || modulos.includes('produtos_gerenciar');
+        res.locals.permit_produtos_tipos = isAdmin || modulos.includes('produtos_tipos');
+        res.locals.permit_produtos_sincronizar = isAdmin || modulos.includes('produtos_sincronizar');
+        res.locals.permit_produtos_estoque_dev = isAdmin || modulos.includes('produtos_estoque_dev');
+        res.locals.permit_produtos_bipagem_pecas = isAdmin || modulos.includes('produtos_bipagem_pecas');
+        
+        // Expedição
+        res.locals.permit_expedicao_ordenador = isAdmin || modulos.includes('expedicao_ordenador');
+        res.locals.permit_expedicao_gondolas = isAdmin || modulos.includes('expedicao_gondolas');
+        res.locals.permit_expedicao_rel_tarde = isAdmin || modulos.includes('expedicao_rel_tarde');
+        res.locals.permit_expedicao_bipagem_produtos = isAdmin || modulos.includes('expedicao_bipagem_produtos');
+        res.locals.permit_expedicao_dashboard = isAdmin || modulos.includes('expedicao_dashboard');
+        res.locals.permit_expedicao_bipagem_exp = isAdmin || modulos.includes('expedicao_bipagem_exp');
+        res.locals.permit_expedicao_massa = isAdmin || modulos.includes('expedicao_massa');
+        
+        // Conferência
+        res.locals.permit_conferencia_bipagem = isAdmin || modulos.includes('conferencia_bipagem');
+        res.locals.permit_conferencia_codigos = isAdmin || modulos.includes('conferencia_codigos');
+        res.locals.permit_conferencia_ml_batch = isAdmin || modulos.includes('conferencia_ml_batch');
+        
+        // Logística
+        res.locals.permit_logistica_relacoes = isAdmin || modulos.includes('logistica_relacoes');
+        res.locals.permit_logistica_rastreio = isAdmin || modulos.includes('logistica_rastreio');
+
+        // Permissões gerais de visualização de módulos (exibição de cards inteiros)
+        res.locals.permit_monitoramento = res.locals.permit_monitoramento_madeira_lucas || res.locals.permit_monitoramento_madeira_eliane || res.locals.permit_monitoramento_viavarejo;
+        res.locals.permit_faturamento = res.locals.permit_faturamento_gerenciar_emissoes || res.locals.permit_faturamento_gerar_etiquetas || res.locals.permit_faturamento_automatico || res.locals.permit_faturamento_gerenciar_pedidos || res.locals.permit_faturamento_assistencias || res.locals.permit_faturamento_historico_notas;
+        res.locals.permit_produtos = res.locals.permit_produtos_gerenciar || res.locals.permit_produtos_tipos || res.locals.permit_produtos_sincronizar || res.locals.permit_produtos_estoque_dev || res.locals.permit_produtos_bipagem_pecas;
+        res.locals.permit_expedicao = res.locals.permit_expedicao_ordenador || res.locals.permit_expedicao_gondolas || res.locals.permit_expedicao_rel_tarde || res.locals.permit_expedicao_bipagem_produtos || res.locals.permit_expedicao_dashboard || res.locals.permit_expedicao_bipagem_exp || res.locals.permit_expedicao_massa;
+        res.locals.permit_conferencia = res.locals.permit_conferencia_bipagem || res.locals.permit_conferencia_codigos || res.locals.permit_conferencia_ml_batch;
+        res.locals.permit_logistica = res.locals.permit_logistica_relacoes || res.locals.permit_logistica_rastreio;
     } else {
         res.locals.isAuthenticated = false;
         res.locals.username = null;
-        res.locals.userCargo = null;
+        res.locals.cargo = null;
+        res.locals.tipo_conta = null;
+        res.locals.isAdmin = false;
+        res.locals.isMaster = false;
+        
+        res.locals.permit_monitoramento = false;
+        res.locals.permit_faturamento = false;
+        res.locals.permit_produtos = false;
+        res.locals.permit_expedicao = false;
+        res.locals.permit_conferencia = false;
+        res.locals.permit_logistica = false;
     }
 
     next();
 });
 
+// Rotas de login e administração de usuários (agora com res.locals já populado)
+app.use('/', authRoutes);
+
 //Proteger o menu principal para exigir login
 app.get('/', authController.requireAuth, (req, res) => {
     res.render('mainMenu', {
         title: 'Menu Principal',
-        username: req.session.username,
-        cargo: req.session.role,
+        username: req.user.username,
+        cargo: req.user.role,
         layout: false // Adicione esta linha
     });
 });
@@ -116,6 +190,7 @@ app.use('/', produtosRoutes);
 app.use('/faturamento-automatico', faturamentoAutomaticoRoutes);
 app.use('/product-sync', prodSyncRoutes);
 app.use('/conferencia', conferenciaRoutes);
+app.use('/estoque', estoqueRoutes);
 app.use('/webhooks/bling', blingWebhookRoutes);
 
 //mercadoLivreSyncService.startOrderSync(300000);
@@ -149,7 +224,7 @@ let isHubDevolucoesSyncRunning = false;
 let isHubSyncRunning = false;
 
 //Agendamento do hub
-cron.schedule('*/1 * * * *', async () => {
+cron.schedule('*/50 * * * *', async () => {
     // 1. Verifica se já está rodando
     if (isHubSyncRunning) {
         console.log(`[HUB Cron] Sincronização anterior ainda em andamento. Pulando este ciclo...`);
@@ -426,6 +501,24 @@ cron.schedule('0 12 * * *', async () => {
         await HubPedidosService.monitorarAprofundado();
     } catch (e) {
         console.error('[CRON MonitorarAprofundado] Erro:', e);
+    }
+});
+
+// Limpeza diária das fotos de conferência (às 00:00)
+cron.schedule('0 0 * * *', async () => {
+    console.log('[CRON] Iniciando limpeza da pasta de fotos de conferência...');
+    const dirPath = path.join(__dirname, 'uploads', 'fotos-conferencia');
+    try {
+        const files = await fs.readdir(dirPath);
+        for (const file of files) {
+            // Pode adicionar verificação para deletar apenas .jpg, mas como a pasta é exclusiva:
+            await fs.unlink(path.join(dirPath, file)).catch(e => console.error(`Erro ao deletar foto: ${file}`, e));
+        }
+        console.log(`[CRON] Limpeza concluída. ${files.length} fotos removidas.`);
+    } catch (err) {
+        if (err.code !== 'ENOENT') {
+            console.error('[CRON] Erro ao acessar pasta de fotos:', err);
+        }
     }
 });
 
