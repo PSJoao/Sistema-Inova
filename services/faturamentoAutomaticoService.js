@@ -178,8 +178,15 @@ async function upsertCachedPedidoVenda(client, pedidoDetalhes, nfeNumero, accoun
         p.contato?.id, p.contato?.nome, p.contato?.tipoPessoa, p.contato?.numeroDocumento,
         p.situacao?.id, p.situacao?.valor, p.loja?.id, p.desconto?.valor,
         p.notaFiscal?.id, p.parcelas?.[0]?.dataVencimento, p.parcelas?.[0]?.valor, nfeNumero,
-        p.transporte?.frete, p.intermediador?.cnpj, p.taxas?.taxaComissao, p.taxas?.custoFrete, p.taxas?.valorBase, accountType
+        p.transporte?.frete, p.intermediador?.cnpj, p.taxaComissao, p.custoFrete, p.valorBase, accountType
     ]);
+
+    if (nfeNumero) {
+        await client.query(
+            'UPDATE cached_pedido_venda SET nfe_parent_numero = NULL WHERE nfe_parent_numero = $1 AND (bling_id != $2 OR bling_account != $3)',
+            [nfeNumero, String(p.id), accountType]
+        );
+    }
 }
 
 async function upsertProductStructure(client, productData, accountType) {
@@ -471,6 +478,9 @@ async function processarLoteNotas(notas, accountName, token) {
                     );
                     cachedProductsResult.rows.forEach(p => cachedProductsMap.set(p.sku, p));
                 }
+
+                // Limpa SKUs antigos associados ao mesmo número de nota fiscal
+                await processingClient.query('DELETE FROM nfe_quantidade_produto WHERE nfe_numero = $1', [nfeDetalhes.numero]);
 
                 for (const [produtoCodigo, quantidadeTotal] of quantidadesAgregadas.entries()) {
                     await upsertNfeQuantidade(processingClient, nfeDetalhes.numero, produtoCodigo, quantidadeTotal);

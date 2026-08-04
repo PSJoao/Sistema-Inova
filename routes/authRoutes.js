@@ -32,4 +32,7 @@ router.get('/admin/usuarios/editar/:id', authController.requireAuth, authControl
 router.post('/admin/usuarios/editar/:id', authController.requireAuth, authController.requireAdmin, authController.updateUser);
 router.post('/admin/usuarios/deletar/:id', authController.requireAuth, authController.requireAdmin, authController.deleteUser);
 
+// Rota para persistência do estado da sidebar
+router.post('/api/user/sidebar-state', authController.requireAuth, authController.updateSidebarState);
+
 module.exports = router;

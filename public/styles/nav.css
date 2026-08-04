@@ -25,7 +25,9 @@
 
 /* Cabeçalho da Sidebar (Logo) */
 .sidebar-header {
-  padding: 18px 20px;
+  height: 69px; /* Idêntico à altura do topbar para alinhamento perfeito */
+  box-sizing: border-box;
+  padding: 0 20px;
   text-align: center;
   border-bottom: 1px solid var(--bg-tertiary);
   display: flex;
@@ -37,13 +39,25 @@
 .sidebar-header .logo-link {
   display: flex;
   align-items: center;
+  justify-content: center;
+  width: 100%;
   text-decoration: none;
 }
 
 .sidebar-header .logo-img {
-  height: 32px; /* Ajuste o tamanho da sua logo */
   width: auto;
-  margin-right: 10px;
+  margin: 0;
+  transition: all 0.3s ease;
+}
+
+.sidebar-header .logo-full {
+  display: block;
+  max-height: 55px; /* Tamanho maior para a logo completa na sidebar aberta */
+}
+
+.sidebar-header .logo-icon {
+  display: none;
+  max-height: 45px; /* Tamanho para o ícone quando a sidebar fechar */
 }
 
 .sidebar-header .logo-text {
@@ -187,8 +201,13 @@
 .sidebar.collapsed .sidebar-header .logo-text {
   display: none; /* Esconde texto da logo */
 }
-.sidebar.collapsed .sidebar-header .logo-img {
-  margin-right: 0; /* Remove margem da imagem da logo */
+
+.sidebar.collapsed .sidebar-header .logo-full {
+  display: none; /* Oculta a logo completa */
+}
+
+.sidebar.collapsed .sidebar-header .logo-icon {
+  display: block; /* Exibe apenas o ícone */
 }
 .sidebar.collapsed .sidebar-nav li a span {
   display: none; /* Esconde texto dos links */

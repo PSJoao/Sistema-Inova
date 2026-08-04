@@ -2,8 +2,9 @@ const express = require('express');
 const router = express.Router();
 const hubApiController = require('../controllers/hubApiController');
 const { verifyHubToken } = require('../middleware/auth');
-// Importaremos o controller de integração OAuth abaixo
+// Importaremos os controllers de integração OAuth abaixo
 const hubOAuthController = require('../controllers/hubOAuthController'); 
+const hubAmazonOAuthController = require('../controllers/hubAmazonOAuthController');
 const hubWebhookController = require('../controllers/hubWebhookController');
 
 // Rotas Públicas (Login)
@@ -20,12 +21,19 @@ router.get('/api/envios/:id_envio', verifyHubToken, hubApiController.getEnvioPor
 router.get('/auth/mercadolibre', hubOAuthController.iniciarAuth);
 router.get('/auth/mercadolibre/callback', hubOAuthController.processarCallback);
 
-// Rota de Webhook
+// Rotas de Integração (Para conectar a Amazon SP-API)
+router.get('/auth/amazon', hubAmazonOAuthController.iniciarAuth);
+router.get('/auth/amazon/callback', hubAmazonOAuthController.processarCallback);
+
+// Rota de Webhook (Mercado Livre)
 router.post('/webhooks/mercadolibre', hubWebhookController.handleNotification);
 
 //router.post('/api/produtos/sync', verifyHubToken, hubApiController.sincronizarProdutos);
 
 router.get('/api/produtos', verifyHubToken, hubApiController.getProdutos);
+
+// Rota para sincronização manual de anúncios por seller_ids
+router.post('/api/produtos/sync-manual', verifyHubToken, hubApiController.sincronizarProdutosManuais);
 
 // Rota para busca específica (aceita ID do Anúncio MLB... ou o SKU)
 router.get('/api/produtos/:identificador', verifyHubToken, hubApiController.getProdutoPorId);

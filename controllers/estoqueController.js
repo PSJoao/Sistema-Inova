@@ -19,11 +19,25 @@ const pool = new Pool({
 exports.showListagemPage = async (req, res) => {
     try {
         const fabricasResult = await pool.query('SELECT id, nome FROM fabricas ORDER BY nome');
+        
+        // Busca o estado da página salvo para o usuário
+        let userState = null;
+        if (req.user && req.user.userId) {
+            const stateResult = await pool.query(
+                "SELECT state_data FROM user_page_states WHERE user_id = $1 AND page_route = 'estoque_lista_pecas'",
+                [req.user.userId]
+            );
+            if (stateResult.rows.length > 0) {
+                userState = stateResult.rows[0].state_data;
+            }
+        }
+
         res.render('estoque/lista-pecas', {
             layout: 'main',
             title: 'Estoque de Peças',
             fabricas: fabricasResult.rows,
-            user: req.user
+            user: req.user,
+            userState: userState ? JSON.stringify(userState) : null
         });
     } catch (error) {
         console.error('[Estoque] Erro ao carregar página de listagem:', error);
@@ -91,6 +105,34 @@ exports.showEditForm = async (req, res) => {
 // =============================================
 // === OPERAÇÕES CRUD ===
 // =============================================
+
+/**
+ * Salva o estado da página para o usuário logado
+ */
+exports.savePageState = async (req, res) => {
+    try {
+        if (!req.user || !req.user.userId) {
+            return res.status(401).json({ success: false, message: 'Não autorizado.' });
+        }
+
+        const { page_route, state_data } = req.body;
+        if (!page_route || !state_data) {
+            return res.status(400).json({ success: false, message: 'Dados inválidos.' });
+        }
+
+        await pool.query(`
+            INSERT INTO user_page_states (user_id, page_route, state_data, updated_at)
+            VALUES ($1, $2, $3, NOW())
+            ON CONFLICT (user_id, page_route) 
+            DO UPDATE SET state_data = EXCLUDED.state_data, updated_at = NOW()
+        `, [req.user.userId, page_route, state_data]);
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('[Estoque] Erro ao salvar estado da página:', error);
+        res.status(500).json({ success: false, message: 'Erro interno ao salvar estado.' });
+    }
+};
 
 /**
  * Cria uma nova peça no estoque.
@@ -164,14 +206,14 @@ exports.createPeca = async (req, res) => {
 };
 
 /**
- * Atualiza uma peça existente no estoque (quantidade NÃO é editável).
+ * Atualiza uma peça existente no estoque.
  */
 exports.updatePeca = async (req, res) => {
     const { id } = req.params;
     const {
         sku, numero_peca, fabrica_id, produto_pai_sku, produto_pai_nome,
         nome_peca, observacao, cor, altura, largura, profundidade,
-        coluna_localizacao, linha_localizacao
+        quantidade, coluna_localizacao, linha_localizacao
     } = req.body;
 
     // Validação server-side
@@ -183,6 +225,7 @@ exports.updatePeca = async (req, res) => {
     if (!altura || parseFloat(altura) <= 0) errors.push('Altura deve ser um valor positivo.');
     if (!largura || parseFloat(largura) <= 0) errors.push('Largura deve ser um valor positivo.');
     if (!profundidade || parseFloat(profundidade) <= 0) errors.push('Profundidade deve ser um valor positivo.');
+    if (quantidade === undefined || quantidade === null || quantidade === '' || parseInt(quantidade) < 0) errors.push('Quantidade deve ser um número inteiro não negativo.');
 
     if (errors.length > 0) {
         return res.status(400).json({ success: false, message: errors.join(' ') });
@@ -200,9 +243,9 @@ exports.updatePeca = async (req, res) => {
                 sku = $1, numero_peca = $2, fabrica_id = $3, produto_pai_sku = $4,
                 produto_pai_nome = $5, nome_peca = $6, observacao = $7, cor = $8,
                 altura = $9, largura = $10, profundidade = $11,
-                coluna_localizacao = $12, linha_localizacao = $13,
+                quantidade = $12, coluna_localizacao = $13, linha_localizacao = $14,
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = $14
+            WHERE id = $15
         `, [
             sku.trim(),
             numero_peca ? numero_peca.trim() : null,
@@ -215,6 +258,7 @@ exports.updatePeca = async (req, res) => {
             parseFloat(altura),
             parseFloat(largura),
             parseFloat(profundidade),
+            parseInt(quantidade),
             coluna_localizacao || null,
             linha_localizacao || null,
             id
@@ -261,7 +305,7 @@ exports.deletePeca = async (req, res) => {
  */
 exports.getPecasAPI = async (req, res) => {
     try {
-        const { busca, fabrica_id, page = 1, limit = 50, orderBy = 'created_at', orderDir = 'DESC' } = req.query;
+        const { busca, busca2, situacao, fabrica_id, page = 1, limit = 50, orderBy = 'created_at', orderDir = 'DESC' } = req.query;
         const offset = (parseInt(page) - 1) * parseInt(limit);
         const params = [];
         const conditions = [];
@@ -279,8 +323,34 @@ exports.getPecasAPI = async (req, res) => {
                 ep.produto_pai_nome ILIKE $${idx} OR
                 ep.produto_pai_sku ILIKE $${idx} OR
                 ep.cor ILIKE $${idx} OR
+                ep.observacao ILIKE $${idx} OR
                 f.nome ILIKE $${idx}
             )`);
+        }
+
+        if (busca2 && busca2.trim() !== '') {
+            params.push(`%${busca2.trim()}%`);
+            const idx = params.length;
+            conditions.push(`(
+                ep.sku ILIKE $${idx} OR
+                ep.numero_peca ILIKE $${idx} OR
+                ep.nome_peca ILIKE $${idx} OR
+                ep.produto_pai_nome ILIKE $${idx} OR
+                ep.produto_pai_sku ILIKE $${idx} OR
+                ep.cor ILIKE $${idx} OR
+                ep.observacao ILIKE $${idx} OR
+                f.nome ILIKE $${idx}
+            )`);
+        }
+
+        if (situacao && situacao !== '') {
+            if (situacao === 'vermelho') {
+                conditions.push(`ep.quantidade = 0`);
+            } else if (situacao === 'amarelo') {
+                conditions.push(`ep.quantidade > 0 AND ep.quantidade <= 5`);
+            } else if (situacao === 'verde') {
+                conditions.push(`ep.quantidade > 5`);
+            }
         }
 
         if (fabrica_id && fabrica_id !== '') {

@@ -10,7 +10,8 @@ body.main-menu-page {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding-bottom: 100px; /* Espaço para o footer */
+  padding-bottom: 100px;
+  /* Espaço para o footer */
 }
 
 .main-menu-header {
@@ -25,13 +26,15 @@ body.main-menu-page {
   align-items: baseline;
   flex-wrap: wrap;
 }
+
 .main-menu-title-brand h1 {
   color: var(--text-primary);
   font-size: clamp(2rem, 5vw, 2.8rem);
   margin: 0 5px;
   font-weight: 700;
-  text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
+
 .main-menu-title-brand .accent {
   color: var(--accent-orange);
   font-size: clamp(2.5rem, 6vw, 3.3rem);
@@ -44,7 +47,6 @@ body.main-menu-page {
   padding: 20px;
   width: 100%;
   max-width: 1400px;
-  margin-top: 20px;
 }
 
 /* Cards de Módulo Base */
@@ -62,7 +64,7 @@ body.main-menu-page {
 
 .module-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   border-color: var(--accent-orange);
 }
 
@@ -117,7 +119,8 @@ body.main-menu-page {
 }
 
 .module-small .btn-full {
-  grid-column: 1 / -1; /* Ocupa toda a largura se for apenas 1 item */
+  grid-column: 1 / -1;
+  /* Ocupa toda a largura se for apenas 1 item */
 }
 
 /* Quando módulo pequeno tem apenas 1 botão, centralizar */
@@ -313,7 +316,7 @@ body.main-menu-page {
   }
 
   /* Se houver 2 módulos grandes seguidos, ajustar */
-  .module-large + .module-large {
+  .module-large+.module-large {
     grid-column: span 1;
   }
 }

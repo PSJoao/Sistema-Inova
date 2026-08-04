@@ -364,13 +364,11 @@ document.addEventListener('DOMContentLoaded', function() {
             elements.profundidadeInput.classList.add('input-error');
         }
 
-        // Quantidade (somente no cadastro)
-        if (!isEditMode) {
-            const qtd = elements.quantidadeInput.value;
-            if (qtd === '' || qtd === null || parseInt(qtd) < 0 || !Number.isInteger(Number(qtd))) {
-                errors.push('Quantidade deve ser um número inteiro não negativo.');
-                elements.quantidadeInput.classList.add('input-error');
-            }
+        // Quantidade (cadastro e edição)
+        const qtd = elements.quantidadeInput.value;
+        if (qtd === '' || qtd === null || parseInt(qtd) < 0 || !Number.isInteger(Number(qtd))) {
+            errors.push('Quantidade deve ser um número inteiro não negativo.');
+            elements.quantidadeInput.classList.add('input-error');
         }
 
 
@@ -411,10 +409,8 @@ document.addEventListener('DOMContentLoaded', function() {
             linha_localizacao: document.getElementById('linha_localizacao').value.trim()
         };
 
-        // Adiciona quantidade apenas no cadastro
-        if (!isEditMode) {
-            payload.quantidade = document.getElementById('quantidade').value;
-        }
+        // Adiciona quantidade em ambos os modos (cadastro e edição)
+        payload.quantidade = document.getElementById('quantidade').value;
 
         const url = isEditMode ? `/estoque/update/${pecaId}` : '/estoque';
         

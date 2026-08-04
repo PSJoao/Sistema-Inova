@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{title}} - InovaXPress</title>
-  <link rel="shortcut icon" href="/public/icons/favicon.ico" type="image/x-icon">
+  <link rel="shortcut icon" href="/public/images/inovaxpress_logo.png" type="image/png">
 
   <link href="/public/styles/reset.css" rel="stylesheet">
   <link href="/public/styles/theme.css" rel="stylesheet">
@@ -19,9 +19,8 @@
 
   <header class="main-menu-header">
     <div class="main-menu-title-brand">
-      <h1>INOVA</h1>
-      <h1 class="accent">X</h1>
-      <h1>PRESS</h1>
+      <img src="/public/images/inovaxpress_logo_completa.png" alt="InovaXPress Logo"
+        style="max-height: 100px; width: auto; display: block; margin: 0 auto;">
     </div>
   </header>
 
@@ -90,6 +89,9 @@
       <div class="module-buttons">
         {{#if permit_produtos_gerenciar}}
         <a href="/produtos/listagem" class="btn btn-accent btn-card"><i class="fas fa-box"></i> Gerenciar Produtos</a>
+        {{/if}}
+        {{#if permit_produtos_anuncios}}
+        <a href="/anuncios" class="btn btn-accent btn-card"><i class="fas fa-bullhorn"></i> Gerenciar Anúncios</a>
         {{/if}}
         {{#if permit_produtos_tipos}}
         <a href="/tipos" class="btn btn-accent btn-card"><i class="fas fa-file-export"></i> Gerenciar Tipos</a>

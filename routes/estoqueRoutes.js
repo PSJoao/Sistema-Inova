@@ -16,6 +16,7 @@ router.post('/api/fabricas', authController.requireModule('produtos_estoque_dev'
 router.get('/api/verificar-sku/:sku', authController.requireModule('produtos_estoque_dev'), estoqueController.verificarSkuAPI);
 router.get('/api/verificar-numero-peca/:numero', authController.requireModule('produtos_estoque_dev'), estoqueController.verificarNumeroPecaAPI);
 router.post('/api/bipar', authController.requireModule('produtos_bipagem_pecas'), estoqueController.biparPecaAPI);
+router.post('/api/state', authController.requireModule('produtos_estoque_dev'), estoqueController.savePageState);
 
 // --- ROTAS DE PÁGINAS E AÇÕES ---
 router.get('/', authController.requireModule('produtos_estoque_dev'), estoqueController.showListagemPage);

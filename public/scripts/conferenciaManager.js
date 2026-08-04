@@ -403,17 +403,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const volumes = state.activeNfe.volumes;
+        const codeClean = code.trim().toLowerCase();
 
-        const matchIndex = volumes.findIndex(v =>
-            !v.checked && (
-                v.gtin === code ||
-                v.gtin_embalagem === code ||
-                v.codigo_fabrica === code ||
-                v.component_sku === code || // Garante que o SKU da estrutura seja aceito
-                v.cod_interno_1 === code ||
-                v.cod_interno_2 === code
-            )
-        );
+        const matchIndex = volumes.findIndex(v => {
+            if (v.checked) return false;
+            return (
+                (v.gtin && String(v.gtin).trim().toLowerCase() === codeClean) ||
+                (v.gtin_embalagem && String(v.gtin_embalagem).trim().toLowerCase() === codeClean) ||
+                (v.codigo_fabrica && String(v.codigo_fabrica).trim().toLowerCase() === codeClean) ||
+                (v.component_sku && String(v.component_sku).trim().toLowerCase() === codeClean) ||
+                (v.cod_interno_1 && String(v.cod_interno_1).trim().toLowerCase() === codeClean) ||
+                (v.cod_interno_2 && String(v.cod_interno_2).trim().toLowerCase() === codeClean)
+            );
+        });
 
         if (matchIndex !== -1) {
             // MATCH!
@@ -426,15 +428,17 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             // ERRO / NÃO PERTENCE
             // Verifica se já foi conferido (duplicidade)
-            const alreadyChecked = volumes.find(v =>
-                v.checked && (
-                    v.gtin === code ||
-                    v.codigo_fabrica === code ||
-                    v.component_sku === code ||
-                    v.cod_interno_1 === code ||
-                    v.cod_interno_2 === code
-                )
-            );
+            const alreadyChecked = volumes.find(v => {
+                if (!v.checked) return false;
+                return (
+                    (v.gtin && String(v.gtin).trim().toLowerCase() === codeClean) ||
+                    (v.gtin_embalagem && String(v.gtin_embalagem).trim().toLowerCase() === codeClean) ||
+                    (v.codigo_fabrica && String(v.codigo_fabrica).trim().toLowerCase() === codeClean) ||
+                    (v.component_sku && String(v.component_sku).trim().toLowerCase() === codeClean) ||
+                    (v.cod_interno_1 && String(v.cod_interno_1).trim().toLowerCase() === codeClean) ||
+                    (v.cod_interno_2 && String(v.cod_interno_2).trim().toLowerCase() === codeClean)
+                );
+            });
 
             if (alreadyChecked) {
                 sounds.error.play().catch(e => console.log('Erro som', e));
@@ -661,8 +665,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 const ean = vol.gtin || vol.gtin_embalagem;
                 const semEan = !ean;
                 const eanBadge = ean
-                    ? `<span style="background: rgba(40,167,69,0.2); color: #28a745; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; margin-left: 8px;">EAN: ${ean}</span>`
-                    : `<span style="background: rgba(220,53,69,0.2); color: #dc3545; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; margin-left: 8px; cursor: pointer;" title="Clique para dar como bipado">Sem EAN</span>`;
+                    ? `<span style="background: rgba(40,167,69,0.2); color: #28a745; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; margin-left: 4px;">EAN: ${ean}</span>`
+                    : `<span style="background: rgba(220,53,69,0.2); color: #dc3545; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; margin-left: 4px; cursor: pointer;" title="Clique para dar como bipado">Sem EAN</span>`;
+
+                const codInt1Badge = vol.cod_interno_1
+                    ? `<span style="background: rgba(23,162,184,0.2); color: #17a2b8; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; margin-left: 4px;" title="Código Interno 1">Cód. Int. 1: ${vol.cod_interno_1}</span>`
+                    : '';
+                const codInt2Badge = vol.cod_interno_2
+                    ? `<span style="background: rgba(111,66,193,0.2); color: #9c27b0; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; margin-left: 4px;" title="Código Interno 2">Cód. Int. 2: ${vol.cod_interno_2}</span>`
+                    : '';
 
                 // Botão de copiar SKU
                 const copyBtn = `<button class="btn-copy-sku" data-sku="${vol.component_sku}" title="Copiar SKU" style="background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 0 4px; font-size: 0.75rem; transition: color 0.2s;"><i class="fas fa-copy"></i></button>`;
@@ -680,6 +691,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             <span>SKU: ${vol.component_sku}</span>
                             ${copyBtn}
                             ${eanBadge}
+                            ${codInt1Badge}
+                            ${codInt2Badge}
                         </div>
                         ${vol.codigo_fabrica ? `<small style="color:#888; display: block; margin-top: 4px;">Cod. Fab: ${vol.codigo_fabrica}</small>` : ''}
                     </div>

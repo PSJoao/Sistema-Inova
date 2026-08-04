@@ -15,18 +15,14 @@ body.login-page { /* Adicionaremos esta classe ao body no login.handlebars */
 .login-title-brand {
   display: flex;
   justify-content: center;
-  align-items: baseline; /* Alinha pela base do texto */
+  align-items: center; /* Alinha horizontal e verticalmente no centro */
   margin-bottom: 30px; /* Espaço entre o título e a caixa de login */
 }
-.login-title-brand h1 {
-  color: var(--text-primary);
-  font-size: 2.5rem; /* Ajuste conforme necessário */
-  margin: 0 5px; /* Pequeno espaço entre as partes do nome */
-  font-weight: 700;
-}
-.login-title-brand .accent {
-  color: var(--accent-orange);
-  font-size: 3rem; /* 'X' um pouco maior */
+.login-logo-img {
+  max-height: 80px; /* Altura harmônica e proporcional */
+  width: auto;
+  max-width: 100%;
+  display: block;
 }
 
 .login-container {

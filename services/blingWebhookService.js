@@ -1,48 +1,56 @@
 // Em services/blingWebhookService.js
-const { poolMonitora } = require('../config/db'); // Ajuste para sua conexão correta (pool ou poolMonitora)
+const { poolMonitora } = require('../config/db');
+const { processStockEvent, resolveAccountName } = require('./stockHistoryService');
 
 const processWebhook = async (payload) => {
-    // O payload vem com: { event: "nfe.created", data: { ... }, companyId: "..." }
+    // Payload padronizado do Bling v3:
+    // { eventId: "uuid", date: "ISO8601", version: "v1", event: "resource.action", companyId: "hash", data: { ... } }
     const { event, data, companyId } = payload;
 
-    // Se não tiver dados ou ID, descarta
-    if (!data || !data.id) {
+    if (!event) {
+        console.warn('[Webhook] Recebido payload sem o campo "event":', payload);
         return;
     }
 
-    const blingAccount = companyId; // Usamos o ID da empresa como identificador da conta
+    if (!data) {
+        console.warn(`[Webhook] Recebido evento "${event}" sem o campo "data".`);
+        return;
+    }
 
     try {
-        // Separa o recurso da ação (ex: "nfe.created" -> resource="nfe", action="created")
+        // Separa o recurso da ação (ex: "stock.created" -> resource="stock", action="created")
         const [resource, action] = event.split('.');
 
-        // FILTRO 1: Queremos APENAS Nota Fiscal (nfe)
-        if (resource !== 'nfe' && resource !== 'notafiscal') {
-            return; 
-        }
-
-        // FILTRO 2: Queremos APENAS Criação (created)
-        // Ignoramos 'updated' ou 'deleted'
-        if (action !== 'created') {
+        // === HANDLER: Estoque (stock e virtual_stock) ===
+        if (resource === 'stock' || resource === 'virtual_stock') {
+            await processStockEvent(payload);
             return;
         }
 
-        // FILTRO 3: Queremos APENAS Pendentes?
-        // No Bling, Situação 1 geralmente é "Pendente". 
-        // Se você quiser salvar TODAS as criadas independente da situação, remova o if abaixo.
-        // O user pediu: "quero armazenar só as que estão pendentes"
-        if (data.situacao !== 1) {
-            console.log(`[Webhook NFe] Ignorando NFe ${data.id} pois situação não é pendente (${data.situacao})`);
+        // === HANDLER: Nota Fiscal (nfe / notafiscal) ===
+        if (resource === 'nfe' || resource === 'notafiscal') {
+            if (!data.id) return;
+
+            const blingAccount = resolveAccountName(companyId) || companyId;
+
+            if (action !== 'created') {
+                return;
+            }
+
+            if (data.situacao !== 1) {
+                console.log(`[Webhook NFe] Ignorando NFe ${data.id} pois situação não é pendente (${data.situacao})`);
+                return;
+            }
+
+            console.log(`[Webhook NFe] Salvando NFe Pendente: ${data.numero} (ID: ${data.id})`);
+            await insertNfePendente(data, blingAccount);
             return;
         }
 
-        console.log(`[Webhook NFe] Salvando NFe Pendente: ${data.numero} (ID: ${data.id})`);
-        
-        // Se passou por todos os filtros, salvamos na tabela auxiliar
-        await insertNfePendente(data, blingAccount);
+        console.log(`[Webhook] Recurso "${resource}" (evento "${event}") não possui handler específico. Ignorado.`);
 
     } catch (err) {
-        console.error(`[Webhook NFe] Erro ao processar evento ${event}:`, err.message);
+        console.error(`[Webhook] Erro ao processar evento "${event}":`, err.message);
     }
 };
 

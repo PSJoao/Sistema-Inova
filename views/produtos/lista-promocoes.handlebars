@@ -1,0 +1,104 @@
+{{!--
+views/produtos/lista-promocoes.handlebars
+Subpágina de Gerenciamento de Promoções do Mercado Livre
+--}}
+<link rel="stylesheet" href="/public/styles/estoque.css">
+<link rel="stylesheet" href="/public/styles/promocoes.css">
+
+<div class="content-card">
+    {{!-- Cabeçalho da Página --}}
+    <div class="page-header-actions">
+        <h1 class="page-title">{{title}}</h1>
+        <div style="display: flex; justify-content: end; gap: 10px;">
+            <a href="/anuncios" class="btn btn-outline-accent" style="display: inline-flex; align-items: center;">
+                <i class="fas fa-arrow-left me-2"></i>Voltar para Anúncios
+            </a>
+            <button id="btnExportarPromos" class="btn btn-outline-accent">
+                <i class="fas fa-file-excel me-2"></i>Exportar Relatório
+            </button>
+            <button id="btnSincronizar" class="btn btn-accent">
+                <i class="fas fa-sync me-2"></i>Sincronizar Anúncios
+            </button>
+        </div>
+    </div>
+
+    {{!-- Barra de Filtros --}}
+    <div class="estoque-filters-bar">
+        <div class="estoque-filter-group" style="flex-grow: 1; min-width: 300px;">
+            <label for="buscaGeral">Busca Rápida</label>
+            <input type="text" id="buscaGeral" class="form-control" placeholder="SKU, descrição, ID do anúncio...">
+        </div>
+        <div class="estoque-filter-group">
+            <label for="filtroStatus">Status</label>
+            <select id="filtroStatus" class="form-control" style="min-width: 140px;">
+                <option value="">Todos</option>
+                <option value="active">Ativo</option>
+                <option value="paused">Pausado</option>
+                <option value="closed">Fechado</option>
+                <option value="under_review">Em análise</option>
+                <option value="inactive">Inativo</option>
+            </select>
+        </div>
+        <div class="estoque-filter-group">
+            <label for="filtroCatalogo">Catálogo</label>
+            <select id="filtroCatalogo" class="form-control" style="min-width: 150px;">
+                <option value="">Todos</option>
+                <option value="com">Com Catálogo</option>
+                <option value="sem">Sem Catálogo</option>
+            </select>
+        </div>
+        <div class="estoque-filter-group">
+            <label for="filtroTipo">Tipo de Anúncio</label>
+            <select id="filtroTipo" class="form-control" style="min-width: 140px;">
+                <option value="">Todos</option>
+                <option value="Clássico">Clássico</option>
+                <option value="Premium">Premium</option>
+            </select>
+        </div>
+        <div class="estoque-filter-group">
+            <label for="filtroLimite">Mostrar</label>
+            <select id="filtroLimite" class="form-control" style="min-width: 80px;">
+                <option value="20">20</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+            </select>
+        </div>
+    </div>
+
+    {{!-- Container da Tabela --}}
+    <div class="table-responsive mt-3" style="max-height: calc(100vh - 180px); overflow: auto;">
+        <table class="table" id="tabela-estoque" style="width: 100%; white-space: nowrap; table-layout: auto;">
+            <thead style="position: sticky; top: 0; z-index: 10; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
+                <tr>
+                    <th class="sortable" data-column="id_anuncio">ID Anúncio</th>
+                    <th class="text-center">Foto</th>
+                    <th class="sortable" data-column="sku">SKU</th>
+                    <th class="sortable" data-column="tipo_anuncio">Tipo</th>
+                    <th class="sortable" data-column="status">Status</th>
+                    <th class="sortable text-center" data-column="ganhando_catalogo">Concorrência</th>
+                    <th class="sortable text-center" data-column="frete">Frete</th>
+                    <th class="sortable text-center" data-column="estoque_plataforma">Estoque Bling</th>
+                    <th style="min-width: 420px; white-space: normal;">Promoções Disponíveis</th>
+                </tr>
+            </thead>
+            <tbody id="table-body">
+                {{!-- Populado dinamicamente via JS --}}
+            </tbody>
+        </table>
+    </div>
+
+    {{!-- Paginação --}}
+    <div id="pagination-container" class="estoque-pagination"></div>
+
+    {{!-- Estado vazio --}}
+    <div id="empty-state" class="estoque-empty-state" style="display: none;">
+        <i class="fas fa-bullhorn"></i>
+        <p>Nenhum anúncio com promoções encontrado.</p>
+        <p style="font-size: 0.85rem;">Clique em "Sincronizar Anúncios" para buscar dados atualizados do Mercado Livre.</p>
+    </div>
+</div>
+
+{{#section "scripts"}}
+<script src="/public/scripts/promocoesListaManager.js"></script>
+{{/section}}

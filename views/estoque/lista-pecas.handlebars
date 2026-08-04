@@ -1,6 +1,6 @@
 {{!--
-  views/estoque/lista-pecas.handlebars
-  Listagem de peças em estoque com filtros, paginação e tabela clássica responsiva.
+views/estoque/lista-pecas.handlebars
+Listagem de peças em estoque com filtros, paginação e tabela clássica responsiva.
 --}}
 <link rel="stylesheet" href="/public/styles/estoque.css">
 
@@ -20,16 +20,31 @@
 
     {{!-- Barra de Filtros --}}
     <div class="estoque-filters-bar">
-        <div class="estoque-filter-group" style="flex-grow: 1; min-width: 300px;">
-            <label for="buscaGeral">Busca Rápida</label>
-            <input type="text" id="buscaGeral" class="form-control" placeholder="SKU, nº peça, nome, produto pai, cor...">
+        <div class="estoque-filter-group" style="flex-grow: 1; min-width: 220px;">
+            <label for="buscaGeral">Busca Rápida 1</label>
+            <input type="text" id="buscaGeral" class="form-control"
+                placeholder="SKU, nº peça, nome, produto pai, cor, obs...">
+        </div>
+        <div class="estoque-filter-group" style="flex-grow: 1; min-width: 220px;">
+            <label for="buscaSecundaria">Busca Rápida 2</label>
+            <input type="text" id="buscaSecundaria" class="form-control"
+                placeholder="Segundo termo de busca (ex: cor, marca)...">
+        </div>
+        <div class="estoque-filter-group">
+            <label for="filtroSituacao">Situação</label>
+            <select id="filtroSituacao" class="form-control" style="min-width: 160px;">
+                <option value="">Todas</option>
+                <option value="vermelho">Vermelho</option>
+                <option value="amarelo">Amarelo</option>
+                <option value="verde">Verde</option>
+            </select>
         </div>
         <div class="estoque-filter-group">
             <label for="filtroFabrica">Fábrica</label>
             <select id="filtroFabrica" class="form-control" style="min-width: 180px;">
                 <option value="">Todas</option>
                 {{#each fabricas}}
-                    <option value="{{this.id}}">{{this.nome}}</option>
+                <option value="{{this.id}}">{{this.nome}}</option>
                 {{/each}}
             </select>
         </div>
@@ -50,15 +65,21 @@
             <thead>
                 <tr>
                     <th class="sortable" data-column="sku" style="cursor: pointer; user-select: none;">SKU</th>
-                    <th class="sortable" data-column="numero_peca" style="cursor: pointer; user-select: none;">Nº Peça</th>
-                    <th class="sortable" data-column="fabrica_nome" style="cursor: pointer; user-select: none;">Fábrica</th>
-                    <th class="sortable" data-column="produto_pai_sku" style="cursor: pointer; user-select: none; max-width: 250px;">Produto</th>
-                    <th class="sortable" data-column="nome_peca" style="cursor: pointer; user-select: none; max-width: 250px;">Peça</th>
+                    <th class="sortable" data-column="numero_peca" style="cursor: pointer; user-select: none;">Nº Peça
+                    </th>
+                    <th class="sortable" data-column="fabrica_nome" style="cursor: pointer; user-select: none;">Fábrica
+                    </th>
+                    <th class="sortable" data-column="produto_pai_sku"
+                        style="cursor: pointer; user-select: none; max-width: 250px;">Produto</th>
+                    <th class="sortable" data-column="nome_peca"
+                        style="cursor: pointer; user-select: none; max-width: 250px;">Peça</th>
                     <th>Observação</th>
                     <th>Cor</th>
                     <th>Medidas</th>
-                    <th class="sortable text-center" data-column="quantidade" style="cursor: pointer; user-select: none;">Qtd.</th>
-                    <th class="sortable" data-column="localizacao" style="cursor: pointer; user-select: none;">Localização</th>
+                    <th class="sortable text-center" data-column="quantidade"
+                        style="cursor: pointer; user-select: none;">Qtd.</th>
+                    <th class="sortable" data-column="localizacao" style="cursor: pointer; user-select: none;">
+                        Localização</th>
                     <th class="text-center" style="min-width: 120px;">Ações</th>
                 </tr>
             </thead>
@@ -80,5 +101,10 @@
 </div>
 
 {{#section "scripts"}}
-    <script src="/public/scripts/estoqueListaManager.js"></script>
+{{#if userState}}
+<script>
+    window.INITIAL_USER_STATE = {{{ userState }}};
+</script>
+{{/if}}
+<script src="/public/scripts/estoqueListaManager.js"></script>
 {{/section}}

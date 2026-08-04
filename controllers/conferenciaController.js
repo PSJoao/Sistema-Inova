@@ -131,16 +131,49 @@ exports.searchNfeByChave = async (req, res) => {
             }
 
             let skus = [];
-            if (fallbackNfe.skus) {
+            let productQuantitiesMapFallback = new Map();
+
+            // Tenta obter quantidades por nfe_numero primeiro
+            if (fallbackNfe.nfe_numero) {
+                const nqpRes = await pool.query(
+                    'SELECT produto_codigo, quantidade FROM nfe_quantidade_produto WHERE nfe_numero = $1',
+                    [fallbackNfe.nfe_numero]
+                );
+                if (nqpRes.rows.length > 0) {
+                    for (const r of nqpRes.rows) {
+                        const k = (r.produto_codigo || '').toUpperCase();
+                        const q = parseInt(r.quantidade, 10) || 1;
+                        if (k) {
+                            productQuantitiesMapFallback.set(k, (productQuantitiesMapFallback.get(k) || 0) + q);
+                            skus.push(r.produto_codigo);
+                        }
+                    }
+                }
+            }
+
+            if (skus.length === 0 && fallbackNfe.skus) {
                 try {
                     const parsed = JSON.parse(fallbackNfe.skus);
                     if (Array.isArray(parsed)) {
-                        skus = parsed.map(s => s.original || s.display || s);
+                        for (const item of parsed) {
+                            const skuStr = item.original || item.display || (typeof item === 'string' ? item : null);
+                            const qtd = parseInt(item.quantidade || item.qtd, 10) || 1;
+                            if (skuStr) {
+                                skus.push(skuStr);
+                                const k = skuStr.toUpperCase();
+                                productQuantitiesMapFallback.set(k, (productQuantitiesMapFallback.get(k) || 0) + qtd);
+                            }
+                        }
                     } else if (typeof parsed === 'string') {
                         skus = [parsed];
+                        productQuantitiesMapFallback.set(parsed.toUpperCase(), 1);
                     }
                 } catch (e) {
                     skus = fallbackNfe.skus.split(',').map(s => s.trim());
+                    for (const s of skus) {
+                        const k = s.toUpperCase();
+                        productQuantitiesMapFallback.set(k, (productQuantitiesMapFallback.get(k) || 0) + 1);
+                    }
                 }
             }
 
@@ -158,11 +191,14 @@ exports.searchNfeByChave = async (req, res) => {
 
             const structuresResultFallback = await pool.query(structuresQueryFallback, [skus]);
 
-            // Expande os volumes de acordo com a quantidade
+            // Expande os volumes de acordo com a quantidade vendida * quantidade da estrutura
             let expandedVolumesFallback = [];
             for (let row of structuresResultFallback.rows) {
-                const qtd = parseInt(row.quantidade) || 1;
-                for (let i = 0; i < qtd; i++) {
+                const parentSkuUpper = (row.parent_sku || '').toUpperCase();
+                const productQtd = productQuantitiesMapFallback.get(parentSkuUpper) || 1;
+                const structureQtd = parseInt(row.quantidade, 10) || 1;
+                const totalQtd = productQtd * structureQtd;
+                for (let i = 0; i < totalQtd; i++) {
                     // Copia o objeto, adicionando um suffix ao id para evitar duplicação real se necessário no frontend
                     expandedVolumesFallback.push({ ...row, id: row.id ? `${row.id}_${i}` : null });
                 }
@@ -202,14 +238,33 @@ exports.searchNfeByChave = async (req, res) => {
         // 4. Identifica os Produtos Pais (Mapeando sempre para a conta do Lucas para conferência consistente)
         let structuresResult;
         let resolvedFromLucas = false;
+        let productQuantitiesMap = new Map();
 
-        // Tenta obter os SKUs diretamente da tabela nfe_quantidade_produto
-        const prodsResult = await pool.query(
-            'SELECT produto_codigo FROM nfe_quantidade_produto WHERE nfe_numero = $1',
+        // Tenta obter os SKUs e quantidades diretamente da tabela nfe_quantidade_produto
+        let prodsResult = await pool.query(
+            'SELECT produto_codigo, quantidade FROM nfe_quantidade_produto WHERE nfe_numero = $1',
             [nfe.nfe_numero]
         );
 
+        if (prodsResult.rows.length === 0) {
+            const skusPedidoRes = await pool.query(
+                'SELECT sku as produto_codigo, quantidade FROM skus_pedido WHERE nfe_numero = $1',
+                [nfe.nfe_numero]
+            );
+            if (skusPedidoRes.rows.length > 0) {
+                prodsResult = skusPedidoRes;
+            }
+        }
+
         if (prodsResult.rows.length > 0) {
+            for (const r of prodsResult.rows) {
+                const skuUpper = (r.produto_codigo || '').toUpperCase();
+                const qtd = parseInt(r.quantidade, 10) || 1;
+                if (skuUpper) {
+                    productQuantitiesMap.set(skuUpper, (productQuantitiesMap.get(skuUpper) || 0) + qtd);
+                }
+            }
+
             const skus = prodsResult.rows.map(r => r.produto_codigo);
             const skusUpper = skus.map(s => s.toUpperCase());
 
@@ -268,11 +323,15 @@ exports.searchNfeByChave = async (req, res) => {
             structuresResult = await pool.query(structuresQuery, [productIds]);
         }
 
-        // Expande os volumes de acordo com a quantidade
+        // Expande os volumes de acordo com a quantidade vendida * quantidade da estrutura
         let expandedVolumes = [];
         for (let row of structuresResult.rows) {
-            const qtd = parseInt(row.quantidade) || 1;
-            for (let i = 0; i < qtd; i++) {
+            const parentSkuUpper = (row.parent_sku || '').toUpperCase();
+            const productQtd = productQuantitiesMap.get(parentSkuUpper) || 1;
+            const structureQtd = parseInt(row.quantidade, 10) || 1;
+            const totalQtd = productQtd * structureQtd;
+
+            for (let i = 0; i < totalQtd; i++) {
                 expandedVolumes.push({ ...row, id: row.id ? `${row.id}_${i}` : null });
             }
         }
@@ -511,7 +570,9 @@ exports.getProdutosSemEanApi = async (req, res) => {
             whereClause += ` AND (
                 s.structure_name ILIKE $${queryParams.length} OR 
                 s.component_sku ILIKE $${queryParams.length} OR
-                s.codigo_fabrica ILIKE $${queryParams.length}
+                s.codigo_fabrica ILIKE $${queryParams.length} OR
+                s.cod_interno_1 ILIKE $${queryParams.length} OR
+                s.cod_interno_2 ILIKE $${queryParams.length}
             )`;
         }
 
@@ -519,7 +580,8 @@ exports.getProdutosSemEanApi = async (req, res) => {
         const dataQuery = `
             SELECT DISTINCT ON (s.component_sku, s.structure_name)
                 s.id, s.component_sku, s.structure_name, 
-                s.gtin, s.gtin_embalagem, s.codigo_fabrica, s.escondido
+                s.gtin, s.gtin_embalagem, s.codigo_fabrica, s.escondido,
+                s.cod_interno_1, s.cod_interno_2
             FROM cached_structures s
             ${whereClause}
             ORDER BY s.component_sku ASC, s.structure_name ASC
@@ -554,7 +616,7 @@ exports.getProdutosSemEanApi = async (req, res) => {
 };
 
 exports.updateStructureInfo = async (req, res) => {
-    const { id, gtin, codigo_fabrica, escondido } = req.body;
+    const { id, gtin, codigo_fabrica, escondido, cod_interno_1, cod_interno_2 } = req.body;
 
     if (!id) {
         return res.status(400).json({ message: 'ID da estrutura necessário.' });
@@ -576,17 +638,18 @@ exports.updateStructureInfo = async (req, res) => {
         const { component_sku, structure_name } = findResult.rows[0];
 
         // [ALTERAÇÃO 2] Agora atualizamos TODOS os registros que tenham esse mesmo SKU e Nome
-        // Isso garante que se houver 50 linhas iguais, todas recebem o código novo
         const updateQuery = `
             UPDATE cached_structures
             SET 
                 gtin = $1,
                 codigo_fabrica = $2,
-                escondido = $3
+                escondido = $3,
+                cod_interno_1 = $6,
+                cod_interno_2 = $7
             WHERE component_sku = $4 AND structure_name = $5
         `;
 
-        await client.query(updateQuery, [gtin, codigo_fabrica, !!escondido, component_sku, structure_name]);
+        await client.query(updateQuery, [gtin, codigo_fabrica, !!escondido, component_sku, structure_name, cod_interno_1 !== undefined ? cod_interno_1 : null, cod_interno_2 !== undefined ? cod_interno_2 : null]);
 
         await client.query('COMMIT');
         res.json({ success: true, message: 'Grupo de estruturas atualizado com sucesso.' });

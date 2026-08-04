@@ -17,7 +17,8 @@ Formulário de cadastro de nova peça no estoque. Suporta clonagem via objeto pe
             <div class="estoque-form-row cols-3">
                 <div class="form-group">
                     <label for="sku" class="form-label">SKU <span class="text-danger">*</span></label>
-                    <input type="text" id="sku" name="sku" class="form-control" placeholder="Ex: PEC-001" value="{{peca.sku}}" required>
+                    <input type="text" id="sku" name="sku" class="form-control" placeholder="Ex: PEC-001"
+                        value="{{peca.sku}}" required>
                     <span class="validation-message" id="sku-validation"></span>
                 </div>
                 <div class="form-group">
@@ -55,8 +56,10 @@ Formulário de cadastro de nova peça no estoque. Suporta clonagem via objeto pe
                         <div class="autocomplete-panel" id="produto-pai-panel"></div>
                     </div>
                     <input type="hidden" id="produto_pai_sku" name="produto_pai_sku" value="{{peca.produto_pai_sku}}">
-                    <input type="hidden" id="produto_pai_nome" name="produto_pai_nome" value="{{peca.produto_pai_nome}}">
-                    <div class="produto-pai-selected {{#if peca.produto_pai_sku}}visible{{/if}}" id="produto-pai-selected">
+                    <input type="hidden" id="produto_pai_nome" name="produto_pai_nome"
+                        value="{{peca.produto_pai_nome}}">
+                    <div class="produto-pai-selected {{#if peca.produto_pai_sku}}visible{{/if}}"
+                        id="produto-pai-selected">
                         <span class="pp-sku" id="pp-sku-display">{{peca.produto_pai_sku}}</span>
                         <span class="pp-nome" id="pp-nome-display">{{peca.produto_pai_nome}}</span>
                         <button type="button" class="btn-clear-pp" id="btn-clear-pp"
@@ -67,7 +70,8 @@ Formulário de cadastro de nova peça no estoque. Suporta clonagem via objeto pe
                     <label for="nome_peca" class="form-label">Nome da Peça <span class="text-danger">*</span></label>
                     <div class="autocomplete-wrapper">
                         <input type="text" id="nome_peca" name="nome_peca" class="form-control"
-                            placeholder="Nome descritivo da peça" autocomplete="off" value="{{peca.nome_peca}}" required>
+                            placeholder="Nome descritivo da peça" autocomplete="off" value="{{peca.nome_peca}}"
+                            required>
                         <div class="autocomplete-panel" id="nome-peca-panel"></div>
                     </div>
                 </div>
@@ -95,21 +99,22 @@ Formulário de cadastro de nova peça no estoque. Suporta clonagem via objeto pe
                     <div class="medidas-group">
                         <div class="form-group">
                             <label for="altura" class="form-label"
-                                style="font-size: 0.8rem; color: var(--text-muted);">Altura</label>
+                                style="font-size: 0.8rem; color: var(--text-muted);">Altura (Largura)</label>
                             <input type="number" id="altura" name="altura" class="form-control" placeholder="Altura"
                                 min="0.01" step="0.01" value="{{peca.altura}}" required>
                         </div>
                         <div class="form-group">
                             <label for="largura" class="form-label"
-                                style="font-size: 0.8rem; color: var(--text-muted);">Largura</label>
+                                style="font-size: 0.8rem; color: var(--text-muted);">Largura (Comprimento)</label>
                             <input type="number" id="largura" name="largura" class="form-control" placeholder="Largura"
                                 min="0.01" step="0.01" value="{{peca.largura}}" required>
                         </div>
                         <div class="form-group">
                             <label for="profundidade" class="form-label"
-                                style="font-size: 0.8rem; color: var(--text-muted);">Profundidade</label>
+                                style="font-size: 0.8rem; color: var(--text-muted);">Profundidade (Espessura)</label>
                             <input type="number" id="profundidade" name="profundidade" class="form-control"
-                                placeholder="Profundidade" min="0.01" step="0.01" value="{{peca.profundidade}}" required>
+                                placeholder="Profundidade" min="0.01" step="0.01" value="{{peca.profundidade}}"
+                                required>
                         </div>
                     </div>
                 </div>
@@ -154,9 +159,9 @@ Formulário de cadastro de nova peça no estoque. Suporta clonagem via objeto pe
     // Flag para o JS saber se está em modo de edição ou cadastro
     window.ESTOQUE_MODE = 'create';
     window.ESTOQUE_PECA_ID = null;
-    {{#if peca}}
+    { { #if peca } }
     window.ESTOQUE_FABRICA_ID = {{ peca.fabrica_id }};
-    {{/if}}
+    { {/if } }
 </script>
 <script src="/public/scripts/estoquePecaFormManager.js"></script>
 {{/section}}

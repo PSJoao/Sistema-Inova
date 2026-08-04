@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('../middleware/auth');
 const { poolHub, poolProdutos } = require('../config/database');
 const hubMercadoLivreService = require('../services/hubMercadoLivreService');
+const hubProdutosService = require('../services/hubProdutosService');
 
 exports.login = async (req, res) => {
     const { email, password } = req.body;
@@ -481,4 +482,41 @@ exports.monitoramentoInstantaneo = async (req, res) => {
         console.error('Erro no monitoramento instantâneo:', error);
         res.status(500).json({ error: 'Erro interno ao realizar monitoramento instantâneo.' });
     }
+};
+
+exports.sincronizarProdutosManuais = async (req, res) => {
+    const { seller_ids } = req.body;
+
+    // Validação: seller_ids deve ser um array com pelo menos 1 elemento
+    if (!seller_ids || !Array.isArray(seller_ids) || seller_ids.length === 0) {
+        return res.status(400).json({
+            error: 'O campo "seller_ids" é obrigatório e deve ser um array com pelo menos um seller_id.',
+            exemplo: { seller_ids: ["123456789", "987654321"] }
+        });
+    }
+
+    // Verifica a trava ANTES de disparar o background
+    if (hubProdutosService._syncManualEmAndamento) {
+        return res.status(409).json({
+            error: 'Já existe uma sincronização manual em andamento. Aguarde a conclusão antes de iniciar outra.'
+        });
+    }
+
+    // Converte todos para string para consistência
+    const sellerIdsLimpos = seller_ids.map(id => String(id).trim()).filter(id => id);
+
+    // Dispara a sincronização em background (não bloqueia a resposta)
+    hubProdutosService.sincronizarAnunciosManuais(sellerIdsLimpos)
+        .then(resultado => {
+            console.log('[HUB PRODUTOS] Resultado da sincronização manual:', resultado);
+        })
+        .catch(err => {
+            console.error('[HUB PRODUTOS] Erro na sincronização manual em background:', err.message);
+        });
+
+    res.status(202).json({
+        message: 'Sincronização manual iniciada em background.',
+        seller_ids: sellerIdsLimpos,
+        aviso: 'O processo está rodando em segundo plano. Novas chamadas serão bloqueadas até a conclusão.'
+    });
 };

@@ -9,6 +9,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const paginationContainer = document.getElementById('pagination-container');
     const emptyState = document.getElementById('empty-state');
     const buscaInput = document.getElementById('buscaGeral');
+    const buscaSecundariaInput = document.getElementById('buscaSecundaria');
+    const filtroSituacao = document.getElementById('filtroSituacao');
     const filtroFabrica = document.getElementById('filtroFabrica');
     const filtroLimite = document.getElementById('filtroLimite');
 
@@ -18,6 +20,80 @@ document.addEventListener('DOMContentLoaded', function() {
     let orderBy = 'created_at';
     let orderDir = 'DESC';
     let debounceTimer = null;
+    let debounceTimer2 = null;
+    let saveDebounceTimer = null;
+
+    // === Inicialização do Estado Salvo ===
+    if (window.INITIAL_USER_STATE) {
+        try {
+            const savedState = window.INITIAL_USER_STATE;
+            if (savedState.currentPage) currentPage = savedState.currentPage;
+            if (savedState.pageLimit) {
+                pageLimit = savedState.pageLimit;
+                filtroLimite.value = pageLimit;
+            }
+            // NOTA: ordenação (orderBy, orderDir) não é restaurada intencionalmente
+            // para resetar ao atualizar ou navegar para fora da página.
+            if (savedState.busca) {
+                buscaInput.value = savedState.busca;
+            }
+            if (savedState.busca2 && buscaSecundariaInput) {
+                buscaSecundariaInput.value = savedState.busca2;
+            }
+            if (savedState.situacao && filtroSituacao) {
+                filtroSituacao.value = savedState.situacao;
+            }
+            if (savedState.fabricaId) {
+                filtroFabrica.value = savedState.fabricaId;
+            }
+        } catch (e) {
+            console.error('[Estoque] Erro ao carregar estado inicial', e);
+        }
+    }
+
+    // =============================================
+    // === PERSISTÊNCIA DE ESTADO ===
+    // =============================================
+
+    /**
+     * Salva o estado atual no backend.
+     */
+    const saveState = (useBeacon = false) => {
+        const stateToSave = {
+            currentPage,
+            pageLimit,
+            busca: buscaInput.value.trim(),
+            busca2: buscaSecundariaInput ? buscaSecundariaInput.value.trim() : '',
+            situacao: filtroSituacao ? filtroSituacao.value : '',
+            fabricaId: filtroFabrica.value
+        };
+
+        const payload = JSON.stringify({
+            page_route: 'estoque_lista_pecas',
+            state_data: stateToSave
+        });
+
+        if (useBeacon && navigator.sendBeacon) {
+            navigator.sendBeacon('/estoque/api/state', new Blob([payload], { type: 'application/json' }));
+        } else {
+            fetch('/estoque/api/state', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: payload,
+                keepalive: true // Garante que a request termine mesmo se a página fechar
+            }).catch(e => console.error('[Estoque] Erro ao salvar estado:', e));
+        }
+    };
+
+    /**
+     * Aciona o salvamento de estado com debounce (para não floodar a API em cada tecla)
+     */
+    const triggerSaveState = () => {
+        clearTimeout(saveDebounceTimer);
+        saveDebounceTimer = setTimeout(() => {
+            saveState(false);
+        }, 1000); // Salva 1 segundo após a última alteração
+    };
 
     // =============================================
     // === CARREGAMENTO DE DADOS ===
@@ -37,6 +113,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
             const busca = buscaInput.value.trim();
             if (busca) params.set('busca', busca);
+
+            const busca2 = buscaSecundariaInput ? buscaSecundariaInput.value.trim() : '';
+            if (busca2) params.set('busca2', busca2);
+
+            const situacao = filtroSituacao ? filtroSituacao.value : '';
+            if (situacao) params.set('situacao', situacao);
 
             const fabrica = filtroFabrica.value;
             if (fabrica) params.set('fabrica_id', fabrica);
@@ -184,6 +266,7 @@ document.addEventListener('DOMContentLoaded', function() {
             orderDir = column === 'created_at' ? 'DESC' : 'ASC';
         }
         currentPage = 1;
+        triggerSaveState();
         loadPecas();
     };
 
@@ -245,6 +328,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const page = parseInt(btn.dataset.page);
                 if (page !== currentPage && !btn.disabled) {
                     currentPage = page;
+                    triggerSaveState();
                     loadPecas();
                 }
             });
@@ -312,18 +396,41 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Busca com debounce de 400ms
+    // Busca 1 com debounce de 400ms
     buscaInput.addEventListener('input', () => {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
             currentPage = 1;
+            triggerSaveState();
             loadPecas();
         }, 400);
     });
 
+    // Busca 2 com debounce de 400ms
+    if (buscaSecundariaInput) {
+        buscaSecundariaInput.addEventListener('input', () => {
+            clearTimeout(debounceTimer2);
+            debounceTimer2 = setTimeout(() => {
+                currentPage = 1;
+                triggerSaveState();
+                loadPecas();
+            }, 400);
+        });
+    }
+
+    // Filtro de situação
+    if (filtroSituacao) {
+        filtroSituacao.addEventListener('change', () => {
+            currentPage = 1;
+            triggerSaveState();
+            loadPecas();
+        });
+    }
+
     // Filtro de fábrica
     filtroFabrica.addEventListener('change', () => {
         currentPage = 1;
+        triggerSaveState();
         loadPecas();
     });
 
@@ -331,7 +438,19 @@ document.addEventListener('DOMContentLoaded', function() {
     filtroLimite.addEventListener('change', () => {
         pageLimit = parseInt(filtroLimite.value) || 50;
         currentPage = 1;
+        triggerSaveState();
         loadPecas();
+    });
+
+    // Eventos de saída da página para garantir o salvamento (saiu -> salvou)
+    window.addEventListener('beforeunload', () => {
+        saveState(true);
+    });
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            saveState(true);
+        }
     });
 
     // =============================================

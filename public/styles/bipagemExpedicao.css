@@ -11,6 +11,7 @@
     flex-direction: column;
     gap: 1.5rem;
     padding: 15px;
+    padding-bottom: 90px; /* Margem extra no rodapé para evitar que a barra de bipagem fixa tampe informações */
     max-width: 1400px;
     margin: 0 auto;
     font-family: var(--font-primary);

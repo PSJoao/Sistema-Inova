@@ -49,11 +49,13 @@
     </div>
 
     <div class="dashboard-panel">
-        <div class="table-toolbar">
+        <div class="table-toolbar"
+            style="display: flex; align-items: center; justify-content: space-between; width: 100%; flex-wrap: wrap; gap: 1rem;">
             <h4 class="panel-title mb-0" style="border: none; padding: 0; white-space: nowrap;"><i
                     class="fas fa-clipboard-list"></i>
                 Fila de Expedição</h4>
-            <div class="toolbar-actions">
+            <div class="toolbar-actions"
+                style="display: flex; align-items: center; justify-content: flex-end; margin-left: auto; flex-wrap: wrap; gap: 0.6rem;">
                 <div class="toolbar-buttons">
                     <button id="btn-exportar-tabela-full" class="btn-toolbar" title="Gerar Relatório">
                         <i class="fas fa-file-excel"></i><span>Rel. Tabela</span>
@@ -108,16 +110,26 @@
                             <option value="Foto: Erro">Erro</option>
                         </select>
                     </div>
+                    <!--<div class="filter-group">
+                        <label class="filter-label">Embarque:</label>
+                        <select id="filtro-status-embarcado-tabela" class="filter-select"
+                            title="Filtro Status Embarcado">
+                            <option value="">Todos</option>
+                            <option value="Embarcado">Embarcados</option>
+                            <option value="Não Embarcado">Não Embarcados</option>
+                        </select>
+                    </div>-->
                 </div>
             </div>
         </div>
 
         <!-- PAINEL FLUTUANTE DE AÇÃO EM MASSA -->
         <div id="massa-action-panel"
-            style="display: none; background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 8px; border: 1px solid var(--accent-orange); margin-bottom: 15px; margin-top: -5px; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+            style="display: none; background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 8px; border: 1px solid var(--accent-orange); margin-bottom: 15px; margin-top: 15px; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
             <div style="display: flex; align-items: center; gap: 15px;">
                 <span style="color: var(--accent-orange); font-weight: bold; font-size: 1.1rem;"
-                    id="massa-count-display">0 selecionadas</span>
+                    id="massa-count-display">0
+                    selecionadas</span>
                 <button class="btn btn-sm text-muted" id="btn-massa-clear"
                     style="padding: 0; text-decoration: none; background:transparent; border:none;"><i
                         class="fas fa-times"></i> Desmarcar Todas</button>
@@ -149,26 +161,34 @@
             </div>
         </div>
 
-        <table class="table" id="tabela-pendencias" style="width: 100%">
-            <thead>
-                <tr>
-                    <th id="th-massa" style="display:none; width: 40px; text-align: center;"><input type="checkbox"
-                            id="chk-master-massa" style="cursor: pointer; width: 16px; height: 16px;"></th>
-                    <th>Data Entrada</th>
-                    <th>Nota Fiscal</th>
-                    <th>Pedido</th>
-                    <th>Núm. Loja</th>
-                    <th>SKU / Produto</th>
-                    <th>Estoque</th>
-                    <th>Localização</th>
-                    <th>Status ML</th>
-                    <th>Status</th>
-                    <th>Ações</th>
-                </tr>
-            </thead>
-            <tbody>
-            </tbody>
-        </table>
+        <div class="table-responsive mt-3">
+            <table class="table" id="tabela-pendencias" style="width: 100%; white-space: nowrap; table-layout: auto;">
+                <thead>
+                    <tr>
+                        <th id="th-massa" class="col-massa-check"
+                            style="display:none; width: 40px; text-align: center;">
+                            <input type="checkbox" id="chk-master-massa"
+                                style="cursor: pointer; width: 16px; height: 16px;">
+                        </th>
+                        <th class="col-data-entrada">Data Entrada</th>
+                        <th class="col-nota-fiscal">Nota Fiscal</th>
+                        <th class="col-pedido">Pedido</th>
+                        <th class="col-num-loja">Núm. Loja</th>
+                        <th class="col-sku-produto">SKU</th>
+                        <th class="col-estoque">Estoque</th>
+                        <th class="col-localizacao">Localização</th>
+                        <th class="col-status-ml">Status ML</th>
+                        <th class="col-status-interno">Status</th>
+                        {{!-- <th class="col-embarcado text-center">Embarcado?</th>
+                        <th class="col-palete-coleta">Palete / Coleta</th>
+                        <th class="col-data-embarque">Data Embarque</th> --}}
+                        <th class="col-acoes">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            </table>
+        </div>
     </div>
     <div class="panel-group" style="display: flex; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
         <div class="dashboard-panel" style="flex: 1; min-width: 350px;">
@@ -380,8 +400,8 @@
         </div>
         <div style="display: flex; align-items: center; gap: 10px;">
             <button id="btn-rotacionar-lightbox"
-                style="background: transparent; border: none; color: white; font-size: 1.4rem; cursor: pointer; padding: 10px;" title="Rotacionar Imagem"><i
-                    class="fas fa-redo"></i></button>
+                style="background: transparent; border: none; color: white; font-size: 1.4rem; cursor: pointer; padding: 10px;"
+                title="Rotacionar Imagem"><i class="fas fa-redo"></i></button>
             <button id="btn-fechar-lightbox"
                 style="background: transparent; border: none; color: white; font-size: 1.5rem; cursor: pointer; padding: 10px;"><i
                     class="fas fa-times"></i></button>

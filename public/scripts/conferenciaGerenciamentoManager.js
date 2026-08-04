@@ -58,6 +58,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     return data ? data : '<span class="text-muted small">--</span>';
                 }
             },
+            { 
+                data: 'cod_interno_1', 
+                name: 'cod_interno_1',
+                className: 'col-cod-interno-1',
+                render: function(data) {
+                    return data ? data : '<span class="text-muted small">--</span>';
+                }
+            },
+            { 
+                data: 'cod_interno_2', 
+                name: 'cod_interno_2',
+                className: 'col-cod-interno-2',
+                render: function(data) {
+                    return data ? data : '<span class="text-muted small">--</span>';
+                }
+            },
             {
                 data: null,
                 orderable: false,
@@ -132,17 +148,25 @@ document.addEventListener('DOMContentLoaded', () => {
         // Pega valores atuais
         const cellFabrica = row.find('.col-codigo-fabrica');
         const cellGtin = row.find('.col-gtin');
+        const cellCod1 = row.find('.col-cod-interno-1');
+        const cellCod2 = row.find('.col-cod-interno-2');
         
         const currentFabrica = cellFabrica.text().trim() === '--' ? '' : cellFabrica.text().trim();
         const currentGtin = cellGtin.text().trim() === '--' ? '' : cellGtin.text().trim();
+        const currentCod1 = cellCod1.text().trim() === '--' ? '' : cellCod1.text().trim();
+        const currentCod2 = cellCod2.text().trim() === '--' ? '' : cellCod2.text().trim();
 
         // Salva valores originais para cancelar depois
         row.data('original-fabrica', currentFabrica);
         row.data('original-gtin', currentGtin);
+        row.data('original-cod1', currentCod1);
+        row.data('original-cod2', currentCod2);
 
         // Substitui por Inputs
         cellFabrica.html(`<input type="text" class="editing-input input-fabrica" value="${currentFabrica}" placeholder="Cód. Fábrica">`);
         cellGtin.html(`<input type="text" class="editing-input input-gtin" value="${currentGtin}" placeholder="EAN Transformado">`);
+        cellCod1.html(`<input type="text" class="editing-input input-cod1" value="${currentCod1}" placeholder="Cód. Interno 1">`);
+        cellCod2.html(`<input type="text" class="editing-input input-cod2" value="${currentCod2}" placeholder="Cód. Interno 2">`);
 
         // Troca botões
         container.find('.btn-edit').hide();
@@ -159,10 +183,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const originalFabrica = row.data('original-fabrica');
         const originalGtin = row.data('original-gtin');
+        const originalCod1 = row.data('original-cod1');
+        const originalCod2 = row.data('original-cod2');
 
         // Restaura texto
         row.find('.col-codigo-fabrica').html(originalFabrica || '<span class="text-muted small">--</span>');
         row.find('.col-gtin').html(originalGtin || '<span class="text-muted small">--</span>');
+        row.find('.col-cod-interno-1').html(originalCod1 || '<span class="text-muted small">--</span>');
+        row.find('.col-cod-interno-2').html(originalCod2 || '<span class="text-muted small">--</span>');
 
         // Troca botões
         container.find('.btn-save, .btn-cancel').hide();
@@ -177,6 +205,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const newFabrica = row.find('.input-fabrica').val().trim();
         const newGtin = row.find('.input-gtin').val().trim();
+        const newCod1 = row.find('.input-cod1').val().trim();
+        const newCod2 = row.find('.input-cod2').val().trim();
         const isHidden = row.find('.chk-escondido').is(':checked');
 
         ModalSystem.showLoading("Salvando alterações...", "Processando");
@@ -189,6 +219,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     id: id,
                     codigo_fabrica: newFabrica,
                     gtin: newGtin,
+                    cod_interno_1: newCod1,
+                    cod_interno_2: newCod2,
                     escondido: isHidden
                 })
             });
@@ -200,15 +232,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error(result.message || "Erro ao salvar.");
             }
 
-            // Sucesso: Atualiza visualmente (sem reload completo da tabela para não perder posição)
+            // Sucesso: Atualiza visualmente
             row.find('.col-codigo-fabrica').html(newFabrica || '<span class="text-muted small">--</span>');
             row.find('.col-gtin').html(newGtin || '<span class="text-muted small">--</span>');
+            row.find('.col-cod-interno-1').html(newCod1 || '<span class="text-muted small">--</span>');
+            row.find('.col-cod-interno-2').html(newCod2 || '<span class="text-muted small">--</span>');
 
             // Troca botões de volta
             container.find('.btn-save, .btn-cancel').hide();
             container.find('.btn-edit').show();
 
-            // Opcional: Feedback visual rápido (verde)
+            // Feedback visual rápido (verde)
             row.css('background-color', 'rgba(40, 167, 69, 0.1)');
             setTimeout(() => { row.css('background-color', ''); }, 1000);
 
@@ -224,22 +258,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const id = checkbox.data('id');
         const isChecked = checkbox.is(':checked');
 
-        // Pega valores atuais das colunas (texto puro) para mandar junto, 
-        // pois a API updateStructureInfo espera o objeto completo ou atualiza tudo.
-        // Se a API suportasse PATCH parcial seria melhor, mas vamos mandar o que está na tela.
-        // CUIDADO: Se estiver em modo edição, pegar do input. Se não, pegar do texto.
-        
-        let currentFabrica, currentGtin;
+        let currentFabrica, currentGtin, currentCod1, currentCod2;
         if (row.find('input.editing-input').length > 0) {
             // Está editando
             currentFabrica = row.find('.input-fabrica').val();
             currentGtin = row.find('.input-gtin').val();
+            currentCod1 = row.find('.input-cod1').val();
+            currentCod2 = row.find('.input-cod2').val();
         } else {
             // Texto estático
             const txtF = row.find('.col-codigo-fabrica').text().trim();
             const txtG = row.find('.col-gtin').text().trim();
+            const txtC1 = row.find('.col-cod-interno-1').text().trim();
+            const txtC2 = row.find('.col-cod-interno-2').text().trim();
             currentFabrica = txtF === '--' ? '' : txtF;
             currentGtin = txtG === '--' ? '' : txtG;
+            currentCod1 = txtC1 === '--' ? '' : txtC1;
+            currentCod2 = txtC2 === '--' ? '' : txtC2;
         }
 
         try {
@@ -250,7 +285,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     id: id,
                     escondido: isChecked,
                     codigo_fabrica: currentFabrica,
-                    gtin: currentGtin
+                    gtin: currentGtin,
+                    cod_interno_1: currentCod1,
+                    cod_interno_2: currentCod2
                 })
             });
 

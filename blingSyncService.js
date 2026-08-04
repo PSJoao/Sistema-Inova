@@ -23,6 +23,7 @@ const onDemandNfeQueue = [];
 let isOnDemandNfeRunning = false;
 
 let isEstoqueSyncRunning = false;
+let isEstoquePlataformaSyncRunning = false;
 
 let isPedidoFullSyncRunning = false;
 // ID da situação "Mercado Livre Full"
@@ -175,6 +176,13 @@ async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve })
                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) ON CONFLICT (bling_id, bling_account) DO UPDATE SET
                         numero = EXCLUDED.numero, numero_loja = EXCLUDED.numero_loja, data_pedido = EXCLUDED.data_pedido, data_saida = EXCLUDED.data_saida, total_produtos = EXCLUDED.total_produtos, total_pedido = EXCLUDED.total_pedido, contato_id = EXCLUDED.contato_id, contato_nome = EXCLUDED.contato_nome, contato_tipo_pessoa = EXCLUDED.contato_tipo_pessoa, contato_documento = EXCLUDED.contato_documento, situacao_id = EXCLUDED.situacao_id, situacao_valor = EXCLUDED.situacao_valor, loja_id = EXCLUDED.loja_id, desconto_valor = EXCLUDED.desconto_valor, notafiscal_id = EXCLUDED.notafiscal_id, nfe_parent_numero = EXCLUDED.nfe_parent_numero;
                     `, [p.id, p.numero, p.numeroLoja, p.data, p.dataSaida, p.totalProdutos, p.total, p.contato?.id, p.contato?.nome, p.contato?.tipoPessoa, p.contato?.numeroDocumento, p.situacao?.id, p.situacao?.valor, p.loja?.id, p.desconto?.valor, p.notaFiscal?.id, nfeDetalhes.numero, accountTypeEncontrada]);
+
+                    if (nfeDetalhes.numero) {
+                        await client.query(
+                            'UPDATE cached_pedido_venda SET nfe_parent_numero = NULL WHERE nfe_parent_numero = $1 AND (bling_id != $2 OR bling_account != $3)',
+                            [nfeDetalhes.numero, String(p.id), accountTypeEncontrada]
+                        );
+                    }
                     console.log(`   [Cache] Pedido ${p.id} salvo no cache.`);
                 }
             } catch (pedidoError) { console.error(`[OnDemandQueue] Erro ao buscar/salvar pedido para a NF ${nfeDetalhes.numero}. Detalhe: ${pedidoError.message}`); }
@@ -215,6 +223,9 @@ async function processSingleNfe({ nfeNumber, numeroLoja, accountType, resolve })
                 );
                 cachedProductsResult.rows.forEach(p => cachedProductsMap.set(p.sku, p));
             }
+
+            // Limpa SKUs antigos associados ao mesmo número de nota fiscal
+            await client.query('DELETE FROM nfe_quantidade_produto WHERE nfe_numero = $1', [nfeDetalhes.numero]);
 
             // Agora processa cada SKU único
             for (const [produtoCodigo, quantidadeTotal] of quantidadesAgregadas.entries()) {
@@ -981,6 +992,9 @@ async function syncNFeLucas() {
                                 cachedProductsResult.rows.forEach(p => cachedProductsMap.set(p.sku, p));
                             }
 
+                            // Limpa SKUs antigos associados ao mesmo número de nota fiscal
+                            await pool.query('DELETE FROM nfe_quantidade_produto WHERE nfe_numero = $1', [nfeDetalhes.numero]);
+
                             for (const [produtoCodigo, quantidadeTotal] of quantidadesAgregadas.entries()) {
                                 await pool.query(`
                                     INSERT INTO nfe_quantidade_produto (nfe_numero, produto_codigo, quantidade)
@@ -1238,6 +1252,9 @@ async function syncNFeEliane() {
                                 );
                                 cachedProductsResult.rows.forEach(p => cachedProductsMap.set(p.sku, p));
                             }
+
+                            // Limpa SKUs antigos associados ao mesmo número de nota fiscal
+                            await pool.query('DELETE FROM nfe_quantidade_produto WHERE nfe_numero = $1', [nfeDetalhes.numero]);
 
                             for (const [produtoCodigo, quantidadeTotal] of quantidadesAgregadas.entries()) {
                                 await pool.query(`
@@ -1499,6 +1516,82 @@ async function syncEstoqueBling(sync_prod = true) {
     }
 }
 
+/**
+ * Função isolada para sincronização do estoque virtual (plataforma) dos produtos do Bling.
+ * Captura o saldoVirtualTotal (estoque que já considera vendas não expedidas)
+ * e salva como estoque_plataforma na cached_products.
+ * Os SKUs a sincronizar vêm da tabela anuncios_ml (agrupados por SKU).
+ */
+async function syncEstoquePlataforma() {
+    if (isEstoquePlataformaSyncRunning) {
+        console.log('[EstoquePlataforma] Sincronização já está em andamento. Pulando execução.');
+        return;
+    }
+    isEstoquePlataformaSyncRunning = true;
+
+    console.log('[EstoquePlataforma] Iniciando sincronização de estoque virtual (plataforma)...');
+    const client = await pool.connect();
+
+    try {
+        // Pega SKUs distintos da tabela de anúncios (agrupados para evitar consultas repetidas)
+        const result = await client.query(`
+            SELECT DISTINCT sku 
+            FROM anuncios_ml 
+            WHERE sku IS NOT NULL AND sku != ''`);
+        const skus = result.rows.map(r => r.sku);
+
+        console.log(`[EstoquePlataforma] Encontrados ${skus.length} SKUs únicos nos anúncios para sincronizar.`);
+
+        if (skus.length === 0) {
+            console.log('[EstoquePlataforma] Nenhum SKU encontrado nos anúncios. Finalizando.');
+            return;
+        }
+
+        const chunkSize = 50;
+        let processedCount = 0;
+
+        for (let i = 0; i < skus.length; i += chunkSize) {
+            const chunk = skus.slice(i, i + chunkSize);
+            const queryParams = chunk.map(sku => `codigos[]=${encodeURIComponent(sku)}`).join('&');
+            // Mesmo depósito usado na syncEstoqueBling
+            const url = `${BLING_API_BASE_URL}/estoques/saldos/14887607235?${queryParams}`;
+
+            try {
+                const response = await apiRequestWithRetry(url, 'lucas');
+
+                if (response.data && response.data.length > 0) {
+                    await client.query('BEGIN');
+                    for (const item of response.data) {
+                        const saldoVirtual = item.saldoVirtualTotal || 0;
+                        const sku = item.produto?.codigo;
+                        if (sku) {
+                            await client.query(
+                                'UPDATE cached_products SET estoque_plataforma = $1 WHERE sku = $2',
+                                [saldoVirtual, sku]
+                            );
+                            processedCount++;
+                        }
+                    }
+                    await client.query('COMMIT');
+                }
+            } catch (err) {
+                await client.query('ROLLBACK');
+                console.error(`[EstoquePlataforma] Erro no lote ${Math.floor(i / chunkSize) + 1}:`, err.message);
+            }
+
+            // Pausa entre as requisições para respeitar o rate limit do Bling (3 por segundo)
+            await new Promise(resolve => setTimeout(resolve, 350));
+        }
+
+        console.log(`[EstoquePlataforma] Sincronização finalizada. ${processedCount} saldos virtuais atualizados.`);
+    } catch (error) {
+        console.error('[EstoquePlataforma] Erro geral durante sincronização:', error.message);
+    } finally {
+        client.release();
+        isEstoquePlataformaSyncRunning = false;
+    }
+}
+
 
 module.exports = {
     syncNFeLucas,
@@ -1515,5 +1608,6 @@ module.exports = {
     getLucasStatus,
     getElianeStatus,
     syncSingleProductAndStructuresLucas,
-    syncEstoqueBling
+    syncEstoqueBling,
+    syncEstoquePlataforma
 };

@@ -1,0 +1,369 @@
+{{!--
+views/produtos/lista-anuncios.handlebars
+Listagem de anúncios do Mercado Livre com busca, paginação e tabela idêntica à de peças.
+--}}
+<link rel="stylesheet" href="/public/styles/estoque.css">
+
+<div class="content-card">
+    {{!-- Cabeçalho da Página --}}
+    <div class="page-header-actions">
+        <h1 class="page-title">{{title}}</h1>
+        <div style="display: flex; justify-content: end; gap: 10px;">
+            <a href="/anuncios/promocoes" class="btn btn-outline-accent" style="display: inline-flex; align-items: center;">
+                <i class="fas fa-tags me-2"></i>Gerenciar Promoções
+            </a>
+            <button id="btnExportar" class="btn btn-outline-accent">
+                <i class="fas fa-file-excel me-2"></i>Exportar Relatório
+            </button>
+            <button id="btnImportarCustos" class="btn btn-outline-accent">
+                <i class="fas fa-file-import me-2"></i>Importar Custos
+            </button>
+            <button id="btnSincronizar" class="btn btn-accent">
+                <i class="fas fa-sync me-2"></i>Sincronizar Anúncios
+            </button>
+        </div>
+    </div>
+
+    {{!-- Barra de Filtros --}}
+    <div class="estoque-filters-bar">
+        <div class="estoque-filter-group" style="flex-grow: 1; min-width: 300px;">
+            <label for="buscaGeral">Busca Rápida</label>
+            <input type="text" id="buscaGeral" class="form-control" placeholder="SKU, descrição, ID do anúncio...">
+        </div>
+        <div class="estoque-filter-group">
+            <label for="filtroStatus">Status</label>
+            <select id="filtroStatus" class="form-control" style="min-width: 140px;">
+                <option value="">Todos</option>
+                <option value="active">Ativo</option>
+                <option value="paused">Pausado</option>
+                <option value="closed">Fechado</option>
+                <option value="under_review">Em análise</option>
+                <option value="inactive">Inativo</option>
+            </select>
+        </div>
+        <div class="estoque-filter-group">
+            <label for="filtroCatalogo">Catálogo</label>
+            <select id="filtroCatalogo" class="form-control" style="min-width: 150px;">
+                <option value="">Todos</option>
+                <option value="com">Com Catálogo</option>
+                <option value="sem">Sem Catálogo</option>
+            </select>
+        </div>
+        <div class="estoque-filter-group">
+            <label for="filtroTipo">Tipo de Anúncio</label>
+            <select id="filtroTipo" class="form-control" style="min-width: 140px;">
+                <option value="">Todos</option>
+                <option value="Clássico">Clássico</option>
+                <option value="Premium">Premium</option>
+            </select>
+        </div>
+        <div class="estoque-filter-group">
+            <label for="filtroLimite">Mostrar</label>
+            <select id="filtroLimite" class="form-control" style="min-width: 80px;">
+                <option value="20">20</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+            </select>
+        </div>
+    </div>
+
+    <style>
+        #tabela-estoque thead th {
+            background-color: var(--bg-tertiary) !important;
+            color: var(--text-primary) !important;
+            border: none !important;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.1) !important;
+        }
+
+        /* === FILTRO COMBOGOX ESTILO EXCEL === */
+        .excel-filter-dropdown {
+            position: absolute;
+            z-index: 1050;
+            width: 270px;
+            background-color: #1e1e24;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 8px;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+            padding: 12px;
+            font-size: 0.85rem;
+            color: #e0e0e0;
+            font-family: inherit;
+            backdrop-filter: blur(10px);
+            animation: excelFadeIn 0.15s ease-out;
+            text-align: left;
+        }
+
+        @keyframes excelFadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-6px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .excel-filter-search {
+            width: 100%;
+            background: #2a2a32;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #fff;
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 0.8rem;
+            outline: none;
+            margin-bottom: 8px;
+            box-sizing: border-box;
+        }
+
+        .excel-filter-search:focus {
+            border-color: #f07c00;
+        }
+
+        .excel-filter-quick-actions {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            margin-bottom: 8px;
+            padding: 0 2px;
+        }
+
+        .excel-filter-quick-btn {
+            background: none;
+            border: none;
+            color: #f07c00;
+            cursor: pointer;
+            padding: 0;
+            font-weight: 600;
+        }
+
+        .excel-filter-quick-btn:hover {
+            text-decoration: underline;
+        }
+
+        .excel-filter-list {
+            max-height: 180px;
+            overflow-y: auto;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(0, 0, 0, 0.25);
+            border-radius: 6px;
+            padding: 6px;
+            margin-bottom: 12px;
+        }
+
+        .excel-filter-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 6px;
+            border-radius: 4px;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.15s;
+        }
+
+        .excel-filter-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .excel-filter-item input[type="checkbox"] {
+            accent-color: #f07c00;
+            cursor: pointer;
+            width: 14px;
+            height: 14px;
+        }
+
+        .excel-filter-item-label {
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: #ccc;
+        }
+
+        .excel-filter-item-count {
+            font-size: 0.7rem;
+            color: #888;
+        }
+
+        .excel-filter-footer {
+            display: flex;
+            justify-content: space-between;
+            gap: 6px;
+        }
+
+        .excel-filter-btn {
+            flex: 1;
+            padding: 6px 10px;
+            border-radius: 6px;
+            border: none;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .excel-filter-btn-apply {
+            background: #f07c00;
+            color: #fff;
+        }
+
+        .excel-filter-btn-apply:hover {
+            background: #d66e00;
+        }
+
+        .excel-filter-btn-clear {
+            background: rgba(255, 255, 255, 0.1);
+            color: #ccc;
+        }
+
+        .excel-filter-btn-clear:hover {
+            background: rgba(220, 53, 69, 0.2);
+            color: #ff6b6b;
+        }
+
+        th.sortable.filter-active {
+            color: #f07c00 !important;
+        }
+
+        th.sortable.filter-active::before {
+            content: '\f0b0';
+            font-family: 'Font Awesome 5 Free';
+            font-weight: 900;
+            color: #f07c00;
+            margin-right: 6px;
+            font-size: 0.8rem;
+        }
+
+        /* === MANIPULAÇÃO DE COLUNAS (DRAG & DROP) === */
+        #tabela-estoque th {
+            transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1), background-color 0.2s, box-shadow 0.2s;
+        }
+
+        #tabela-estoque th.column-dragging {
+            cursor: grabbing !important;
+            opacity: 0.85;
+            background-color: var(--accent-orange, #f07c00) !important;
+            color: #fff !important;
+            transform: scale(1.03);
+            box-shadow: 0 10px 30px rgba(240, 124, 0, 0.5) !important;
+            z-index: 100 !important;
+            border: 2px dashed #ffffff !important;
+        }
+
+        #tabela-estoque th.column-drag-over {
+            border-left: 3px solid var(--accent-orange, #f07c00) !important;
+            background-color: rgba(240, 124, 0, 0.2) !important;
+        }
+
+        .column-reorder-toast {
+            position: fixed;
+            bottom: 25px;
+            right: 25px;
+            background: #f07c00;
+            color: #fff;
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            animation: toastFadeIn 0.3s ease-out;
+        }
+
+        @keyframes toastFadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(15px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+
+    {{!-- Container da Tabela --}}
+    <div class="table-responsive mt-3" style="max-height: calc(100vh - 180px); overflow: auto;">
+        <table class="table" id="tabela-estoque" style="width: 100%; white-space: nowrap; table-layout: auto;">
+            <thead style="position: sticky; top: 0; z-index: 10; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
+                <tr>
+                    <th class="sortable" data-column="id_anuncio">ID Anúncio</th>
+                    <th class="text-center">Foto</th>
+                    <th class="sortable" data-column="sku">SKU</th>
+                    <th class="sortable" data-column="descricao" style="min-width: 450px;">Descrição</th>
+                    <th class="sortable" data-column="tipo_anuncio">Tipo</th>
+                    <th class="sortable" data-column="status">Status</th>
+                    <th class="sortable text-center" data-column="ganhando_catalogo">Concorrência</th>
+                    <th class="sortable text-center" data-column="prazo_disponibilidade">Prazo Disp. (Dias)</th>
+                    <th class="sortable text-center" data-column="estoque_plataforma">Estoque Bling</th>
+                    <th class="sortable text-center" data-column="experiencia_compra">Exp. Compra</th>
+                    <th class="sortable text-center" data-column="vendas_total">Vendas</th>
+                    <th class="sortable text-center" data-column="preco">Preço (R$)</th>
+                    <th class="sortable text-center" data-column="preco_promocional">Promo (R$)</th>
+                    <th class="sortable text-center" data-column="tarifa">Tarifa</th>
+                    <th class="sortable text-center" data-column="margem_lucro">Margem (Lucro)</th>
+                    <th class="sortable text-center" data-column="estoque_ml">Estoque ML</th>
+                    <th class="sortable text-center" data-column="frete">Frete</th>
+                </tr>
+            </thead>
+            <tbody id="table-body">
+                {{!-- Populado dinamicamente via JS --}}
+            </tbody>
+        </table>
+    </div>
+
+    {{!-- Paginação --}}
+    <div id="pagination-container" class="estoque-pagination"></div>
+</div>
+
+{{!-- Modal de Importação de Custos e Impostos --}}
+<div id="modalCustosOverlay" class="modal-overlay" style="display: none;"></div>
+<div id="modalCustos" class="custom-modal" style="display: none; max-width: 520px; z-index: 10000;">
+    <div class="custom-modal-header">
+        <h3 class="custom-modal-title-text">Importar Custos e Impostos</h3>
+    </div>
+    <div class="custom-modal-body">
+        <p style="font-size: 0.9rem; color: #ccc; margin-bottom: 15px; line-height: 1.4;">
+            Selecione uma planilha (<strong>.xlsx</strong>, <strong>.xls</strong> ou <strong>.csv</strong>) contendo a
+            estrutura:<br />
+            <span style="color: #f07c00; font-size: 0.85rem; font-weight: bold;">Coluna A: CUSTO (R$) | Coluna B:
+                IMPOSTO (%) | Coluna C: SKU</span>
+        </p>
+        <div
+            style="background: rgba(255,255,255,0.04); padding: 20px; border-radius: 8px; border: 2px dashed rgba(240,124,0,0.4); text-align: center;">
+            <input type="file" id="inputPlanilhaCustos" accept=".xlsx, .xls, .csv" style="display: none;" />
+            <label for="inputPlanilhaCustos" class="btn btn-outline-accent" style="cursor: pointer; margin-bottom: 0;">
+                <i class="fas fa-folder-open" style="margin-right: 6px;"></i> Selecionar Planilha...
+            </label>
+            <div id="nomeArquivoSelecionado"
+                style="margin-top: 12px; font-size: 0.85rem; color: #f07c00; font-weight: bold;">Nenhum arquivo
+                selecionado</div>
+        </div>
+        <div id="importCustosSpinner" class="modal-spinner" style="display: none; margin-top: 15px;"></div>
+        <div id="importCustosStatusMsg"
+            style="margin-top: 12px; font-size: 0.85rem; text-align: center; display: none;"></div>
+    </div>
+    <div class="custom-modal-footer">
+        <button id="btnConfirmarModalCustos" class="btn btn-accent" disabled>Confirmar</button>
+        <button id="btnCancelarModalCustos" class="btn btn-outline-accent">Cancelar</button>
+    </div>
+</div>
+{{!-- Estado vazio --}}
+<div id="empty-state" class="estoque-empty-state" style="display: none;">
+    <i class="fas fa-bullhorn"></i>
+    <p>Nenhum anúncio encontrado.</p>
+    <p style="font-size: 0.85rem;">Clique em "Sincronizar Anúncios" para buscar os anúncios do Mercado Livre.</p>
+</div>
+</div>
+
+{{#section "scripts"}}
+<script src="/public/scripts/anunciosListaManager.js"></script>
+{{/section}}

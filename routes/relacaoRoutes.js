@@ -6,7 +6,12 @@ const authController = require('../controllers/authController'); // Seu controll
 
 // Middleware de autenticação para todas as rotas deste router
 router.use(authController.requireAuth);
-router.use(authController.requireModule('logistica_relacoes'));
+router.use((req, res, next) => {
+    if (req.path.startsWith('/relacoes')) {
+        return authController.requireModule('logistica_relacoes')(req, res, next);
+    }
+    next();
+});
 
 // --- Rotas Principais do Módulo de Relações ---
 

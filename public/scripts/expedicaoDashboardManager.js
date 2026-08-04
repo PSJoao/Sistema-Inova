@@ -7,6 +7,7 @@ let tabelaPedidosComFoto; // Tabela de Pedidos com Foto
 
 let selectedNFs = new Set();
 let isMassaMode = false;
+let lastSearchValue = '';
 
 document.addEventListener('DOMContentLoaded', () => {
     initCarregadoresForm();
@@ -322,6 +323,21 @@ function formatarLinhaTabela(item) {
         skuFormatted = item.sku;
     }
 
+    const embarcadoBadge = item.embarcado
+        ? '<span class="badge" style="background-color: rgba(40, 167, 69, 0.15); color: #28a745; border: 1px solid rgba(40, 167, 69, 0.3); font-weight: bold; padding: 4px 8px;"><i class="fas fa-check-circle" style="margin-right: 4px;"></i> Sim</span>'
+        : '<span class="badge" style="background-color: rgba(220, 53, 69, 0.1); color: #dc3545; border: 1px solid rgba(220, 53, 69, 0.2); opacity: 0.7; padding: 4px 8px;"><i class="fas fa-times-circle" style="margin-right: 4px;"></i> Não</span>';
+
+    let paleteColetaStr = '-';
+    if (item.palete && item.numero_coleta) {
+        paleteColetaStr = `<strong>${item.palete}</strong> <span style="font-size:0.8rem; color:var(--text-muted);">(${item.numero_coleta})</span>`;
+    } else if (item.palete) {
+        paleteColetaStr = `<strong>${item.palete}</strong>`;
+    } else if (item.numero_coleta) {
+        paleteColetaStr = `<span style="font-size:0.8rem; color:var(--text-muted);">${item.numero_coleta}</span>`;
+    }
+
+    const dataEmbarqueFmt = item.data_embarque ? new Date(item.data_embarque).toLocaleString('pt-BR') : '-';
+
     return {
         nf_numero: item.nfe_numero || item.nf || '-',
         dataEntrada: `${dataFmt} ${herancaIcon}`,
@@ -335,6 +351,9 @@ function formatarLinhaTabela(item) {
         skusOriginal: item.skus,
         statusMlBadge: statusMlBadge,
         statusBadge: statusBadge,
+        embarcadoBadge: embarcadoBadge,
+        paleteColeta: paleteColetaStr,
+        dataEmbarque: dataEmbarqueFmt,
         acoes: acoes
     };
 }
@@ -429,6 +448,8 @@ function initTabelas() {
     tabelaPendencias = $('#tabela-pendencias').DataTable({
         language: dataTablesLangBR,
         pageLength: 10,
+        scrollY: 'calc(100vh - 280px)',
+        scrollCollapse: true,
         scrollX: true,
         serverSide: true,
         processing: false,
@@ -444,6 +465,7 @@ function initTabelas() {
                 d.statusInterno = $('#filtro-status-tabela').val();
                 d.statusMl = $('#filtro-status-ml-tabela').val();
                 d.statusFoto = $('#filtro-status-foto-tabela').val();
+                d.statusEmbarcado = $('#filtro-status-embarcado-tabela').val();
             },
             dataSrc: function (json) {
                 if (!json || !json.data) {
@@ -468,6 +490,7 @@ function initTabelas() {
             },
             {
                 data: 'dataEntrada',
+                className: 'col-data-entrada',
                 render: function (data, type, row) {
                     if (type === 'sort' || type === 'type') {
                         return row.dataEntradaRaw || '';
@@ -475,15 +498,18 @@ function initTabelas() {
                     return data;
                 }
             },
-            { data: 'nfHtml' },
-            { data: 'pedidoId' },
-            { data: 'numeroLoja' },
-            { data: 'sku' },
-            { data: 'estoque' },
-            { data: 'localizacao' },
-            { data: 'statusMlBadge' },
-            { data: 'statusBadge' },
-            { data: 'acoes' }
+            { data: 'nfHtml', className: 'col-nota-fiscal' },
+            { data: 'pedidoId', className: 'col-pedido' },
+            { data: 'numeroLoja', className: 'col-num-loja' },
+            { data: 'sku', className: 'col-sku-produto' },
+            { data: 'estoque', className: 'col-estoque' },
+            { data: 'localizacao', className: 'col-localizacao' },
+            { data: 'statusMlBadge', className: 'col-status-ml' },
+            { data: 'statusBadge', className: 'col-status-interno' },
+            /* { data: 'embarcadoBadge', className: 'col-embarcado text-center' },
+            { data: 'paleteColeta', className: 'col-palete-coleta' },
+            { data: 'dataEmbarque', className: 'col-data-embarque' }, */
+            { data: 'acoes', className: 'col-acoes', orderable: false }
         ]
     });
 
@@ -541,9 +567,19 @@ function initTabelas() {
 
         // Recarregar os dados ao alterar a data
         $('#filtro-data-inicio, #filtro-data-fim').on('change', function () {
+            resetaSelecao();
             carregarDadosDashboard();
             tabelaPendencias.ajax.reload(null, true); // Reset page on date change
             carregarGestaoConferencia();
+        });
+
+        // Ouvir alterações de busca para resetar seleção apenas quando o valor mudar
+        searchWrapper.find('input').on('input', function () {
+            const currentSearch = $(this).val();
+            if (currentSearch !== lastSearchValue) {
+                lastSearchValue = currentSearch;
+                resetaSelecao();
+            }
         });
     }
 
@@ -555,15 +591,23 @@ function initTabelas() {
         } else {
             selectedNFs.delete(val);
         }
+        
+        // Se desmarcou uma linha, o master checkbox e o "Seleção Total" devem desmarcar
+        if (!this.checked) {
+            $('#chk-master-massa').prop('checked', false);
+            const chkTotal = document.getElementById('chk-massa-selecao-total');
+            if (chkTotal) chkTotal.checked = false;
+        }
+        
         updateMassaPanelCount();
     });
 
     // Listener Master Checkbox (DELEGAÇÃO DO CABEÇALHO)
     $(document).on('change', '#chk-master-massa', function () {
         const isChecked = this.checked;
-        const dadosBuscaAplicada = tabelaPendencias.rows({ search: 'applied' }).data().toArray();
+        const dadosPaginaAtual = tabelaPendencias.rows({ page: 'current' }).data().toArray();
 
-        dadosBuscaAplicada.forEach(row => {
+        dadosPaginaAtual.forEach(row => {
             const nfBase = String(row.nf_numero);
             if (isChecked) {
                 selectedNFs.add(nfBase);
@@ -572,15 +616,52 @@ function initTabelas() {
             }
         });
 
-        // Atualiza nativamente as caixas das instâncias DOM do DataTables (mesmo em paginas ocultas)
-        $('input.chk-massa-row', tabelaPendencias.rows({ search: 'applied' }).nodes()).prop('checked', isChecked);
+        // Atualiza as caixas das instâncias DOM da página atual
+        $('input.chk-massa-row', tabelaPendencias.rows({ page: 'current' }).nodes()).prop('checked', isChecked);
+
+        // Se desmarcou o master, desmarca também o Seleção Total
+        if (!isChecked) {
+            const chkTotal = document.getElementById('chk-massa-selecao-total');
+            if (chkTotal) chkTotal.checked = false;
+        }
 
         updateMassaPanelCount();
     });
 
     // Evento de Filtro via Combobox
     $('#filtro-status-tabela, #filtro-status-ml-tabela, #filtro-status-foto-tabela').on('change', function () {
+        resetaSelecao();
         tabelaPendencias.ajax.reload();
+    });
+
+    // Evento de redesenho da tabela para sincronizar checkboxes e master checkbox
+    tabelaPendencias.on('draw', function () {
+        // Sincronizar checkboxes individuais na DOM
+        const pageNodes = tabelaPendencias.rows({ page: 'current' }).nodes().toArray();
+        pageNodes.forEach(node => {
+            const chk = $(node).find('.chk-massa-row');
+            if (chk.length) {
+                const val = chk.val();
+                chk.prop('checked', selectedNFs.has(val));
+            }
+        });
+
+        // Sincronizar master checkbox do cabeçalho
+        const rowsData = tabelaPendencias.rows({ page: 'current' }).data().toArray();
+        if (rowsData.length === 0) {
+            $('#chk-master-massa').prop('checked', false);
+            return;
+        }
+
+        let allChecked = true;
+        rowsData.forEach(row => {
+            const nfBase = String(row.nf_numero);
+            if (!selectedNFs.has(nfBase)) {
+                allChecked = false;
+            }
+        });
+
+        $('#chk-master-massa').prop('checked', allChecked);
     });
 
     // Evento de Clique nos Cards de Balanço do Dia (Filtro Rápido)
@@ -635,12 +716,7 @@ function setupMassaModeListeners() {
 
     // Limpar tudo
     btnClear.addEventListener('click', () => {
-        selectedNFs.clear();
-        $('#chk-master-massa').prop('checked', false);
-        const chkTotal = document.getElementById('chk-massa-selecao-total');
-        if (chkTotal) chkTotal.checked = false;
-        $('input.chk-massa-row', tabelaPendencias.rows().nodes()).prop('checked', false);
-        updateMassaPanelCount();
+        resetaSelecao();
     });
 
     // Lógica para Seleção Total Dinâmica
@@ -658,6 +734,8 @@ function setupMassaModeListeners() {
                     const dataFim = document.getElementById('filtro-data-fim') ? document.getElementById('filtro-data-fim').value : '';
                     const statusInterno = $('#filtro-status-tabela').val();
                     const statusMl = $('#filtro-status-ml-tabela').val();
+                    const statusFoto = $('#filtro-status-foto-tabela').val();
+                    const statusEmbarcado = $('#filtro-status-embarcado-tabela').val();
                     const searchWrapper = $('#tabela-pendencias_filter input');
                     const searchValue = searchWrapper.length ? searchWrapper.val() : '';
 
@@ -667,9 +745,12 @@ function setupMassaModeListeners() {
                         dataFim: dataFim,
                         statusInterno: statusInterno || '',
                         statusMl: statusMl || '',
+                        statusFoto: statusFoto || '',
+                        statusEmbarcado: statusEmbarcado || '',
                         draw: 1,
                         start: 0,
                         length: -1,
+                        _: Date.now() // Cache buster
                     });
 
                     if (searchValue) {
@@ -683,15 +764,28 @@ function setupMassaModeListeners() {
 
                     if (result && result.data) {
                         selectedNFs.clear();
+                        let foundCount = 0;
                         result.data.forEach(item => {
-                            const num = item.nfe_numero || item.nf_numero;
-                            if (num) {
+                            const num = item.nfe_numero || item.nf_numero || item.nf || item.pedido_numero;
+                            if (num && String(num) !== 'null' && String(num) !== '-') {
                                 selectedNFs.add(String(num));
+                                foundCount++;
                             }
                         });
 
-                        // Atualiza os checkboxes da página atual
-                        $('input.chk-massa-row', tabelaPendencias.rows({ search: 'applied' }).nodes()).prop('checked', true);
+                        if (foundCount === 0) {
+                            ModalSystem.alert('A busca retornou zero registros aplicáveis.', 'Aviso');
+                        }
+
+                        // Atualiza os checkboxes da página atual de forma segura
+                        const pageNodes = tabelaPendencias.rows({ page: 'current' }).nodes().toArray();
+                        pageNodes.forEach(node => {
+                            const chk = $(node).find('.chk-massa-row');
+                            if (chk.length) {
+                                chk.prop('checked', true);
+                            }
+                        });
+
                         $('#chk-master-massa').prop('checked', true);
                         updateMassaPanelCount();
                     }
@@ -704,10 +798,7 @@ function setupMassaModeListeners() {
                 }
             } else {
                 // Se desmarcar, limpa tudo
-                selectedNFs.clear();
-                $('#chk-master-massa').prop('checked', false);
-                $('input.chk-massa-row', tabelaPendencias.rows().nodes()).prop('checked', false);
-                updateMassaPanelCount();
+                resetaSelecao();
             }
         });
     }
@@ -739,9 +830,7 @@ function setupMassaModeListeners() {
                 if (!data.success) throw new Error(data.message);
 
                 // Sucesso: Limpa e recarrega
-                selectedNFs.clear();
-                updateMassaPanelCount();
-                $('#chk-master-massa').prop('checked', false);
+                resetaSelecao();
                 carregarDadosDashboard();
                 tabelaPendencias.ajax.reload(null, false);
 
@@ -753,6 +842,14 @@ function setupMassaModeListeners() {
             }
         });
     });
+}
+
+function resetaSelecao() {
+    selectedNFs.clear();
+    $('#chk-master-massa').prop('checked', false);
+    const chkTotal = document.getElementById('chk-massa-selecao-total');
+    if (chkTotal) chkTotal.checked = false;
+    updateMassaPanelCount();
 }
 
 function updateMassaPanelCount() {
@@ -1429,6 +1526,7 @@ async function solicitarPlanilhaDinamica(type) {
             dataFim: dataFimEl ? dataFimEl.value : '',
             statusInterno: $('#filtro-status-tabela').val() || '',
             statusMl: $('#filtro-status-ml-tabela').val() || '',
+            statusEmbarcado: $('#filtro-status-embarcado-tabela').val() || '',
             start: 0,
             length: -1, // Retorna TODOS os registros
             'search[value]': tabelaPendencias.search() || '',
@@ -1600,6 +1698,7 @@ async function imprimirPendenciasLote() {
             dataFim: dataFimEl ? dataFimEl.value : '',
             statusInterno: $('#filtro-status-tabela').val() || '',
             statusMl: $('#filtro-status-ml-tabela').val() || '',
+            statusEmbarcado: $('#filtro-status-embarcado-tabela').val() || '',
             start: 0,
             length: -1, // Retorna TODOS os registros
             'search[value]': tabelaPendencias.search() || '',

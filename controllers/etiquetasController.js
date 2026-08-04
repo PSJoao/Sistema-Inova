@@ -94,7 +94,7 @@ exports.apiGetDashboardExpedicao = async (req, res) => {
 
 exports.apiGetDashboardTabela = async (req, res) => {
     try {
-        const { dataInicio, dataFim, draw, start, length, search, order, statusInterno, statusMl, statusFoto } = req.query;
+        const { dataInicio, dataFim, draw, start, length, search, order, statusInterno, statusMl, statusFoto, statusEmbarcado } = req.query;
         
         const params = {
             dataInicio,
@@ -107,7 +107,8 @@ exports.apiGetDashboardTabela = async (req, res) => {
             orderDir: order && order[0] ? order[0].dir : null,
             statusInterno,
             statusMl,
-            statusFoto
+            statusFoto,
+            statusEmbarcado
         };
 
         const dadosTabela = await etiquetasService.obterTabelaDashboardExpedicao(params);

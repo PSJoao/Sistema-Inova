@@ -14,6 +14,7 @@ const pedidosRoutes = require('./routes/pedidosRoutes');
 const handlebarsHelpers = require('./helpers/handlebarsHelpers');
 const authRoutes = require('./routes/authRoutes');
 const authController = require('./controllers/authController');
+const anunciosController = require('./controllers/anunciosController');
 const rastreioService = require('./services/rastreioService');
 const nfeHistoryRoutes = require('./routes/nfeHistoryRoutes');
 const { updatePrices } = require('./updatePrices.js');
@@ -26,6 +27,7 @@ const tiposRoutes = require('./routes/tiposRoutes');
 const prodSyncRoutes = require('./routes/productSyncRoutes');
 const conferenciaRoutes = require('./routes/conferenciaRoutes.js');
 const produtosRoutes = require('./routes/produtosRoutes');
+const anunciosRoutes = require('./routes/anunciosRoutes');
 const faturamentoAutomaticoRoutes = require('./routes/faturamentoAutomaticoRoutes');
 const estoqueRoutes = require('./routes/estoqueRoutes');
 const { syncBlingProductsLucas, syncBlingProductsEliane, syncEstoqueBling } = require('./blingSyncService.js');
@@ -34,6 +36,7 @@ const { updateUrlCostsAndData } = require('./costUpdater.js');
 const mercadoLivreSyncService = require('./services/mercadoLivreSyncService');
 const etiquetasService = require('./services/etiquetasService');
 const blingWebhookRoutes = require('./routes/blingWebhookRoutes');
+const stockHistoryRoutes = require('./routes/stockHistoryRoutes');
 const path = require('path');
 const fs = require('fs').promises;
 const PDF_STORAGE_DIR_CLEANUP = path.join(__dirname, 'pdfEtiquetas');
@@ -51,6 +54,10 @@ const PORT = 3000;
 // Configurar o body-parser para analisar solicitações com o corpo em formato URL-encoded e JSON
 app.use(bodyParser.urlencoded({ limit: '500mb', extended: true }));
 app.use(bodyParser.json({ limit: '500mb' }));
+
+// === WEBHOOK DO BLING: Deve ficar ANTES de qualquer middleware de autenticação ===
+// O Bling envia POSTs externos sem cookie/token, então precisa estar fora da cadeia de auth
+app.use('/webhooks/bling', blingWebhookRoutes);
 
 // Configuração do Handlebars com helpers personalizados
 app.engine('handlebars', exphbs.engine({
@@ -87,6 +94,7 @@ app.use((req, res, next) => {
         res.locals.username = req.user.username; // Torna {{username}} disponível
         res.locals.cargo = req.user.role;    // Torna {{cargo}} disponível nos templates
         res.locals.tipo_conta = req.user.tipo_conta;
+        res.locals.sidebar_collapsed = req.user.sidebar_collapsed;
         
         // Flags de nível de permissão
         const isAdmin = req.user.tipo_conta === 0 || req.user.tipo_conta === 1;
@@ -115,6 +123,7 @@ app.use((req, res, next) => {
         res.locals.permit_produtos_sincronizar = isAdmin || modulos.includes('produtos_sincronizar');
         res.locals.permit_produtos_estoque_dev = isAdmin || modulos.includes('produtos_estoque_dev');
         res.locals.permit_produtos_bipagem_pecas = isAdmin || modulos.includes('produtos_bipagem_pecas');
+        res.locals.permit_produtos_anuncios = isAdmin || modulos.includes('produtos_gerenciar');
         
         // Expedição
         res.locals.permit_expedicao_ordenador = isAdmin || modulos.includes('expedicao_ordenador');
@@ -137,7 +146,7 @@ app.use((req, res, next) => {
         // Permissões gerais de visualização de módulos (exibição de cards inteiros)
         res.locals.permit_monitoramento = res.locals.permit_monitoramento_madeira_lucas || res.locals.permit_monitoramento_madeira_eliane || res.locals.permit_monitoramento_viavarejo;
         res.locals.permit_faturamento = res.locals.permit_faturamento_gerenciar_emissoes || res.locals.permit_faturamento_gerar_etiquetas || res.locals.permit_faturamento_automatico || res.locals.permit_faturamento_gerenciar_pedidos || res.locals.permit_faturamento_assistencias || res.locals.permit_faturamento_historico_notas;
-        res.locals.permit_produtos = res.locals.permit_produtos_gerenciar || res.locals.permit_produtos_tipos || res.locals.permit_produtos_sincronizar || res.locals.permit_produtos_estoque_dev || res.locals.permit_produtos_bipagem_pecas;
+        res.locals.permit_produtos = res.locals.permit_produtos_gerenciar || res.locals.permit_produtos_tipos || res.locals.permit_produtos_sincronizar || res.locals.permit_produtos_estoque_dev || res.locals.permit_produtos_bipagem_pecas || res.locals.permit_produtos_anuncios;
         res.locals.permit_expedicao = res.locals.permit_expedicao_ordenador || res.locals.permit_expedicao_gondolas || res.locals.permit_expedicao_rel_tarde || res.locals.permit_expedicao_bipagem_produtos || res.locals.permit_expedicao_dashboard || res.locals.permit_expedicao_bipagem_exp || res.locals.permit_expedicao_massa;
         res.locals.permit_conferencia = res.locals.permit_conferencia_bipagem || res.locals.permit_conferencia_codigos || res.locals.permit_conferencia_ml_batch;
         res.locals.permit_logistica = res.locals.permit_logistica_relacoes || res.locals.permit_logistica_rastreio;
@@ -148,6 +157,7 @@ app.use((req, res, next) => {
         res.locals.tipo_conta = null;
         res.locals.isAdmin = false;
         res.locals.isMaster = false;
+        res.locals.sidebar_collapsed = false;
         
         res.locals.permit_monitoramento = false;
         res.locals.permit_faturamento = false;
@@ -187,11 +197,13 @@ app.use('/', mlRoutes);
 app.use('/', etiquetasRoutes);
 app.use('/', tiposRoutes);
 app.use('/', produtosRoutes);
+app.use('/', anunciosRoutes);
 app.use('/faturamento-automatico', faturamentoAutomaticoRoutes);
 app.use('/product-sync', prodSyncRoutes);
 app.use('/conferencia', conferenciaRoutes);
 app.use('/estoque', estoqueRoutes);
-app.use('/webhooks/bling', blingWebhookRoutes);
+// NOTA: blingWebhookRoutes foi movido para ANTES do middleware de auth (linha ~57)
+app.use('/api/stock-history', stockHistoryRoutes);
 
 //mercadoLivreSyncService.startOrderSync(300000);
 
@@ -249,6 +261,28 @@ cron.schedule('*/50 * * * *', async () => {
     } finally {
         // 5. IMPORTANTE: Solta a trava independente de sucesso ou erro
         isHubSyncRunning = false;
+    }
+});
+
+let isAnunciosLocalSyncRunning = false;
+
+// Sincronização agendada de anúncios de 1 em 1 minuto (Hub -> Inova)
+cron.schedule('*/1 * * * *', async () => {
+    if (isAnunciosLocalSyncRunning) {
+        console.log('[Anúncios Cron] Sincronização já em andamento. Pulando este ciclo...');
+        return;
+    }
+
+    isAnunciosLocalSyncRunning = true;
+    console.log('[Anúncios Cron] Iniciando sincronização automática de anúncios...');
+
+    try {
+        const resultado = await anunciosController.sincronizarAnunciosInterno();
+        console.log(`[Anúncios Cron] Concluída com sucesso! Total: ${resultado.total || 0}, Novos: ${resultado.novos || 0}, Atualizados: ${resultado.atualizados || 0}`);
+    } catch (error) {
+        console.error('[Anúncios Cron] Erro durante a sincronização:', error.message);
+    } finally {
+        isAnunciosLocalSyncRunning = false;
     }
 });
 

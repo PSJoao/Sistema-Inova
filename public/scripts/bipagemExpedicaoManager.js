@@ -13,7 +13,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     await carregarColetas();
     await carregarHierarquiaHoje();
     setupEventListeners();
+    focarInputBipagem();
 });
+
+function focarInputBipagem() {
+    setTimeout(() => {
+        const input = document.getElementById('input-bipagem');
+        if (input && document.activeElement !== input) {
+            input.focus();
+        }
+    }, 150);
+}
 
 // ==========================================
 // 1. CARREGAMENTO INICIAL E COMBOS
@@ -273,7 +283,14 @@ async function processarBipagem(codigoLido) {
 
         if (!apiData.success) {
             tocarErro();
-            ToastSystem.warning(apiData.message, 3500);
+            if (typeof ModalSystem !== 'undefined' && ModalSystem.alert) {
+                ModalSystem.alert(apiData.message, 'Atenção Bipagem', () => {
+                    focarInputBipagem();
+                });
+            } else {
+                ToastSystem.warning(apiData.message, 4000);
+                focarInputBipagem();
+            }
             return;
         }
 
@@ -281,20 +298,28 @@ async function processarBipagem(codigoLido) {
             const carregadorEncontrado = apiData.data;
             if (!estadoAtual.nf) {
                 tocarErro();
-                ToastSystem.warning('Você precisa bipar uma NF antes de bipar os carregadores.', 3500);
+                if (typeof ModalSystem !== 'undefined' && ModalSystem.alert) {
+                    ModalSystem.alert('Você precisa bipar uma NF antes de bipar os carregadores.', 'Atenção', () => {
+                        focarInputBipagem();
+                    });
+                } else {
+                    ToastSystem.warning('Você precisa bipar uma NF antes de bipar os carregadores.', 3500);
+                    focarInputBipagem();
+                }
                 return;
             }
 
             if (estadoAtual.carregadoresBipados.includes(carregadorEncontrado.id)) {
                 tocarNotificacao();
+                focarInputBipagem();
                 return;
             }
 
             estadoAtual.carregadoresBipados.push(carregadorEncontrado.id);
-            // Armazenar temporariamente dados visuais
             carregadoresAtivos[carregadorEncontrado.codigo_barras] = carregadorEncontrado;
             atualizarUI();
             tocarNotificacao();
+            focarInputBipagem();
 
         } else if (apiData.type === 'nfe') {
             if (estadoAtual.nf) {
@@ -305,12 +330,21 @@ async function processarBipagem(codigoLido) {
             estadoAtual.carregadoresBipados = [];
             atualizarUI();
             tocarNotificacao();
+
+            // Verifica se o modo 'Sem Carregador' está ativo para gravar imediatamente
+            const chkSem = document.getElementById('chk-sem-carregador');
+            if (chkSem && chkSem.checked) {
+                await encerrarESalvarNfAtual();
+            } else {
+                focarInputBipagem();
+            }
         }
 
     } catch (err) {
         console.error(err);
         tocarErro();
         ToastSystem.error('Erro de conexão ao identificar código.', 3500);
+        focarInputBipagem();
     }
 }
 
@@ -334,11 +368,16 @@ async function encerrarESalvarNfAtual(explicit = false) {
     }
 
     if (carregadoresParaSalvar.length === 0) {
-        // Agora o erro e o modal disparam sempre, seja clicando no botão ou bipando uma nova NF
         tocarErro();
-        ToastSystem.warning(`A NF ${estadoAtual.nf} não foi dada como expedida, pois nenhum carregador foi bipado.`, 4000);
+        if (typeof ModalSystem !== 'undefined' && ModalSystem.alert) {
+            ModalSystem.alert(`A NF ${estadoAtual.nf} não foi gravada pois nenhum carregador foi bipado. Selecione a opção 'Sem Carregador' se for gravar sem carregadores.`, 'Aviso', () => {
+                focarInputBipagem();
+            });
+        } else {
+            ToastSystem.warning(`A NF ${estadoAtual.nf} não foi gravada pois nenhum carregador foi bipado.`, 4000);
+            focarInputBipagem();
+        }
 
-        // Descarta localmente e aborta o salvamento
         estadoAtual.nf = null;
         estadoAtual.carregadoresBipados = [];
         atualizarUI();
@@ -349,7 +388,7 @@ async function encerrarESalvarNfAtual(explicit = false) {
         const bodyData = {
             palete_id: estadoAtual.paleteId,
             nf: estadoAtual.nf,
-            carregadores: carregadoresParaSalvar // Array de IDs processado
+            carregadores: carregadoresParaSalvar
         };
 
         const response = await fetch('/api/expedicao/registrar-bipagem', {
@@ -358,18 +397,28 @@ async function encerrarESalvarNfAtual(explicit = false) {
             body: JSON.stringify(bodyData)
         });
 
-        if (!response.ok) throw new Error('Erro ao salvar bipagem.');
+        if (!response.ok) {
+            const errJson = await response.json().catch(() => ({}));
+            throw new Error(errJson.error || errJson.message || 'Erro ao salvar bipagem.');
+        }
 
-        // Sucesso! Limpa o estado da NF
         estadoAtual.nf = null;
         estadoAtual.carregadoresBipados = [];
         atualizarUI();
-        await carregarHierarquiaHoje(); // Atualiza a tabela na nuvem local!
+        await carregarHierarquiaHoje();
+        focarInputBipagem();
 
     } catch (e) {
         console.error(e);
         tocarErro();
-        ToastSystem.error('Falha na Gravação: Erro ao salvar a NF no banco.', 4000);
+        if (typeof ModalSystem !== 'undefined' && ModalSystem.alert) {
+            ModalSystem.alert(e.message || 'Falha na Gravação: Erro ao salvar a NF no banco.', 'Erro ao Gravar', () => {
+                focarInputBipagem();
+            });
+        } else {
+            ToastSystem.error('Falha na Gravação: Erro ao salvar a NF no banco.', 4000);
+            focarInputBipagem();
+        }
     }
 }
 

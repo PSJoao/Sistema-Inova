@@ -5,7 +5,12 @@ const authController = require('../controllers/authController');
 
 //Rota de login
 router.use(authController.requireAuth);
-router.use(authController.requireModule('monitoramento_viavarejo'));
+router.use((req, res, next) => {
+    if (req.path.startsWith('/viavarejo')) {
+        return authController.requireModule('monitoramento_viavarejo')(req, res, next);
+    }
+    next();
+});
 
 // Rota para exibir as URLs do Via Varejo
 router.get('/viavarejo/urls', viaVarejoController.getViaVarejoUrls);

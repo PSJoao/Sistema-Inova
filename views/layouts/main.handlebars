@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{title}} - InovaXPress</title>
-  <link rel="shortcut icon" href="/public/icons/favicon.ico" type="image/x-icon">
+  <link rel="shortcut icon" href="/public/images/inovaxpress_logo.png" type="image/png">
 
   <link href="/public/styles/reset.css" rel="stylesheet">
   <link href="/public/styles/theme.css" rel="stylesheet">
@@ -33,12 +33,12 @@
 
 <body>
   <div class="page-container">
-    <aside class="sidebar" id="sidebar">
+    <aside class="sidebar {{#if sidebar_collapsed}}collapsed{{/if}}" id="sidebar">
       <div class="sidebar-content-sticky-wrapper">
         <div class="sidebar-header">
           <a href="/" class="logo-link">
-            <img src="/public/icons/favicon.ico" alt="Logo InovaXPress" class="logo-img">
-            <h2 class="logo-text">INOVA<span class="logo-accent">X</span>PRESS</h2>
+            <img src="/public/images/inovaxpress_logo_completa.png" alt="InovaXPress Completa" class="logo-img logo-full">
+            <img src="/public/images/inovaxpress_logo.png" alt="InovaXPress Ícone" class="logo-img logo-icon">
           </a>
         </div>
         <nav class="sidebar-nav">
@@ -125,6 +125,9 @@
                 {{#if permit_produtos_gerenciar}}
                 <li><a href="/produtos/listagem"><i class="fas fa-box fa-fw"></i> Gerenciar Produtos</a></li>
                 {{/if}}
+                {{#if permit_produtos_anuncios}}
+                <li><a href="/anuncios"><i class="fas fa-bullhorn fa-fw"></i> Gerenciar Anúncios</a></li>
+                {{/if}}
                 {{#if permit_produtos_tipos}}
                 <li><a href="/tipos"><i class="fas fa-file-export fa-fw"></i> Gerenciar Tipos de Produtos</a></li>
                 {{/if}}
@@ -186,8 +189,8 @@
                 {{/if}}
                 {{#if permit_conferencia_codigos}}
                 <li><a href="/conferencia/gerenciamento-codigos"><i class="fas fa-cog fa-fw"></i> Gerenciar Códigos</a>
-                {{/if}}
-                {{#if permit_conferencia_ml_batch}}
+                  {{/if}}
+                  {{#if permit_conferencia_ml_batch}}
                 <li><a href="/conferencia/ml-batch"><i class="fas fas fa-align-left fa-fw"></i> Conf. para
                     Faturamento</a>
                 </li>
@@ -227,7 +230,7 @@
       </div>
     </aside>
 
-    <div class="page-wrapper" id="pageWrapper">
+    <div class="page-wrapper {{#if sidebar_collapsed}}sidebar-collapsed{{/if}}" id="pageWrapper">
       <header class="top-bar" id="topBar">
         <button class="sidebar-toggle-btn" id="sidebarToggleBtn" aria-label="Alternar menu lateral">
           <i class="fas fa-bars"></i>

@@ -182,6 +182,31 @@ class HubMercadoLivreService {
 
                                 const envioData = envioResponse.data;
 
+                                // ============ DEBUG TEMPORÁRIO - REMOVER DEPOIS ============
+                                console.log(`[DEBUG ENVIO] Pedido ${pedidoData.id} | Shipment ${envioData?.id} | Status: ${envioData?.status}/${envioData?.substatus}`);
+                                console.log(`[DEBUG ENVIO] === SEM x-format-new (formato antigo) ===`);
+                                console.log(`[DEBUG ENVIO]   shipping_option.buffering: ${JSON.stringify(envioData?.shipping_option?.buffering)}`);
+                                console.log(`[DEBUG ENVIO]   shipping_option.estimated_schedule_limit: ${JSON.stringify(envioData?.shipping_option?.estimated_schedule_limit)}`);
+                                console.log(`[DEBUG ENVIO]   shipping_option.estimated_delivery_time?.date: ${envioData?.shipping_option?.estimated_delivery_time?.date}`);
+
+                                // Segunda chamada COM header x-format-new para comparar
+                                try {
+                                    const envioNewFormat = await axios.get(`${ML_API_URL}/shipments/${envioData?.id}`, {
+                                        headers: { 'Authorization': `Bearer ${accessToken}`, 'x-format-new': 'true' }
+                                    });
+                                    const envioNew = envioNewFormat.data;
+                                    console.log(`[DEBUG ENVIO] === COM x-format-new (formato novo) ===`);
+                                    console.log(`[DEBUG ENVIO]   lead_time existe? ${!!envioNew?.lead_time}`);
+                                    console.log(`[DEBUG ENVIO]   lead_time.buffering: ${JSON.stringify(envioNew?.lead_time?.buffering)}`);
+                                    console.log(`[DEBUG ENVIO]   lead_time.estimated_schedule_limit: ${JSON.stringify(envioNew?.lead_time?.estimated_schedule_limit)}`);
+                                    console.log(`[DEBUG ENVIO]   lead_time.estimated_delivery_time?.date: ${envioNew?.lead_time?.estimated_delivery_time?.date}`);
+                                    console.log(`[DEBUG ENVIO]   shipping_option ainda existe? ${!!envioNew?.shipping_option}`);
+                                } catch (debugErr) {
+                                    console.log(`[DEBUG ENVIO]   Erro ao buscar com x-format-new: ${debugErr.message}`);
+                                }
+                                console.log(`[DEBUG ENVIO] ---`);
+                                // ============ FIM DEBUG TEMPORÁRIO ============
+
                                 if (envioData) {
                                     novoPedido.id_envio_ml = envioData.id;
                                     novoPedido.status_envio = this.resolverStatusEnvio(envioData);

@@ -8,9 +8,11 @@
     flex-direction: column;
     gap: 1.5rem;
     padding: 15px;
-    max-width: 1400px;
+    max-width: 100%;
+    width: 100%;
     margin: 0 auto;
     font-family: var(--font-primary, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif);
+    box-sizing: border-box;
 }
 
 .dashboard-header {
@@ -54,6 +56,8 @@
     box-shadow: var(--box-shadow-medium, 0 8px 25px rgba(0, 0, 0, 0.5));
     display: flex;
     flex-direction: column;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .panel-title {
@@ -163,14 +167,17 @@
 .table-toolbar {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 1rem;
     flex-wrap: wrap;
-    margin-bottom: 0.1rem;
+    margin-bottom: 0.8rem;
+    width: 100%;
 }
 
 .toolbar-actions {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 0.6rem;
     flex-wrap: wrap;
     margin-left: auto;
@@ -178,12 +185,16 @@
 
 .toolbar-buttons {
     display: flex;
+    align-items: center;
     gap: 0.35rem;
+    flex-wrap: wrap;
 }
 
 .toolbar-filters {
     display: flex;
+    align-items: center;
     gap: 0.4rem;
+    flex-wrap: wrap;
 }
 
 .btn-toolbar {
@@ -348,67 +359,147 @@
 }
 
 /* ==========================================================================
-   REFORMULAÇÃO TOTAL DO DATATABLES
+   REFORMULAÇÃO TOTAL DO DATATABLES (PADRÃO ESTOQUE / ANÚNCIOS)
    ========================================================================== */
+.table-responsive,
+.dataTables_wrapper,
+.dataTables_scroll,
+.dataTables_scrollHead,
+.dataTables_scrollHeadInner,
+.dataTables_scrollBody,
+table.dataTable,
+#tabela-pendencias {
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+}
+
 .table-responsive {
     width: 100%;
-    overflow-x: auto;
-    border-radius: var(--border-radius-md, 8px);
+    margin-top: 0.5rem;
+    background: transparent !important;
 }
 
-/* Ajustes estruturais da Tabela */
+#tabela-pendencias,
 table.dataTable,
 .dashboard-wrapper .table {
-    width: 100% !important;
     border-collapse: collapse !important;
-    /* Resolve colunas separadas/fantasmas */
-    margin: 1.5rem 0 !important;
-    color: var(--text-secondary, #ccc);
-}
-
-/* Correção para evitar gap entre header e body quando scrollX está ativado */
-.dataTables_scrollHead table.dataTable,
-.dataTables_scrollBody table.dataTable,
-.dataTables_scrollHead .table,
-.dataTables_scrollBody .table {
+    width: 100% !important;
     margin: 0 !important;
+    background-color: var(--bg-secondary, #1e1e1e) !important;
+    white-space: nowrap !important;
+    table-layout: auto !important;
+    font-size: 0.88rem;
+}
+
+/* 1. Header com Sombreado Bonito (igual Lista de Anúncios) */
+.dataTables_scrollHead {
+    position: relative !important;
+    z-index: 10 !important;
+    background-color: var(--bg-tertiary, #2a2a2a) !important;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35) !important;
+    border-radius: 8px 8px 0 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.dataTables_scrollHeadInner,
+.dataTables_scrollHeadInner > table,
+.dataTables_scrollHead table.dataTable,
+.dataTables_scrollHead .table {
+    background-color: var(--bg-tertiary, #2a2a2a) !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-spacing: 0 !important;
 }
 
 table.dataTable thead th,
-table.dataTable tbody td,
+#tabela-pendencias thead th,
 .dashboard-wrapper .table thead th,
-.dashboard-wrapper .table tbody td {
-    box-sizing: border-box;
-    /* Previne que o padding quebre as larguras */
-    padding: 1rem 1.2rem;
-    border: none;
-    vertical-align: middle;
+.dataTables_scrollHead th {
+    background-color: var(--bg-tertiary, #2a2a2a) !important;
+    border: none !important;
+    color: var(--text-primary, #ffffff) !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.5px !important;
+    text-transform: uppercase !important;
+    font-size: 0.85rem !important;
+    text-align: left !important;
+    white-space: nowrap !important;
+    padding: 0.6rem 0.8rem !important;
 }
 
-/* Cabeçalho */
-table.dataTable thead th,
-.dashboard-wrapper .table thead th {
-    background-color: rgba(255, 255, 255, 0.03) !important;
-    border-bottom: 2px solid var(--accent-orange, #f07c00) !important;
-    color: var(--text-primary, #fff);
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    font-size: 0.85rem;
-    text-align: left;
-    white-space: nowrap;
+/* 2. Eliminação Total de Vão e da Barra Cinza Fantasma do thead no scrollBody */
+.dataTables_scrollBody {
+    background-color: var(--bg-secondary, #1e1e1e) !important;
+    border-radius: 0 0 8px 8px !important;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
 }
 
-/* Linhas do Corpo */
-table.dataTable tbody tr,
-.dashboard-wrapper .table tbody tr {
-    background-color: transparent !important;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+.dataTables_scrollBody > table {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    border-spacing: 0 !important;
+}
+
+.dataTables_scrollBody table thead {
+    height: 0 !important;
+    max-height: 0 !important;
+    line-height: 0 !important;
+    font-size: 0 !important;
+    border: none !important;
+    overflow: hidden !important;
+}
+
+.dataTables_scrollBody table thead tr {
+    height: 0 !important;
+    max-height: 0 !important;
+    line-height: 0 !important;
+    border: none !important;
+    overflow: hidden !important;
+}
+
+.dataTables_scrollBody table thead th,
+.dataTables_scrollBody table thead td,
+.dataTables_scrollBody #tabela-pendencias thead th,
+.dataTables_scrollBody #tabela-pendencias thead td,
+.dataTables_scrollBody .table thead th,
+.dataTables_scrollBody .table thead td {
+    height: 0 !important;
+    max-height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    font-size: 0 !important;
+    line-height: 0 !important;
+    visibility: hidden !important;
+    outline: none !important;
+}
+
+/* 3. Linhas do Corpo (Conectadas diretamente abaixo do header) */
+table.dataTable tbody td,
+#tabela-pendencias tbody td,
+.dashboard-wrapper .table tbody td,
+.dataTables_scrollBody td {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+    border-top: none !important;
+    border-left: none !important;
+    border-right: none !important;
+    color: var(--text-secondary, #cccccc) !important;
+    padding: 0.5rem 0.8rem !important;
+    vertical-align: middle !important;
     transition: background 0.2s ease;
 }
 
-table.dataTable tbody tr:hover,
-.dashboard-wrapper .table tbody tr:hover {
+.dataTables_scrollBody tbody tr:first-child td {
+    border-top: none !important;
+}
+
+table.dataTable tbody tr:hover td,
+#tabela-pendencias tbody tr:hover td,
+.dashboard-wrapper .table tbody tr:hover td {
     background-color: rgba(240, 124, 0, 0.05) !important;
 }
 
@@ -688,14 +779,15 @@ table.dataTable tbody tr:hover,
     cursor: pointer;
 }
 
-.photo-stack img, .photo-stack .stack-back {
+.photo-stack img,
+.photo-stack .stack-back {
     position: absolute;
     width: 44px;
     height: 44px;
     object-fit: cover;
     border-radius: 6px;
     border: 1.5px solid var(--accent-orange, #f07c00);
-    box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
     transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
 }
 
@@ -750,6 +842,43 @@ table.dataTable tbody tr:hover,
     padding: 1px 5px;
     z-index: 4;
     border: 1px solid var(--bg-secondary, #1e1e1e);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.6);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
     pointer-events: none;
+}
+
+/* ==========================================================================
+   FORMATAÇÃO DE LINHAS E COLUNAS (COMPACTO E EM 1 LINHA - ESTILO ANÚNCIOS)
+   ========================================================================== */
+#tabela-pendencias th,
+#tabela-pendencias td,
+table.dataTable th,
+table.dataTable td {
+    white-space: nowrap !important;
+    word-break: keep-all !important;
+    word-wrap: normal !important;
+    padding: 0.5rem 0.8rem !important;
+    vertical-align: middle !important;
+    font-size: 0.85rem !important;
+}
+
+#tabela-pendencias tbody tr,
+table.dataTable tbody tr {
+    height: 38px !important;
+}
+
+/* Badges compactas em linha única */
+#tabela-pendencias .badge,
+table.dataTable .badge {
+    white-space: nowrap !important;
+    vertical-align: middle !important;
+    font-size: 0.72rem !important;
+    padding: 0.25rem 0.5rem !important;
+}
+
+/* Botões de Ação compactos */
+#tabela-pendencias .btn-action,
+table.dataTable .btn-action {
+    width: 26px !important;
+    height: 26px !important;
+    font-size: 0.7rem !important;
 }

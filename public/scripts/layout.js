@@ -21,6 +21,16 @@ document.addEventListener('DOMContentLoaded', function () {
                 sidebar.classList.toggle('collapsed'); 
                 // 'sidebar-collapsed' ajusta a margem do conteúdo
                 pageWrapper.classList.toggle('sidebar-collapsed'); 
+
+                // Persiste o estado da sidebar no banco de dados para o usuário
+                const isCollapsed = sidebar.classList.contains('collapsed');
+                fetch('/api/user/sidebar-state', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ collapsed: isCollapsed })
+                }).catch(err => console.error('Erro ao salvar estado da sidebar:', err));
             }
         });
     }

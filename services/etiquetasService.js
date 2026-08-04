@@ -2291,7 +2291,12 @@ async function obterDadosGestaoConferencia() {
                 cpv.numero as pedido_numero
             FROM cached_etiquetas_ml m
             LEFT JOIN conferencia_relatorio cr ON cr.nfe_numero = m.nfe_numero
-            LEFT JOIN cached_pedido_venda cpv ON cpv.nfe_parent_numero = m.nfe_numero
+            LEFT JOIN (
+                SELECT DISTINCT ON (nfe_parent_numero) nfe_parent_numero, numero, numero_loja, cep
+                FROM cached_pedido_venda
+                WHERE nfe_parent_numero IS NOT NULL AND nfe_parent_numero != ''
+                ORDER BY nfe_parent_numero, data_pedido DESC NULLS LAST, created_at DESC, id DESC
+            ) cpv ON cpv.nfe_parent_numero = m.nfe_numero
             WHERE m.passou_conferencia_bipagem = true
             ORDER BY m.bling_sync_status ASC, cr.data_hora DESC
         `;
@@ -2498,7 +2503,7 @@ async function _processarLoteBling(jobId, jobState) {
             WHERE m.passou_conferencia_bipagem = true
               AND m.bling_sync_status IN ('pending', 'error')
             ORDER BY cr.data_hora ASC NULLS LAST
-            LIMIT 10
+            LIMIT 1000
         `;
         const res = await client.query(query);
         const nfeList = res.rows.map(r => r.nfe_numero);
@@ -2723,7 +2728,7 @@ async function obterDadosDashboardExpedicao(dataInicio, dataFim) {
 async function obterTabelaDashboardExpedicao(params) {
     const client = await pool.connect();
     try {
-        const { dataInicio, dataFim, start = 0, length = 10, searchValue, orderColIndex, orderDir, statusInterno, statusMl, statusFoto } = params;
+        const { dataInicio, dataFim, start = 0, length = 10, searchValue, orderColIndex, orderDir, statusInterno, statusMl, statusFoto, statusEmbarcado } = params;
 
         let whereClauses = [];
         let queryParams = [];
@@ -2762,9 +2767,15 @@ async function obterTabelaDashboardExpedicao(params) {
             whereClauses.push(`m.tem_foto = TRUE AND m.foto_validacao IS NULL`);
         }
 
+        if (statusEmbarcado === 'Embarcado') {
+            whereClauses.push(`m.embarcado = TRUE`);
+        } else if (statusEmbarcado === 'Não Embarcado') {
+            whereClauses.push(`(m.embarcado = FALSE OR m.embarcado IS NULL)`);
+        }
+
         if (searchValue) {
             let extraSkusClause = '';
-            
+
             const prodRes = await client.query(`
                 SELECT sku 
                 FROM cached_products 
@@ -2804,16 +2815,47 @@ async function obterTabelaDashboardExpedicao(params) {
         const countQuery = `
             SELECT COUNT(DISTINCT m.id) as total
             FROM cached_etiquetas_ml m
-            LEFT JOIN cached_pedido_venda cpv ON cpv.nfe_parent_numero = m.nfe_numero
+            LEFT JOIN (
+                SELECT DISTINCT ON (nfe_parent_numero) nfe_parent_numero, numero, numero_loja, cep
+                FROM cached_pedido_venda
+                WHERE nfe_parent_numero IS NOT NULL AND nfe_parent_numero != ''
+                ORDER BY nfe_parent_numero, data_pedido DESC NULLS LAST, created_at DESC, id DESC
+            ) cpv ON cpv.nfe_parent_numero = m.nfe_numero
             ${whereString}
         `;
         const countRes = await client.query(countQuery, queryParams);
         const recordsFiltered = parseInt(countRes.rows[0].total);
 
-        // Order mapping
+        // Order mapping para todas as colunas da tabela
         let orderClause = `ORDER BY order_status ASC, m.created_at DESC`;
-        if (orderColIndex === '1' && orderDir) orderClause = `ORDER BY m.created_at ${orderDir.toUpperCase()}`;
-        else if (orderColIndex === '2' && orderDir) orderClause = `ORDER BY m.nfe_numero ${orderDir.toUpperCase()}`;
+        const dir = (orderDir || 'ASC').toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+
+        if (orderColIndex !== undefined && orderColIndex !== null && orderColIndex !== '') {
+            const idx = String(orderColIndex);
+            if (idx === '1') {
+                orderClause = `ORDER BY m.created_at ${dir}`;
+            } else if (idx === '2') {
+                orderClause = `ORDER BY m.nfe_numero ${dir}`;
+            } else if (idx === '3') {
+                orderClause = `ORDER BY cpv.numero ${dir} NULLS LAST`;
+            } else if (idx === '4') {
+                orderClause = `ORDER BY COALESCE(m.pack_id, m.numero_loja) ${dir} NULLS LAST`;
+            } else if (idx === '5' || idx === '6') {
+                orderClause = `ORDER BY m.skus::text ${dir} NULLS LAST`;
+            } else if (idx === '7') {
+                orderClause = `ORDER BY m.locations ${dir} NULLS LAST`;
+            } else if (idx === '8') {
+                orderClause = `ORDER BY m.status_ml ${dir} NULLS LAST`;
+            } else if (idx === '9') {
+                orderClause = `ORDER BY m.status ${dir} NULLS LAST`;
+            } else if (idx === '10') {
+                orderClause = `ORDER BY m.embarcado ${dir} NULLS LAST, m.created_at DESC`;
+            } else if (idx === '11') {
+                orderClause = `ORDER BY m.palete ${dir} NULLS LAST, m.numero_coleta ${dir} NULLS LAST`;
+            } else if (idx === '12') {
+                orderClause = `ORDER BY m.data_embarque ${dir} NULLS LAST`;
+            }
+        }
 
         // Fetch Data
         const dataQuery = `
@@ -2832,9 +2874,18 @@ async function obterTabelaDashboardExpedicao(params) {
                 (DATE(m.created_at) < data_virtual_expedicao() AND m.status NOT IN ('cancelado', 'cancelamento', 'sem_estoque', 'impresso')) as heranca_ontem,
                 CASE WHEN m.status = 'impresso' THEN 1 ELSE 0 END as order_status,
                 m.foto_validacao,
-                m.tem_foto
+                m.tem_foto,
+                COALESCE(m.embarcado, FALSE) as embarcado,
+                m.palete,
+                m.numero_coleta,
+                m.data_embarque
             FROM cached_etiquetas_ml m
-            LEFT JOIN cached_pedido_venda cpv ON cpv.nfe_parent_numero = m.nfe_numero
+            LEFT JOIN (
+                SELECT DISTINCT ON (nfe_parent_numero) nfe_parent_numero, numero, numero_loja, cep
+                FROM cached_pedido_venda
+                WHERE nfe_parent_numero IS NOT NULL AND nfe_parent_numero != ''
+                ORDER BY nfe_parent_numero, data_pedido DESC NULLS LAST, created_at DESC, id DESC
+            ) cpv ON cpv.nfe_parent_numero = m.nfe_numero
             ${whereString}
             ${orderClause}
             ${length === -1 ? `OFFSET $${paramIndex}` : `LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`}
@@ -3032,13 +3083,28 @@ async function registrarBipagemExpedicaoFinal(paleteId, nfLida, carregadoresIds)
     try {
         await client.query('BEGIN');
 
-        // 1. Verifica se a NF existe na cached_etiquetas_ml para saber se é Kit e abater
+        // Buscar identificação do palete e da coleta correspondente
+        const paleteInfoQuery = await client.query(
+            `SELECT p.identificacao as palete_nome, c.identificacao as coleta_nome 
+             FROM expedicao_paletes p 
+             JOIN expedicao_coletas c ON c.id = p.coleta_id 
+             WHERE p.id = $1 LIMIT 1`,
+            [paleteId]
+        );
+
+        let paleteNome = 'Palete';
+        let coletaNome = 'Coleta';
+        if (paleteInfoQuery.rows.length > 0) {
+            paleteNome = paleteInfoQuery.rows[0].palete_nome;
+            coletaNome = paleteInfoQuery.rows[0].coleta_nome;
+        }
+
+        // 1. Verifica se a NF existe na cached_etiquetas_ml para saber se é Kit e grava os dados de embarque
         let isKit = false;
         const mlCheck = await client.query(`SELECT id, skus FROM cached_etiquetas_ml WHERE nfe_numero = $1 LIMIT 1`, [nfLida]);
         if (mlCheck.rows.length > 0) {
             const row = mlCheck.rows[0];
 
-            // Nova lógica de Kit: verificar se tem volumes > 1 na cached_products
             let skuArray = [];
             if (typeof row.skus === 'string') {
                 skuArray = row.skus.split(',').map(s => s.trim()).filter(Boolean);
@@ -3051,22 +3117,29 @@ async function registrarBipagemExpedicaoFinal(paleteId, nfLida, carregadoresIds)
                     `SELECT volumes FROM cached_products WHERE sku = ANY($1::text[]) AND bling_account = 'lucas'`,
                     [skuArray]
                 );
-                // Se algum produto da NF tiver volumes > 1 na sua estrutura real, a nota é um Kit
                 isKit = prodCheck.rows.some(p => parseInt(p.volumes) > 1);
             }
 
-            // Atualiza para 'impresso' tirando da fila do Dashboard!
-            await client.query(`UPDATE cached_etiquetas_ml SET status = 'impresso' WHERE nfe_numero = $1`, [nfLida]);
+            // Atualiza a flag embarcado, palete, numero_coleta e data_embarque (Mantém status original sem alterar para 'impresso')
+            await client.query(
+                `UPDATE cached_etiquetas_ml 
+                 SET embarcado = TRUE, 
+                     palete = $1, 
+                     numero_coleta = $2, 
+                     data_embarque = timestamp_virtual_expedicao() 
+                 WHERE nfe_numero = $3`,
+                [paleteNome, coletaNome, nfLida]
+            );
         }
 
-        // 2. Verifica duplicata antes de registrar
+        // 2. Verifica duplicata em expedicao_registros antes de registrar
         const dupCheck = await client.query(
             `SELECT id FROM expedicao_registros WHERE nf = $1 LIMIT 1`,
             [nfLida]
         );
         if (dupCheck.rows.length > 0) {
             await client.query('ROLLBACK');
-            throw new Error(`A NF ${nfLida} já foi expedida anteriormente.`);
+            throw new Error(`A NF ${nfLida} já foi bipada para embarque nesta expedição.`);
         }
 
         // 3. Registra na tabela de expedição
@@ -3076,7 +3149,7 @@ async function registrarBipagemExpedicaoFinal(paleteId, nfLida, carregadoresIds)
         );
         const registroId = regRes.rows[0].id;
 
-        // 3. Rateia a pontuação (1 ponto dividido pelos carregadores)
+        // 4. Rateia a pontuação entre os carregadores
         if (carregadoresIds && carregadoresIds.length > 0) {
             const pontosPorPessoa = 1.00 / carregadoresIds.length;
             for (const idCarregador of carregadoresIds) {
@@ -3098,142 +3171,9 @@ async function registrarBipagemExpedicaoFinal(paleteId, nfLida, carregadoresIds)
 }
 
 async function registrarProdutividadeConferencia(nfLida, carregadoresIds) {
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-
-        // 1. Identificar se a NF já tem registro na expedição
-        const dupCheck = await client.query(
-            `SELECT id FROM expedicao_registros WHERE nf = $1 LIMIT 1`,
-            [nfLida]
-        );
-        if (dupCheck.rows.length > 0) {
-            await client.query('ROLLBACK');
-            return { success: true, message: 'Já registrado anteriormente.' };
-        }
-
-        // 2. Determinar se é Kit (Mais de 1 item a ser bipado na nota)
-        let isKit = false;
-        try {
-            // 2.1. Busca itens da nota (Tenta nfe_quantidade_produto primeiro)
-            let itemsRes = await client.query(
-                `SELECT produto_codigo, quantidade FROM nfe_quantidade_produto WHERE nfe_numero = $1`,
-                [nfLida]
-            );
-            let items = itemsRes.rows;
-
-            // 2.2. Fallback: Se não achar itens, busca na cached_etiquetas_ml (Notas do HUB)
-            if (items.length === 0) {
-                const mlRes = await client.query(
-                    `SELECT skus, quantidade_total FROM cached_etiquetas_ml WHERE nfe_numero = $1 LIMIT 1`,
-                    [nfLida]
-                );
-                if (mlRes.rows.length > 0) {
-                    const row = mlRes.rows[0];
-                    let parsedSkus = [];
-                    try {
-                        if (typeof row.skus === 'string') parsedSkus = JSON.parse(row.skus);
-                        else if (Array.isArray(row.skus)) parsedSkus = row.skus;
-                    } catch (e) {
-                        parsedSkus = (row.skus || '').split(',').map(s => ({ original: s.trim() }));
-                    }
-
-                    items = parsedSkus.map(s => {
-                        const skuStr = (typeof s === 'string' ? s : (s.original || s.sku || '')).trim();
-                        return {
-                            produto_codigo: skuStr,
-                            // Se houver apenas 1 SKU, assume a quantidade_total da etiqueta
-                            quantidade: parsedSkus.length === 1 ? (parseInt(row.quantidade_total) || 1) : 1
-                        };
-                    }).filter(it => it.produto_codigo);
-                }
-            }
-
-            // 2.3. Cálculo do total de volumes (bips)
-            let totalVolumes = 0;
-            for (const item of items) {
-                const sku = item.produto_codigo;
-                const qtdNoPedido = parseInt(item.quantidade) || 1;
-
-                // Busca bling_id do produto (Case-insensitive)
-                const prodRes = await client.query(
-                    `SELECT bling_id FROM cached_products WHERE UPPER(sku) = UPPER($1) AND bling_account = 'lucas' LIMIT 1`,
-                    [sku]
-                );
-
-                if (prodRes.rows.length > 0) {
-                    const parentBlingId = prodRes.rows[0].bling_id;
-
-                    // Busca soma das estruturas
-                    const structRes = await client.query(
-                        `SELECT SUM(quantidade) as total FROM cached_structures WHERE parent_product_bling_id = $1`,
-                        [parentBlingId]
-                    );
-
-                    const structuresSum = parseInt(structRes.rows[0]?.total || 0);
-                    if (structuresSum > 0) {
-                        totalVolumes += (structuresSum * qtdNoPedido);
-                    } else {
-                        totalVolumes += qtdNoPedido;
-                    }
-                } else {
-                    // Produto não encontrado no cache de produtos, assume a quantidade informada na nota
-                    totalVolumes += qtdNoPedido;
-                }
-            }
-
-            if (totalVolumes > 1) {
-                isKit = true;
-            }
-            console.log(`[Produtividade] NF ${nfLida} - Final: ${totalVolumes} volumes (isKit: ${isKit})`);
-
-        } catch (kitErr) {
-            console.error(`[Produtividade] Erro crítico ao calcular Kit para NF ${nfLida}:`, kitErr);
-        }
-
-        // 3. Garantir que exista uma Coleta e um Palete Virtual para a Conferência
-        const rColeta = await client.query(`SELECT id FROM expedicao_coletas WHERE DATE(created_at) = CURRENT_DATE LIMIT 1`);
-        let coletaId = rColeta.rows.length > 0 ? rColeta.rows[0].id : null;
-
-        if (!coletaId) {
-            const insertC = await client.query(`INSERT INTO expedicao_coletas (identificacao, data_criacao, created_at) VALUES ('Coleta Conferência', CURRENT_DATE, CURRENT_TIMESTAMP) RETURNING id`);
-            coletaId = insertC.rows[0].id;
-        }
-
-        const rPalete = await client.query(`SELECT id FROM expedicao_paletes WHERE coleta_id = $1 LIMIT 1`, [coletaId]);
-        let paleteId = rPalete.rows.length > 0 ? rPalete.rows[0].id : null;
-
-        if (!paleteId) {
-            const insertP = await client.query(`INSERT INTO expedicao_paletes (coleta_id, identificacao, created_at) VALUES ($1, 'Palete Conferência', CURRENT_TIMESTAMP) RETURNING id`, [coletaId]);
-            paleteId = insertP.rows[0].id;
-        }
-
-        // 4. Insere em expedicao_registros
-        const regRes = await client.query(
-            `INSERT INTO expedicao_registros (palete_id, nf, is_kit, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) RETURNING id`,
-            [paleteId, nfLida, isKit]
-        );
-        const registroId = regRes.rows[0].id;
-
-        // 5. Rateia a pontuação (1 ponto dividido pelos carregadores)
-        if (carregadoresIds && carregadoresIds.length > 0) {
-            const pontosPorPessoa = 1.00 / carregadoresIds.length;
-            for (const idCarregador of carregadoresIds) {
-                await client.query(
-                    `INSERT INTO expedicao_registro_carregadores (registro_id, carregador_id, pontos) VALUES ($1, $2, $3)`,
-                    [registroId, idCarregador, pontosPorPessoa]
-                );
-            }
-        }
-
-        await client.query('COMMIT');
-        return { success: true };
-    } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-    } finally {
-        client.release();
-    }
+    // Ao conferir o pedido, ele apenas muda status para checado.
+    // Não geramos mais 'Coleta Conferência' nem registros em expedicao_registros durante a conferência.
+    return { success: true };
 }
 
 
@@ -3242,38 +3182,65 @@ async function identificarCodigoBipado(codigo) {
     try {
         let finalNfeNumero = codigo;
 
-        // NOVO: Bipagem pelo Número do Pedido (Checkout)
+        // 1. Bipagem pelo Número do Pedido (Checkout)
         const pedidoQuery = await client.query('SELECT nfe_parent_numero FROM cached_pedido_venda WHERE numero = $1 LIMIT 1', [codigo]);
         if (pedidoQuery.rows.length > 0 && pedidoQuery.rows[0].nfe_parent_numero) {
             finalNfeNumero = pedidoQuery.rows[0].nfe_parent_numero;
         }
 
+        // 2. Identificar se é código de Carregador
         const carregadorQuery = await client.query('SELECT id, nome, codigo_barras FROM carregadores WHERE codigo_barras = $1 AND ativo = TRUE', [codigo]);
         if (carregadorQuery.rows.length > 0) {
             return { success: true, type: 'carregador', data: carregadorQuery.rows[0] };
         }
 
+        // 3. Identificar NF por Chave de Acesso (44 dígitos) ou Número da NF
         if (finalNfeNumero.length >= 44) {
             const nfeQuery = await client.query('SELECT nfe_numero FROM cached_nfe WHERE chave_acesso = $1 LIMIT 1', [finalNfeNumero]);
-            if (nfeQuery.rows.length > 0) finalNfeNumero = nfeQuery.rows[0].nfe_numero;
+            if (nfeQuery.rows.length > 0) {
+                finalNfeNumero = nfeQuery.rows[0].nfe_numero;
+            } else {
+                const mlChaveQuery = await client.query('SELECT nfe_numero FROM cached_etiquetas_ml WHERE chave_acesso = $1 LIMIT 1', [finalNfeNumero]);
+                if (mlChaveQuery.rows.length > 0) finalNfeNumero = mlChaveQuery.rows[0].nfe_numero;
+            }
         } else {
             const nfeQuery = await client.query('SELECT nfe_numero FROM cached_nfe WHERE nfe_numero = $1 LIMIT 1', [finalNfeNumero]);
             if (nfeQuery.rows.length > 0) finalNfeNumero = nfeQuery.rows[0].nfe_numero;
         }
 
-        const mlCheck = await client.query(`SELECT id, status FROM cached_etiquetas_ml WHERE nfe_numero = $1 LIMIT 1`, [finalNfeNumero]);
+        // 4. Buscar pedido na cached_etiquetas_ml e aplicar regras de esteira
+        const mlCheck = await client.query(
+            `SELECT id, status, status_ml, passou_conferencia_bipagem, embarcado FROM cached_etiquetas_ml WHERE nfe_numero = $1 LIMIT 1`,
+            [finalNfeNumero]
+        );
+
         if (mlCheck.rows.length > 0) {
-            // TRAVA DE SEGURANÇA: Bloqueia imediatamente se a nota estiver cancelada
-            if (mlCheck.rows[0].status === 'cancelado' || mlCheck.rows[0].status === 'cancelamento') {
+            const item = mlCheck.rows[0];
+
+            // Trava 1: Cancelamento
+            if (item.status === 'cancelado' || item.status === 'cancelamento' || (item.status_ml && item.status_ml.toLowerCase().includes('cancelad'))) {
                 return {
                     success: false,
-                    message: `A Nota Fiscal ${finalNfeNumero} está CANCELADA e não pode ser expedida. Devolva o produto.`
+                    message: `A Nota Fiscal ${finalNfeNumero} está CANCELADA (${item.status_ml || item.status}) e não pode ser embarcada.`
                 };
             }
 
-            if (mlCheck.rows[0].status === 'impresso') {
-                return { success: false, message: 'Esta Nota Fiscal já foi BIPADA e EXPEDIDA!' };
+            // Trava de esteira 2: Somente checados podem ser embarcados
+            if (item.status !== 'checado' && !item.passou_conferencia_bipagem) {
+                return {
+                    success: false,
+                    message: `O pedido com NF ${finalNfeNumero} precisa primeiro ser checado na conferência para poder ser embarcado.`
+                };
             }
+
+            // Trava 3: Já embarcado
+            if (item.embarcado) {
+                return {
+                    success: false,
+                    message: `A Nota Fiscal ${finalNfeNumero} já foi EMBARCADA para esta expedição.`
+                };
+            }
+
             return { success: true, type: 'nfe', nfe: finalNfeNumero };
         }
 
@@ -4044,7 +4011,12 @@ async function gerarPdfPendentes(nfList) {
                    m.pdf_arquivo_origem, m.pdf_pagina,
                    cpv.cep, cpv.numero AS pedido_interno
             FROM cached_etiquetas_ml m
-            LEFT JOIN cached_pedido_venda cpv ON cpv.nfe_parent_numero = m.nfe_numero
+            LEFT JOIN (
+                SELECT DISTINCT ON (nfe_parent_numero) nfe_parent_numero, numero, numero_loja, cep
+                FROM cached_pedido_venda
+                WHERE nfe_parent_numero IS NOT NULL AND nfe_parent_numero != ''
+                ORDER BY nfe_parent_numero, data_pedido DESC NULLS LAST, created_at DESC, id DESC
+            ) cpv ON cpv.nfe_parent_numero = m.nfe_numero
             LEFT JOIN cached_nfe nf ON nf.nfe_numero = m.nfe_numero
             WHERE m.nfe_numero = ANY($1)
         `;
@@ -4629,7 +4601,12 @@ async function obterPedidosComFoto() {
                 m.foto_validacao,
                 cr.data_hora AS conferencia_concluida_em
             FROM cached_etiquetas_ml m
-            LEFT JOIN cached_pedido_venda cpv ON cpv.nfe_parent_numero = m.nfe_numero
+            LEFT JOIN (
+                SELECT DISTINCT ON (nfe_parent_numero) nfe_parent_numero, numero, numero_loja, cep
+                FROM cached_pedido_venda
+                WHERE nfe_parent_numero IS NOT NULL AND nfe_parent_numero != ''
+                ORDER BY nfe_parent_numero, data_pedido DESC NULLS LAST, created_at DESC, id DESC
+            ) cpv ON cpv.nfe_parent_numero = m.nfe_numero
             LEFT JOIN conferencia_relatorio cr ON cr.nfe_numero = m.nfe_numero
             WHERE m.tem_foto = TRUE
             ORDER BY cr.data_hora DESC NULLS LAST, m.created_at DESC
@@ -4640,7 +4617,7 @@ async function obterPedidosComFoto() {
         const uploadDir = path.join(__dirname, '../uploads/fotos-conferencia');
         const validos = res.rows.filter(row => {
             const hasEtiqueta = row.foto_etiqueta_path && fsSync.existsSync(path.join(uploadDir, row.foto_etiqueta_path));
-            
+
             let hasProduto = false;
             if (row.foto_produto_path) {
                 if (row.foto_produto_path.startsWith('[')) {
@@ -4656,7 +4633,7 @@ async function obterPedidosComFoto() {
                     hasProduto = fsSync.existsSync(path.join(uploadDir, row.foto_produto_path));
                 }
             }
-            
+
             return hasEtiqueta || hasProduto;
         });
 

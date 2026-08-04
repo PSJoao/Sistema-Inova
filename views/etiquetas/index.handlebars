@@ -449,36 +449,43 @@
             if (data.success && data.virtualDate) {
                 const btn = document.getElementById('btn-avancar-dia');
                 const lbl = document.getElementById('lbl-data-virtual');
-                lbl.innerText = `(Dia Atual: ${data.virtualDate})`;
-                btn.style.display = 'inline-block';
+                if (lbl) {
+                    lbl.innerText = `(Dia Atual: ${data.virtualDate})`;
+                }
+                if (btn) {
+                    btn.style.display = 'inline-block';
+                }
             }
         } catch (e) {
             console.error('Falha ao carregar Virtual Date', e);
         }
     }
 
-    document.getElementById('btn-avancar-dia').addEventListener('click', () => {
-        ModalSystem.confirm(
-            'Atenção! Você está prestes a forçar a virada do dia de todo o módulo de Expedição. Isso congelará (Pausará) notas não bipadas de hoje e limpará as listas. Esta ação é IRREVERSÍVEL. Tem certeza?',
-            'Confirmar Salto no Tempo',
-            async () => {
-                ModalSystem.showLoading('Aplicando o Avanço do Dia e Rotina de Limpeza...', 'Aguarde...');
-                try {
-                    const res = await fetch('/api/expedicao/avancar-dia', { method: 'POST' });
-                    const json = await res.json();
-                    ModalSystem.hideLoading();
-                    if (json.success) {
-                        ModalSystem.alert(`Sucesso! O sistema agora operará no dia: ${json.newDate}`, 'Relógio Atualizado', 'success', () => window.location.reload());
-                    } else {
-                        ModalSystem.alert(json.message, 'Erro Crítico');
+    const btnAvancarDia = document.getElementById('btn-avancar-dia');
+    if (btnAvancarDia) {
+        btnAvancarDia.addEventListener('click', () => {
+            ModalSystem.confirm(
+                'Atenção! Você está prestes a forçar a virada do dia de todo o módulo de Expedição. Isso congelará (Pausará) notas não bipadas de hoje e limpará as listas. Esta ação é IRREVERSÍVEL. Tem certeza?',
+                'Confirmar Salto no Tempo',
+                async () => {
+                    ModalSystem.showLoading('Aplicando o Avanço do Dia e Rotina de Limpeza...', 'Aguarde...');
+                    try {
+                        const res = await fetch('/api/expedicao/avancar-dia', { method: 'POST' });
+                        const json = await res.json();
+                        ModalSystem.hideLoading();
+                        if (json.success) {
+                            ModalSystem.alert(`Sucesso! O sistema agora operará no dia: ${json.newDate}`, 'Relógio Atualizado', 'success', () => window.location.reload());
+                        } else {
+                            ModalSystem.alert(json.message, 'Erro Crítico');
+                        }
+                    } catch (err) {
+                        ModalSystem.hideLoading();
+                        ModalSystem.alert('Erro interno de conexão com o painel temporal.', 'Falha de Sincronia');
                     }
-                } catch (err) {
-                    ModalSystem.hideLoading();
-                    ModalSystem.alert('Erro interno de conexão com o painel temporal.', 'Falha de Sincronia');
                 }
-            }
-        );
-    });
+            );
+        });
+    }
 
     // Ao abrir
     carregaDiaVirtual();

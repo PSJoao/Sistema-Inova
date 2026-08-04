@@ -40,7 +40,7 @@ exports.jwtMiddleware = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    
+
     // Garantir que modulos_permitidos seja um array
     let modulos = decoded.modulos_permitidos || [];
     if (typeof modulos === 'string') {
@@ -57,6 +57,7 @@ exports.jwtMiddleware = (req, res, next) => {
       role: decoded.role,
       tipo_conta: decoded.tipo_conta !== undefined ? parseInt(decoded.tipo_conta) : 2,
       modulos_permitidos: modulos,
+      sidebar_collapsed: decoded.sidebar_collapsed || false
     };
   } catch (err) {
     // Token inválido ou expirado — limpa o cookie e segue sem autenticar
@@ -111,14 +112,19 @@ exports.login = async (req, res) => {
 
         const tipoConta = user.tipo_conta !== undefined && user.tipo_conta !== null ? parseInt(user.tipo_conta) : 2;
 
-        // Gerar JWT com tipo_conta e modulos_permitidos
+        // Buscar estado da sidebar salvo no banco de dados
+        const sidebarStateRes = await pool.query('SELECT collapsed FROM user_sidebar_settings WHERE user_id = $1', [user.id]);
+        const sidebarCollapsed = sidebarStateRes.rows.length > 0 ? sidebarStateRes.rows[0].collapsed : false;
+
+        // Gerar JWT com tipo_conta, modulos_permitidos e estado da sidebar
         const token = jwt.sign(
-          { 
-            userId: user.id, 
-            username: user.username, 
+          {
+            userId: user.id,
+            username: user.username,
             role: user.cargo,
             tipo_conta: tipoConta,
-            modulos_permitidos: modulos
+            modulos_permitidos: modulos,
+            sidebar_collapsed: sidebarCollapsed
           },
           JWT_SECRET,
           { expiresIn: JWT_EXPIRATION }
@@ -236,7 +242,7 @@ exports.requireModule = (moduleName) => {
 exports.logout = (req, res) => {
   res.clearCookie('token');
   if (req.session) {
-    req.session.destroy(() => {});
+    req.session.destroy(() => { });
   }
   res.clearCookie('connect.sid');
   res.redirect('/login');
@@ -368,8 +374,8 @@ exports.renderEditUser = async (req, res) => {
     let modulos = [];
     if (u.modulos_permitidos) {
       try {
-        modulos = typeof u.modulos_permitidos === 'string' 
-          ? JSON.parse(u.modulos_permitidos) 
+        modulos = typeof u.modulos_permitidos === 'string'
+          ? JSON.parse(u.modulos_permitidos)
           : u.modulos_permitidos;
       } catch (e) {
         modulos = [];
@@ -398,20 +404,20 @@ exports.renderEditUser = async (req, res) => {
       has_monitoramento_madeira_lucas: modulos.includes('monitoramento_madeira_lucas'),
       has_monitoramento_madeira_eliane: modulos.includes('monitoramento_madeira_eliane'),
       has_monitoramento_viavarejo: modulos.includes('monitoramento_viavarejo'),
-      
+
       has_faturamento_gerenciar_emissoes: modulos.includes('faturamento_gerenciar_emissoes'),
       has_faturamento_gerar_etiquetas: modulos.includes('faturamento_gerar_etiquetas'),
       has_faturamento_automatico: modulos.includes('faturamento_automatico'),
       has_faturamento_gerenciar_pedidos: modulos.includes('faturamento_gerenciar_pedidos'),
       has_faturamento_assistencias: modulos.includes('faturamento_assistencias'),
       has_faturamento_historico_notas: modulos.includes('faturamento_historico_notas'),
-      
+
       has_produtos_gerenciar: modulos.includes('produtos_gerenciar'),
       has_produtos_tipos: modulos.includes('produtos_tipos'),
       has_produtos_sincronizar: modulos.includes('produtos_sincronizar'),
       has_produtos_estoque_dev: modulos.includes('produtos_estoque_dev'),
       has_produtos_bipagem_pecas: modulos.includes('produtos_bipagem_pecas'),
-      
+
       has_expedicao_ordenador: modulos.includes('expedicao_ordenador'),
       has_expedicao_gondolas: modulos.includes('expedicao_gondolas'),
       has_expedicao_rel_tarde: modulos.includes('expedicao_rel_tarde'),
@@ -419,11 +425,11 @@ exports.renderEditUser = async (req, res) => {
       has_expedicao_dashboard: modulos.includes('expedicao_dashboard'),
       has_expedicao_bipagem_exp: modulos.includes('expedicao_bipagem_exp'),
       has_expedicao_massa: modulos.includes('expedicao_massa'),
-      
+
       has_conferencia_bipagem: modulos.includes('conferencia_bipagem'),
       has_conferencia_codigos: modulos.includes('conferencia_codigos'),
       has_conferencia_ml_batch: modulos.includes('conferencia_ml_batch'),
-      
+
       has_logistica_relacoes: modulos.includes('logistica_relacoes'),
       has_logistica_rastreio: modulos.includes('logistica_rastreio')
     });
@@ -531,10 +537,53 @@ exports.deleteUser = async (req, res) => {
 
     // 4. Executar deleção
     await pool.query('DELETE FROM users WHERE id = $1', [id]);
-    
+
     return res.status(200).json({ success: true, message: 'Usuário excluído com sucesso!' });
   } catch (error) {
     console.error('Erro ao excluir usuário:', error);
     return res.status(500).json({ success: false, message: 'Erro interno ao excluir o usuário.' });
+  }
+};
+
+// 7. Atualizar estado da sidebar no DB e no cookie JWT
+exports.updateSidebarState = async (req, res) => {
+  const { collapsed } = req.body;
+  const userId = req.user.userId;
+
+  try {
+    // Salvar ou atualizar no banco de dados
+    await pool.query(`
+      INSERT INTO user_sidebar_settings (user_id, collapsed)
+      VALUES ($1, $2)
+      ON CONFLICT (user_id)
+      DO UPDATE SET collapsed = $2
+    `, [userId, collapsed]);
+
+    // Gerar um novo JWT contendo o estado atualizado da sidebar
+    const token = jwt.sign(
+      {
+        userId: req.user.userId,
+        username: req.user.username,
+        role: req.user.role,
+        tipo_conta: req.user.tipo_conta,
+        modulos_permitidos: req.user.modulos_permitidos,
+        sidebar_collapsed: collapsed
+      },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRATION }
+    );
+
+    // Setar o cookie atualizado
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: false, // Ajuste para true se HTTPS em produção
+      maxAge: JWT_COOKIE_MAX_AGE,
+      sameSite: 'lax',
+    });
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Erro ao atualizar estado da sidebar:', error);
+    return res.status(500).json({ success: false, message: 'Erro ao salvar configuração da sidebar.' });
   }
 };
