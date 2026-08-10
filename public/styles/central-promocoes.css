@@ -1,0 +1,357 @@
+/* public/styles/central-promocoes.css */
+
+/* === GRID DE CARDS DA CENTRAL DE PROMOÇÕES === */
+.central-promos-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    padding: 4px 0;
+}
+
+@media (max-width: 1400px) {
+    .central-promos-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (max-width: 1024px) {
+    .central-promos-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 640px) {
+    .central-promos-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* === CARD DE PROMOÇÃO ÚNICA === */
+.central-promo-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-left: 4px solid var(--accent-orange, #f07c00);
+    border-radius: 10px;
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: all 0.25s ease;
+    animation: centralCardFadeIn 0.3s ease-out;
+    position: relative;
+    overflow: hidden;
+}
+
+.central-promo-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent-orange, #f07c00), transparent);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.central-promo-card:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.15);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.central-promo-card:hover::before {
+    opacity: 1;
+}
+
+/* Card com promoção ativa */
+.central-promo-card.card-active {
+    border-left-color: var(--color-success, #28a745);
+    background: rgba(40, 167, 69, 0.05);
+}
+
+.central-promo-card.card-active::before {
+    background: linear-gradient(90deg, var(--color-success, #28a745), transparent);
+}
+
+@keyframes centralCardFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* === HEADER DO CARD === */
+.central-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.central-card-title {
+    font-weight: 700;
+    color: var(--text-primary, #e0e0e0);
+    font-size: 0.92rem;
+    line-height: 1.35;
+    word-break: break-word;
+    flex: 1;
+}
+
+.card-active .central-card-title {
+    color: #6ee7b7;
+}
+
+.central-card-id {
+    font-size: 0.72rem;
+    color: var(--text-muted, #888);
+    font-family: 'Courier New', monospace;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 2px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+/* === BADGES DO CARD === */
+.central-card-badges {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.central-badge {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.central-badge-active {
+    background: rgba(40, 167, 69, 0.15);
+    color: #28a745;
+    border: 1px solid rgba(40, 167, 69, 0.3);
+}
+
+.central-badge-candidate {
+    background: rgba(255, 193, 7, 0.12);
+    color: #ffc107;
+    border: 1px solid rgba(255, 193, 7, 0.25);
+}
+
+.central-badge-finished {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-muted, #888);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.central-badge-type {
+    background: rgba(108, 117, 125, 0.15);
+    color: #adb5bd;
+    border: 1px solid rgba(108, 117, 125, 0.25);
+}
+
+.central-badge-count {
+    background: rgba(240, 124, 0, 0.12);
+    color: var(--accent-orange, #f07c00);
+    border: 1px solid rgba(240, 124, 0, 0.25);
+}
+
+/* === DATAS === */
+.central-card-dates {
+    font-size: 0.78rem;
+    color: var(--text-muted, #888);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.central-card-dates i {
+    color: var(--accent-orange, #f07c00);
+    font-size: 0.72rem;
+}
+
+.central-card-dates strong {
+    color: var(--text-primary, #e0e0e0);
+}
+
+/* === SEÇÃO DE REEMBOLSO MÁXIMO === */
+.central-reembolso-section {
+    margin-top: 2px;
+    padding-top: 10px;
+    border-top: 1px dashed rgba(255, 255, 255, 0.08);
+}
+
+.central-reembolso-label {
+    font-size: 0.76rem;
+    color: var(--text-muted, #888);
+    font-weight: 600;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.central-reembolso-label i {
+    color: var(--accent-orange, #f07c00);
+    font-size: 0.72rem;
+}
+
+.central-reembolso-input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.central-reembolso-input {
+    width: 80px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: var(--text-primary, #e0e0e0);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-align: center;
+    outline: none;
+    transition: all 0.25s ease;
+}
+
+.central-reembolso-input::placeholder {
+    color: rgba(255, 255, 255, 0.25);
+    font-weight: 400;
+}
+
+.central-reembolso-input:focus {
+    border-color: var(--accent-orange, #f07c00);
+    background: rgba(240, 124, 0, 0.08);
+    box-shadow: 0 0 0 3px rgba(240, 124, 0, 0.15);
+}
+
+.central-reembolso-input.saved {
+    border-color: var(--color-success, #28a745);
+    background: rgba(40, 167, 69, 0.08);
+    box-shadow: 0 0 0 3px rgba(40, 167, 69, 0.15);
+}
+
+.central-reembolso-suffix {
+    font-size: 0.82rem;
+    color: var(--text-muted, #888);
+    font-weight: 600;
+}
+
+.central-reembolso-hint {
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.3);
+    margin-top: 4px;
+    font-style: italic;
+}
+
+.central-reembolso-saved-msg {
+    font-size: 0.72rem;
+    color: var(--color-success, #28a745);
+    font-weight: 600;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    margin-left: 6px;
+}
+
+.central-reembolso-saved-msg.visible {
+    opacity: 1;
+}
+
+/* === CONTADORES NO TOPO === */
+.central-promos-summary {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.central-summary-item {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 160px;
+}
+
+.central-summary-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+}
+
+.central-summary-icon.icon-total {
+    background: rgba(240, 124, 0, 0.15);
+    color: var(--accent-orange, #f07c00);
+}
+
+.central-summary-icon.icon-active {
+    background: rgba(40, 167, 69, 0.15);
+    color: #28a745;
+}
+
+.central-summary-icon.icon-reembolso {
+    background: rgba(23, 162, 184, 0.15);
+    color: #17a2b8;
+}
+
+.central-summary-value {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--text-primary, #e0e0e0);
+    line-height: 1;
+}
+
+.central-summary-label {
+    font-size: 0.72rem;
+    color: var(--text-muted, #888);
+    margin-top: 2px;
+}
+
+/* === ESTADO VAZIO === */
+.central-empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted, #888);
+}
+
+.central-empty-state i {
+    font-size: 3rem;
+    margin-bottom: 16px;
+    color: rgba(255, 255, 255, 0.15);
+}
+
+.central-empty-state p {
+    font-size: 0.9rem;
+    margin-bottom: 4px;
+}
+
+/* === LOADING === */
+.central-loading {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted, #888);
+}
+
+.central-loading .spinner-border {
+    width: 2.5rem;
+    height: 2.5rem;
+}

@@ -69,7 +69,7 @@ class HubProdutosService {
         if (cleanIds.length === 0) return 0;
 
         try {
-            const contasResult = await poolHub.query('SELECT * FROM hub_ml_contas WHERE ativo = TRUE AND id NOT IN (7, 6)');
+            const contasResult = await poolHub.query('SELECT * FROM hub_ml_contas WHERE ativo = TRUE OR id IN (6, 7)');
             let totalProcessados = 0;
 
             for (const conta of contasResult.rows) {
@@ -118,7 +118,7 @@ class HubProdutosService {
         console.log('[HUB PRODUTOS] Iniciando sincronização de anúncios...');
         try {
             // Busca contas ativas no banco principal do HUB
-            const contasResult = await poolHub.query('SELECT * FROM hub_ml_contas WHERE ativo = TRUE AND id NOT IN (7, 6)');
+            const contasResult = await poolHub.query('SELECT * FROM hub_ml_contas WHERE ativo = TRUE OR id IN (6, 7)');
 
             for (const conta of contasResult.rows) {
                 await this.processarContaProdutos(conta);
@@ -142,6 +142,7 @@ class HubProdutosService {
         let scrollId = null;
         const limit = 50;
         let continuarBuscando = true;
+        const idsDoScan = []; // Acumula todos os IDs que vieram do scan da API
 
         while (continuarBuscando) {
             try {
@@ -164,6 +165,9 @@ class HubProdutosService {
                     continuarBuscando = false;
                     break;
                 }
+
+                // Acumula os IDs para verificação de órfãos depois
+                idsDoScan.push(...idsAnuncios);
 
                 console.log(`Qtd. de anúncios encontrada: ${idsAnuncios.length}`);
                 console.log(`Iniciando a busca aprofundada...`);
@@ -214,11 +218,108 @@ class HubProdutosService {
                 continuarBuscando = false;
             }
         }
+
+        // Após o scan completo, verifica anúncios órfãos (existem no banco mas não vieram no scan)
+        await this.verificarAnunciosOrfaos(conta, idsDoScan, accessToken);
+    }
+
+    /**
+     * Verifica anúncios que existem no banco para esta conta/empresa mas que NÃO vieram no scan da API.
+     * Esses anúncios podem ter sido deletados, fechados ou removidos.
+     * Para cada órfão, consulta a API individualmente e, se estiver deletado, remove do banco.
+     */
+    async verificarAnunciosOrfaos(conta, idsDoScan, accessToken) {
+        try {
+            // Busca todos os IDs de anúncios desta empresa que existem no banco
+            const dbResult = await poolProdutos.query(
+                'SELECT id_anuncio FROM produtos_anuncios WHERE empresa = $1',
+                [conta.nickname]
+            );
+
+            const idsNoBanco = dbResult.rows.map(r => r.id_anuncio);
+            const idsDoScanSet = new Set(idsDoScan);
+
+            // Encontra os órfãos: existem no banco mas não vieram no scan
+            const idsOrfaos = idsNoBanco.filter(id => !idsDoScanSet.has(id));
+
+            if (idsOrfaos.length === 0) {
+                console.log(`[HUB PRODUTOS] Nenhum anúncio órfão encontrado para ${conta.nickname}.`);
+                return;
+            }
+
+            console.log(`[HUB PRODUTOS] Encontrados ${idsOrfaos.length} anúncio(s) órfão(s) para ${conta.nickname}. Verificando na API...`);
+
+            let totalExcluidos = 0;
+
+            // Verifica os órfãos em blocos de 20 (multiget)
+            const chunkSize = 20;
+            for (let i = 0; i < idsOrfaos.length; i += chunkSize) {
+                const chunk = idsOrfaos.slice(i, i + chunkSize);
+
+                try {
+                    const idsBatch = chunk.join(',');
+                    const itemsUrl = `${ML_API_URL}/items?ids=${idsBatch}`;
+                    const itemsResponse = await axios.get(itemsUrl, {
+                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                    });
+
+                    const itemsResults = itemsResponse.data || [];
+
+                    for (const res of itemsResults) {
+                        const itemId = res.body?.id || null;
+
+                        if (res.code === 404) {
+                            // Item completamente purgado da API — excluir do banco
+                            console.log(`[HUB PRODUTOS] Anúncio ${itemId || 'desconhecido'} retornou 404 (purgado). Excluindo...`);
+                            await this.excluirProduto(itemId || chunk[itemsResults.indexOf(res)]);
+                            totalExcluidos++;
+                        } else if (res.code === 200 && res.body) {
+                            const itemData = res.body;
+
+                            if (this.isItemDeleted(itemData)) {
+                                console.log(`[HUB PRODUTOS] Anúncio ${itemData.id} está DELETADO (status: ${itemData.status}, sub_status: ${JSON.stringify(itemData.sub_status)}). Excluindo...`);
+                                await this.excluirProduto(itemData.id);
+                                totalExcluidos++;
+                            } else if (itemData.status === 'closed') {
+                                // Fechado mas não deletado — atualiza o status no banco para refletir
+                                console.log(`[HUB PRODUTOS] Anúncio ${itemData.id} está fechado (closed) mas não deletado. Atualizando status no banco...`);
+                                try {
+                                    let subStatusClean = null;
+                                    if (Array.isArray(itemData.sub_status) && itemData.sub_status.length > 0) {
+                                        subStatusClean = itemData.sub_status.join(', ');
+                                    }
+                                    await poolProdutos.query(
+                                        'UPDATE produtos_anuncios SET status = $1, sub_status = $2, last_update = NOW() WHERE id_anuncio = $3',
+                                        [itemData.status, subStatusClean, itemData.id]
+                                    );
+                                } catch (errUpdate) {
+                                    console.error(`[HUB PRODUTOS] Erro ao atualizar status do órfão ${itemData.id}:`, errUpdate.message);
+                                }
+                            }
+                            // Se o status for 'active' ou 'paused', pode ser que o scan tenha falhado parcialmente.
+                            // Nesse caso, não faz nada — o próximo scan pegará.
+                        }
+                    }
+                } catch (errChunk) {
+                    console.error(`[HUB PRODUTOS] Erro ao verificar órfãos ${chunk.join(',')}:`, errChunk.message);
+                }
+
+                // Pequeno delay para não sobrecarregar a API
+                if (i + chunkSize < idsOrfaos.length) {
+                    await delay(200);
+                }
+            }
+
+            console.log(`[HUB PRODUTOS] Verificação de órfãos concluída para ${conta.nickname}. Excluídos: ${totalExcluidos}`);
+        } catch (err) {
+            console.error(`[HUB PRODUTOS] Erro ao verificar anúncios órfãos para ${conta.nickname}:`, err.message);
+        }
     }
 
     isItemDeleted(itemData) {
         if (!itemData) return false;
 
+        // Normaliza o sub_status para array
         let subStatusArray = [];
         if (Array.isArray(itemData.sub_status)) {
             subStatusArray = itemData.sub_status;
@@ -229,7 +330,10 @@ class HubProdutosService {
         const hasDeletedSubStatus = subStatusArray.some(s => String(s).toLowerCase().includes('deleted'));
         const hasDeletedTag = Array.isArray(itemData.tags) && itemData.tags.includes('deleted');
 
-        return hasDeletedSubStatus || (itemData.status === 'closed' && (hasDeletedSubStatus || hasDeletedTag));
+        // Um anúncio é considerado deletado se:
+        // 1. O sub_status contém 'deleted' (independente do status), OU
+        // 2. O status é 'closed' E as tags contêm 'deleted'
+        return hasDeletedSubStatus || (itemData.status === 'closed' && hasDeletedTag);
     }
 
     async excluirProduto(idAnuncio) {
@@ -295,9 +399,10 @@ class HubProdutosService {
             const cityId = itemData.seller_address?.city?.id || '';
             const zipCode = itemData.seller_address?.zip_code || '';
 
-            // Novos campos: Estoque e Prazo de Disponibilidade
+            // Novos campos: Estoque, Prazo de Disponibilidade e ID do Produto de Catálogo
             const estoque = itemData.available_quantity || 0;
             const catalogListing = itemData.catalog_listing || false;
+            const catalogProductId = itemData.catalog_product_id || (Array.isArray(itemData.variations) ? itemData.variations.find(v => v.catalog_product_id)?.catalog_product_id : null) || null;
 
             // Prazo de disponibilidade: fica em sale_terms com id "MANUFACTURING_TIME"
             let prazoDisponibilidade = null;
@@ -440,6 +545,7 @@ class HubProdutosService {
                 estoque,
                 prazo_disponibilidade: prazoDisponibilidade,
                 catalog_listing: catalogListing,
+                catalog_product_id: catalogProductId,
                 ganhando_catalogo: ganhandoCatalogo,
                 experiencia_compra: experienciaCompra,
                 vendas_total: vendasTotal,
@@ -554,7 +660,7 @@ class HubProdutosService {
 
             // 2. Filtrar apenas as promoções ativas/iniciadas
             const promosAtivas = allPromos.filter(p => p.status === 'started' || p.status === 'active');
-            
+
             let menorPreco = null;
             for (const promo of promosAtivas) {
                 if (promo.price && (menorPreco === null || promo.price < menorPreco)) {
@@ -600,17 +706,10 @@ class HubProdutosService {
     }
 
     async salvarProduto(dados) {
-        try {
-            await poolProdutos.query('ALTER TABLE produtos_anuncios ADD COLUMN IF NOT EXISTS qualidade NUMERIC(5,2);');
-            await poolProdutos.query('ALTER TABLE produtos_anuncios ADD COLUMN IF NOT EXISTS data_ultima_venda TIMESTAMP WITH TIME ZONE;');
-            await poolProdutos.query('ALTER TABLE produtos_anuncios ADD COLUMN IF NOT EXISTS dias_sem_vender INTEGER;');
-            await poolProdutos.query('ALTER TABLE produtos_anuncios ADD COLUMN IF NOT EXISTS sub_status TEXT;');
-        } catch (e) {}
-
         const query = `
             INSERT INTO produtos_anuncios 
-            (sku, descricao, id_anuncio, status, sub_status, empresa, tipo, tarifa, taxa_fixa, preco, tipo_logistica, tipo_envio, frete, tem_publicidade, preco_publicidade, cliques_publicidade, custo, custo_real, margem, peso, altura, largura, profundidade, estoque, prazo_disponibilidade, catalog_listing, ganhando_catalogo, experiencia_compra, vendas_total, preco_promocional, permalink, thumbnail, promocoes_json, qualidade, data_ultima_venda, dias_sem_vender)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
+            (sku, descricao, id_anuncio, status, sub_status, empresa, tipo, tarifa, taxa_fixa, preco, tipo_logistica, tipo_envio, frete, tem_publicidade, preco_publicidade, cliques_publicidade, custo, custo_real, margem, peso, altura, largura, profundidade, estoque, prazo_disponibilidade, catalog_listing, ganhando_catalogo, experiencia_compra, vendas_total, preco_promocional, permalink, thumbnail, promocoes_json, qualidade, data_ultima_venda, dias_sem_vender, catalog_product_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
             ON CONFLICT (id_anuncio) DO UPDATE SET
             sku = EXCLUDED.sku,
             descricao = EXCLUDED.descricao,
@@ -647,6 +746,7 @@ class HubProdutosService {
             qualidade = EXCLUDED.qualidade,
             data_ultima_venda = EXCLUDED.data_ultima_venda,
             dias_sem_vender = EXCLUDED.dias_sem_vender,
+            catalog_product_id = EXCLUDED.catalog_product_id,
             last_update = NOW()
         `;
 
@@ -658,7 +758,8 @@ class HubProdutosService {
             dados.custo, dados.custo_real, dados.margem, dados.peso,
             dados.altura, dados.largura, dados.profundidade, dados.estoque, dados.prazo_disponibilidade,
             dados.catalog_listing, dados.ganhando_catalogo, dados.experiencia_compra, dados.vendas_total, dados.preco_promocional,
-            dados.permalink, dados.thumbnail, dados.promocoes_json, dados.qualidade, dados.data_ultima_venda, dados.dias_sem_vender
+            dados.permalink, dados.thumbnail, dados.promocoes_json, dados.qualidade, dados.data_ultima_venda, dados.dias_sem_vender,
+            dados.catalog_product_id || null
         ];
 
         try {

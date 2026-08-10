@@ -45,67 +45,108 @@
     document.getElementById('uploadForm').addEventListener('submit', async function(e) {
         e.preventDefault(); 
         
+        const formElement = this;
         const fileInput = document.getElementById('planilha');
         if (!fileInput.files.length) {
             alert("Por favor, selecione um arquivo.");
             return;
         }
 
-        if (typeof ModalSystem !== 'undefined') {
-            ModalSystem.showLoading(
-                'Lendo planilha, buscando pedidos e atualizando situações no Bling...<br><br>Isso pode levar alguns minutos.<br>O download iniciará automaticamente.',
-                'Processando Lote ML'
-            );
-        }
-
-        const formData = new FormData(this);
-
-        try {
-            const response = await fetch('/conferencia/ml-batch/process', {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(errorText || 'Erro no processamento do servidor.');
+        const executeProcess = async (accountName) => {
+            if (typeof ModalSystem !== 'undefined') {
+                ModalSystem.showLoading(
+                    `Lendo planilha, buscando pedidos e atualizando situações no Bling (${accountName.toUpperCase()})...<br><br>Isso pode levar alguns minutos.<br>O download iniciará automaticamente.`,
+                    `Processando Lote ML (${accountName.toUpperCase()})`
+                );
             }
 
-            const blob = await response.blob();
-            
-            let fileName = 'Relatorio_Processamento.xlsx';
-            const disposition = response.headers.get('Content-Disposition');
-            if (disposition && disposition.indexOf('attachment') !== -1) {
-                const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
-                const matches = filenameRegex.exec(disposition);
-                if (matches != null && matches[1]) { 
-                    fileName = matches[1].replace(/['"]/g, '');
+            const formData = new FormData(formElement);
+            formData.append('accountName', accountName);
+
+            try {
+                const response = await fetch('/conferencia/ml-batch/process', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(errorText || 'Erro no processamento do servidor.');
+                }
+
+                const blob = await response.blob();
+                
+                let fileName = `Relatorio_Processamento_${accountName}.xlsx`;
+                const disposition = response.headers.get('Content-Disposition');
+                if (disposition && disposition.indexOf('attachment') !== -1) {
+                    const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+                    const matches = filenameRegex.exec(disposition);
+                    if (matches != null && matches[1]) { 
+                        fileName = matches[1].replace(/['"]/g, '');
+                    }
+                }
+
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+
+                if (typeof ModalSystem !== 'undefined') {
+                    ModalSystem.hideLoading();
+                }
+
+            } catch (error) {
+                console.error(error);
+                if (typeof ModalSystem !== 'undefined') {
+                    ModalSystem.hideLoading();
+                    setTimeout(() => {
+                        alert('Erro ao processar: ' + error.message); 
+                    }, 300);
+                } else {
+                    alert('Erro: ' + error.message);
                 }
             }
+        };
 
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = fileName;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
+        if (typeof ModalSystem !== 'undefined') {
+            const contentHtml = `
+                <div class="modal-form-content">
+                    <p class="modal-description">Selecione a conta para atualizar as situações dos pedidos no Bling:</p>
+                    <div class="modal-radio-group">
+                        <label class="radio-option">
+                            <input type="radio" name="contaFaturamento" value="lucas" checked>
+                            <span class="radio-label">Conta Lucas</span>
+                        </label>
+                        <label class="radio-option" style="margin-left: 15px;">
+                            <input type="radio" name="contaFaturamento" value="eliane">
+                            <span class="radio-label">Conta Eliane</span>
+                        </label>
+                    </div>
+                    <br>
+                    <p class="modal-helper-text">
+                        <i class="fas fa-info-circle"></i> O relatório de resultado será baixado automaticamente após o término.
+                    </p>
+                </div>
+            `;
 
-            if (typeof ModalSystem !== 'undefined') {
-                ModalSystem.hideLoading();
-            }
-
-        } catch (error) {
-            console.error(error);
-            if (typeof ModalSystem !== 'undefined') {
-                ModalSystem.hideLoading();
-                setTimeout(() => {
-                    alert('Erro ao processar: ' + error.message); 
-                }, 300);
-            } else {
-                alert('Erro: ' + error.message);
-            }
+            ModalSystem.confirm(
+                contentHtml,
+                'Selecionar Conta Bling',
+                async () => {
+                    const selectedEl = document.querySelector('input[name="contaFaturamento"]:checked');
+                    const accountName = selectedEl ? selectedEl.value : 'lucas';
+                    executeProcess(accountName);
+                },
+                null,
+                { confirmText: 'Processar e Atualizar', isHtml: true }
+            );
+        } else {
+            // Fallback sem ModalSystem
+            executeProcess('lucas');
         }
     });
 </script>

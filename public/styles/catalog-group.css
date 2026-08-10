@@ -1,0 +1,81 @@
+/* public/styles/catalog-group.css */
+/* Estilização para agrupamento visual de anúncios pertencentes ao mesmo catálogo */
+
+.catalog-group-header-row td {
+    background-color: rgba(156, 39, 176, 0.12) !important;
+    border-top: 1px solid rgba(156, 39, 176, 0.3) !important;
+    border-bottom: 1px solid rgba(156, 39, 176, 0.2) !important;
+    padding: 6px 12px !important;
+}
+
+.catalog-group-header-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.82rem;
+    color: #ce93d8;
+    font-weight: 500;
+}
+
+.catalog-group-header-content i {
+    color: #ab47bc;
+}
+
+.catalog-group-badge-count {
+    background-color: rgba(156, 39, 176, 0.25);
+    color: #e1bee7;
+    border: 1px solid rgba(156, 39, 176, 0.4);
+    padding: 1px 7px;
+    border-radius: 12px;
+    font-size: 0.72rem;
+    margin-left: 4px;
+}
+
+.catalog-group-row {
+    background-color: rgba(156, 39, 176, 0.02) !important;
+    transition: background-color 0.2s ease;
+}
+
+.catalog-group-row td:first-child {
+    border-left: 3.5px solid #ab47bc !important;
+}
+
+.catalog-group-row:hover {
+    background-color: rgba(156, 39, 176, 0.06) !important;
+}
+
+.catalog-group-last-row td {
+    border-bottom: 2px solid rgba(156, 39, 176, 0.35) !important;
+}
+
+.catalog-group-ml-container {
+    margin-left: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+    color: #e0e0e0;
+}
+
+.catalog-group-ml-link {
+    color: #ffd54f !important;
+    background: rgba(255, 213, 79, 0.12);
+    border: 1px solid rgba(255, 213, 79, 0.3);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    text-decoration: none;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.2s ease;
+}
+
+.catalog-group-ml-link:hover {
+    background: rgba(255, 213, 79, 0.25);
+    border-color: rgba(255, 213, 79, 0.6);
+    color: #ffe082 !important;
+    text-decoration: none;
+}
+

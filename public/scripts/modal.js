@@ -112,7 +112,7 @@ const ModalSystem = (function() {
             btnCancelEl.style.display = 'none';
             // modalCloseBtnEl não existe mais, então não precisa controlar seu display
         },
-        confirm: function(message, title = 'Confirmação', onConfirmCallback, onCancelCallback) {
+        confirm: function(message, title = 'Confirmação', onConfirmCallback, onCancelCallback, options = {}) {
             if (!btnOkEl || !btnConfirmEl || !btnCancelEl) {
                 if (window.confirm((title !== 'Confirmação' ? title + ":\n" : "") + message)) {
                     if(typeof onConfirmCallback === 'function') onConfirmCallback();
@@ -125,6 +125,9 @@ const ModalSystem = (function() {
             currentOnConfirm = typeof onConfirmCallback === 'function' ? onConfirmCallback : null;
             currentOnCancel = typeof onCancelCallback === 'function' ? onCancelCallback : null;
             currentOnOk = null;
+
+            btnConfirmEl.textContent = options.confirmText || 'Confirmar';
+            btnCancelEl.textContent = options.cancelText || 'Cancelar';
 
             btnOkEl.style.display = 'none';
             btnConfirmEl.style.display = 'inline-flex';

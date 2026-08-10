@@ -35,17 +35,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return; // Se não estiver na página certa, não faz nada
     }
 
-    // Sobrescreve permanentemente o hide do ModalSystem nesta página para garantir que as labels
-    // dos botões de Confirmação sejam sempre restauradas ao valor padrão
-    const origHide = ModalSystem.hide;
-    ModalSystem.hide = function() {
-        const btnConfirm = document.getElementById('customModalBtnConfirm');
-        const btnCancel = document.getElementById('customModalBtnCancel');
-        if (btnConfirm) btnConfirm.textContent = 'Confirmar';
-        if (btnCancel) btnCancel.textContent = 'Cancelar';
-        return origHide.apply(this, arguments);
-    };
-
     // --- 2. Estado da Aplicação ---
     let state = {
         currentPage: 1,
@@ -663,12 +652,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (elements.separationReportBtn) {
         elements.separationReportBtn.addEventListener('click', async () => {
-            const btnConfirm = document.getElementById('customModalBtnConfirm');
-            const btnCancel = document.getElementById('customModalBtnCancel');
-
-            if (btnConfirm) btnConfirm.textContent = 'Selecionar Manualmente';
-            if (btnCancel) btnCancel.textContent = 'Usar Filtros';
-
             ModalSystem.confirm(
                 "Como deseja gerar o relatório de separação de produtos?",
                 "Relatório de Separação",
@@ -706,6 +689,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         elements.separationReportBtn.innerHTML = originalButtonText;
                         elements.separationReportBtn.disabled = false;
                     }
+                },
+                {
+                    confirmText: 'Selecionar Manualmente',
+                    cancelText: 'Usar Filtros'
                 }
             );
         });

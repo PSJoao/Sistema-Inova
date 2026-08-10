@@ -3,6 +3,7 @@ views/produtos/lista-anuncios.handlebars
 Listagem de anúncios do Mercado Livre com busca, paginação e tabela idêntica à de peças.
 --}}
 <link rel="stylesheet" href="/public/styles/estoque.css">
+<link rel="stylesheet" href="/public/styles/catalog-group.css">
 
 <div class="content-card">
     {{!-- Cabeçalho da Página --}}
@@ -11,6 +12,9 @@ Listagem de anúncios do Mercado Livre com busca, paginação e tabela idêntica
         <div style="display: flex; justify-content: end; gap: 10px;">
             <a href="/anuncios/promocoes" class="btn btn-outline-accent" style="display: inline-flex; align-items: center;">
                 <i class="fas fa-tags me-2"></i>Gerenciar Promoções
+            </a>
+            <a href="/anuncios/central-promocoes" class="btn btn-outline-accent" style="display: inline-flex; align-items: center;">
+                <i class="fas fa-bullhorn me-2"></i>Central de Promoções
             </a>
             <button id="btnExportar" class="btn btn-outline-accent">
                 <i class="fas fa-file-excel me-2"></i>Exportar Relatório
@@ -47,6 +51,12 @@ Listagem de anúncios do Mercado Livre com busca, paginação e tabela idêntica
                 <option value="">Todos</option>
                 <option value="com">Com Catálogo</option>
                 <option value="sem">Sem Catálogo</option>
+            </select>
+        </div>
+        <div class="estoque-filter-group">
+            <label for="filtroEmpresa">Empresa / Loja</label>
+            <select id="filtroEmpresa" class="form-control" style="min-width: 150px;">
+                <option value="">Todas</option>
             </select>
         </div>
         <div class="estoque-filter-group">
@@ -297,6 +307,7 @@ Listagem de anúncios do Mercado Livre com busca, paginação e tabela idêntica
                 <tr>
                     <th class="sortable" data-column="id_anuncio">ID Anúncio</th>
                     <th class="text-center">Foto</th>
+                    <th class="sortable" data-column="empresa">Empresa / Loja</th>
                     <th class="sortable" data-column="sku">SKU</th>
                     <th class="sortable" data-column="descricao" style="min-width: 450px;">Descrição</th>
                     <th class="sortable" data-column="tipo_anuncio">Tipo</th>
@@ -308,6 +319,7 @@ Listagem de anúncios do Mercado Livre com busca, paginação e tabela idêntica
                     <th class="sortable text-center" data-column="vendas_total">Vendas</th>
                     <th class="sortable text-center" data-column="preco">Preço (R$)</th>
                     <th class="sortable text-center" data-column="preco_promocional">Promo (R$)</th>
+                    <th class="sortable text-center" data-column="nome_promo_ativa">Promoção Ativa</th>
                     <th class="sortable text-center" data-column="tarifa">Tarifa</th>
                     <th class="sortable text-center" data-column="margem_lucro">Margem (Lucro)</th>
                     <th class="sortable text-center" data-column="estoque_ml">Estoque ML</th>

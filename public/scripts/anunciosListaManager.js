@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const filtroStatus = document.getElementById('filtroStatus');
     const filtroCatalogo = document.getElementById('filtroCatalogo');
     const filtroTipo = document.getElementById('filtroTipo');
+    const filtroEmpresa = document.getElementById('filtroEmpresa');
     const btnSincronizar = document.getElementById('btnSincronizar');
     const btnExportar = document.getElementById('btnExportar');
 
@@ -32,6 +33,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const DEFAULT_COLUMN_ORDER = [
         'id_anuncio',
         'thumbnail',
+        'empresa',
         'sku',
         'descricao',
         'tipo_anuncio',
@@ -43,12 +45,58 @@ document.addEventListener('DOMContentLoaded', function () {
         'vendas_total',
         'preco',
         'preco_promocional',
+        'nome_promo_ativa',
         'tarifa',
         'margem_lucro',
         'estoque_ml',
         'frete'
     ];
     let currentColumnOrder = [...DEFAULT_COLUMN_ORDER];
+
+    const calculateAnuncioMargin = (anuncio) => {
+        const custo = Number(anuncio.custo_produto) || 0;
+        if (custo <= 0) return null;
+
+        let promos = [];
+        if (anuncio.promocoes_json) {
+            try {
+                promos = typeof anuncio.promocoes_json === 'string' ? JSON.parse(anuncio.promocoes_json) : anuncio.promocoes_json;
+            } catch (e) { promos = []; }
+        }
+        promos = Array.isArray(promos) ? promos : [];
+
+        const activePromos = promos.filter(p => p && (p.status === 'started' || p.status === 'active') && p.price != null && Number(p.price) > 0);
+        activePromos.sort((a, b) => Number(a.price) - Number(b.price));
+        const activePromo = activePromos[0] || null;
+
+        const precoOriginal = Number(anuncio.preco) || 0;
+        let venda = 0;
+        let meliPct = 0;
+
+        if (activePromo) {
+            venda = Number(activePromo.price);
+            meliPct = activePromo.meli_percentage != null ? Number(activePromo.meli_percentage) : 0;
+        } else if (anuncio.preco_promocional != null && Number(anuncio.preco_promocional) > 0) {
+            venda = Number(anuncio.preco_promocional);
+        } else {
+            venda = precoOriginal;
+        }
+
+        if (venda <= 0) return null;
+
+        const impostoPct = Number(anuncio.imposto) || 0;
+        const tarifaBasePct = Number(anuncio.tarifa) || 0;
+        const freteVal = Number(anuncio.frete) || 0;
+
+        const reembolsoVal = Number(((meliPct / 100.0) * precoOriginal).toFixed(2));
+        const comissaoReais = venda * (tarifaBasePct / 100.0);
+        const comissaoEfetiva = comissaoReais - reembolsoVal;
+        const impostoReais = venda * (impostoPct / 100.0);
+
+        const despesas = custo + freteVal + comissaoEfetiva + impostoReais;
+        const lucro = venda - despesas;
+        return (lucro / venda) * 100.0;
+    };
 
     // =============================================
     // === CARREGAMENTO DE DADOS ===
@@ -74,11 +122,26 @@ document.addEventListener('DOMContentLoaded', function () {
             const tipo = filtroTipo.value;
             if (tipo) params.set('tipo', tipo);
 
+            const empresa = filtroEmpresa ? filtroEmpresa.value : '';
+            if (empresa) params.set('empresa', empresa);
+
             const response = await fetch(`/api/anuncios/listagem?${params.toString()}`);
             if (!response.ok) throw new Error('Erro ao carregar anúncios');
 
             const result = await response.json();
             rawAnunciosList = result.data || [];
+            if (result.catalog_totals) {
+                catalogTotals = result.catalog_totals;
+            }
+            if (filtroEmpresa && filtroEmpresa.options.length <= 1) {
+                const uniqueEmpresas = Array.from(new Set(rawAnunciosList.map(a => a.empresa).filter(Boolean))).sort();
+                uniqueEmpresas.forEach(emp => {
+                    const opt = document.createElement('option');
+                    opt.value = emp;
+                    opt.textContent = emp;
+                    filtroEmpresa.appendChild(opt);
+                });
+            }
             applyExcelFiltersAndRender();
         } catch (error) {
             console.error('[Anúncios] Erro ao carregar:', error);
@@ -104,6 +167,192 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     };
 
+    const groupAnunciosByCatalog = (anunciosList) => {
+        const catalogGroups = new Map();
+        const standaloneList = [];
+
+        anunciosList.forEach(item => {
+            const catId = item.catalog_product_id ? String(item.catalog_product_id).trim() : '';
+            const totalCount = catId ? (catalogTotals[catId] || 0) : 0;
+
+            // Só cria grupo se o total real de anúncios desse catálogo na conta for MAIOR que 1
+            if (catId && totalCount > 1) {
+                if (!catalogGroups.has(catId)) {
+                    catalogGroups.set(catId, { totalCount, items: [] });
+                }
+                catalogGroups.get(catId).items.push(item);
+            } else {
+                standaloneList.push({ isCatalogGroup: false, item });
+            }
+        });
+
+        const result = [];
+        catalogGroups.forEach((groupData, catId) => {
+            result.push({
+                isCatalogGroup: true,
+                catalogProductId: catId,
+                totalCount: groupData.totalCount,
+                items: groupData.items
+            });
+        });
+
+        standaloneList.forEach(s => result.push(s));
+        return result;
+    };
+
+    const buildAnuncioRow = (anuncio) => {
+        // Badge de status
+        let statusClass = '';
+        let statusLabel = anuncio.status || '-';
+        switch (anuncio.status) {
+            case 'active':
+                statusClass = 'qty-ok';
+                statusLabel = 'Ativo';
+                break;
+            case 'paused':
+                statusClass = 'qty-low';
+                statusLabel = 'Pausado';
+                break;
+            case 'closed':
+            case 'under_review':
+                statusClass = 'qty-zero';
+                statusLabel = anuncio.status === 'closed' ? 'Encerrado' : 'Em revisão';
+                break;
+            default:
+                statusClass = '';
+        }
+
+        // Badge de estoque ML
+        const estoqueML = anuncio.estoque_ml != null ? anuncio.estoque_ml : '-';
+        const estoqueMLClass = estoqueML === '-' ? '' :
+            estoqueML === 0 ? 'qty-zero' :
+                estoqueML <= 5 ? 'qty-low' : 'qty-ok';
+
+        // Prazo de disponibilidade: garante "dias" em tudo que é número limpo
+        let prazoLabel = '-';
+        if (anuncio.prazo_disponibilidade != null && anuncio.prazo_disponibilidade !== '') {
+            const dias = String(anuncio.prazo_disponibilidade).replace(/\D/g, '');
+            prazoLabel = dias !== '' ? `${dias} dias` : anuncio.prazo_disponibilidade;
+        }
+
+        // Frete formatado em R$
+        const freteVal = Number(anuncio.frete) || 0;
+        const freteLabel = freteVal > 0
+            ? freteVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+            : 'R$ 0,00';
+
+        // Preços formatados em R$
+        const precoVal = Number(anuncio.preco) || 0;
+        const precoLabel = precoVal > 0 ? precoVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-';
+
+        const precoPromoVal = Number(anuncio.preco_promocional) || null;
+        const precoPromoLabel = precoPromoVal ? precoPromoVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-';
+
+        // Verifica se tem promo para riscar o preço original
+        const finalPrecoOriginalHtml = precoPromoVal
+            ? `<span style="text-decoration: line-through; color: #888; font-size: 0.85rem;">${precoLabel}</span>`
+            : precoLabel;
+
+        const finalPrecoPromoHtml = precoPromoVal
+            ? `<span style="color: #2e7d32; font-weight: bold;">${precoPromoLabel}</span>`
+            : '-';
+
+        // Estoque Bling (da cached_products.estoque_plataforma)
+        const estoqueBling = anuncio.estoque_plataforma != null ? anuncio.estoque_plataforma : '-';
+        const estoqueBlingClass = estoqueBling === '-' ? '' :
+            estoqueBling === 0 ? 'qty-zero' :
+                estoqueBling <= 5 ? 'qty-low' : 'qty-ok';
+
+        const tr = document.createElement('tr');
+
+        const catalogBadge = anuncio.catalog_listing
+            ? ` <span class="qty-badge" style="background-color: rgba(156, 39, 176, 0.15); color: #9c27b0; font-size: 0.7rem; padding: 0.15rem 0.35rem; min-width: auto; margin-left: 5px;">Catálogo</span>`
+            : '';
+
+        let winBoxBadge = '-';
+        if (anuncio.catalog_listing) {
+            winBoxBadge = anuncio.ganhando_catalogo
+                ? `<span class="qty-badge" style="background-color: #e8f5e9; color: #2e7d32;">Ganhando</span>`
+                : `<span class="qty-badge" style="background-color: #ffebee; color: #c62828;">Perdendo</span>`;
+        }
+
+        const tipoHtml = anuncio.tipo_anuncio === 'Premium'
+            ? `<span class="qty-badge" style="background-color: #fff3e0; color: #e65100;">${anuncio.tipo_anuncio}</span>`
+            : `<span class="qty-badge" style="background-color: #f5f5f5; color: #616161;">${anuncio.tipo_anuncio || '-'}</span>`;
+
+        const experienciaHtml = anuncio.experiencia_compra ? `${anuncio.experiencia_compra}%` : '0%';
+
+        const tarifaVal = Number(anuncio.tarifa) || 0;
+        const tarifaHtml = tarifaVal > 0 ? `${tarifaVal.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })}%` : '-';
+
+        const urlAnuncio = anuncio.permalink || (anuncio.id_anuncio ? `https://produto.mercadolivre.com.br/${anuncio.id_anuncio}` : '#');
+        const imgHtml = anuncio.thumbnail 
+            ? `<img src="${anuncio.thumbnail}" alt="Foto" style="width: 36px; height: 36px; object-fit: contain; border-radius: 4px; vertical-align: middle; background: #fff;" />` 
+            : '-';
+
+        const renderCell = (colKey) => {
+            switch (colKey) {
+                case 'id_anuncio':
+                    const copyIdBtnHtml = anuncio.id_anuncio 
+                        ? `<button class="btn-copy-id-anuncio" data-id-anuncio="${escapeHtml(anuncio.id_anuncio)}" title="Copiar ID do Anúncio" style="background: none; border: none; color: #888; cursor: pointer; padding: 2px 4px; font-size: 0.8rem; transition: color 0.2s;"><i class="far fa-copy"></i></button>`
+                        : '';
+                    return `<td><div style="display: inline-flex; align-items: center; gap: 4px;"><a href="${urlAnuncio}" target="_blank" style="color: #f39c12; font-weight: bold; text-decoration: none;" title="Abrir anúncio no Mercado Livre">${escapeHtml(anuncio.id_anuncio || '-')}</a>${copyIdBtnHtml}</div></td>`;
+                case 'thumbnail':
+                    return `<td class="text-center">${imgHtml}</td>`;
+                case 'empresa':
+                    return `<td><span class="qty-badge" style="background-color: rgba(33, 150, 243, 0.15); color: #64b5f6; font-size: 0.75rem; padding: 2px 6px;">${escapeHtml(anuncio.empresa || '-')}</span></td>`;
+                case 'sku':
+                    const copyBtnHtml = anuncio.sku 
+                        ? `<button class="btn-copy-sku" data-sku="${escapeHtml(anuncio.sku)}" title="Copiar SKU" style="background: none; border: none; color: #888; cursor: pointer; padding: 2px 4px; font-size: 0.8rem; transition: color 0.2s;"><i class="far fa-copy"></i></button>`
+                        : '';
+                    return `<td><div style="display: inline-flex; align-items: center; gap: 4px;"><strong>${escapeHtml(anuncio.sku || '-')}</strong>${copyBtnHtml}${catalogBadge}</div></td>`;
+                case 'descricao':
+                    return `<td style="min-width: 450px; max-width: 550px; word-break: break-word; white-space: normal; line-height: 1.2;">${escapeHtml(anuncio.descricao || '-')}</td>`;
+                case 'tipo_anuncio':
+                    return `<td>${tipoHtml}</td>`;
+                case 'status':
+                    return `<td><span class="qty-badge ${statusClass}">${statusLabel}</span></td>`;
+                case 'ganhando_catalogo':
+                    return `<td class="text-center">${winBoxBadge}</td>`;
+                case 'prazo_disponibilidade':
+                    return `<td class="text-center">${prazoLabel}</td>`;
+                case 'estoque_plataforma':
+                    return `<td class="text-center"><span class="qty-badge ${estoqueBlingClass}">${estoqueBling}</span></td>`;
+                case 'experiencia_compra':
+                    return `<td class="text-center">${experienciaHtml}</td>`;
+                case 'vendas_total':
+                    return `<td class="text-center">${Number(anuncio.vendas_total || 0).toLocaleString('pt-BR')}</td>`;
+                case 'preco':
+                    return `<td class="text-center">${finalPrecoOriginalHtml}</td>`;
+                case 'preco_promocional':
+                    return `<td class="text-center">${finalPrecoPromoHtml}</td>`;
+                case 'nome_promo_ativa':
+                    return `<td class="text-center">${anuncio.nome_promo_ativa ? `<span class="qty-badge" style="background-color: rgba(40, 167, 69, 0.15); color: #6ee7b7; font-size: 0.72rem; padding: 2px 6px;">${escapeHtml(anuncio.nome_promo_ativa)}</span>` : '-'}</td>`;
+                case 'tarifa':
+                    return `<td class="text-center">${tarifaHtml}</td>`;
+                case 'margem_lucro':
+                    let margemVal = calculateAnuncioMargin(anuncio);
+                    if (margemVal === null && anuncio.margem_lucro != null) {
+                        margemVal = Number(anuncio.margem_lucro);
+                    }
+                    if (margemVal == null || isNaN(margemVal)) {
+                        return `<td class="text-center">-</td>`;
+                    }
+                    const margemClass = margemVal >= 15 ? 'qty-ok' : (margemVal >= 5 ? 'qty-low' : 'qty-zero');
+                    return `<td class="text-center"><span class="qty-badge ${margemClass}">${margemVal.toFixed(2).replace('.', ',')}%</span></td>`;
+                case 'estoque_ml':
+                    return `<td class="text-center"><span class="qty-badge ${estoqueMLClass}">${estoqueML}</span></td>`;
+                case 'frete':
+                    return `<td class="text-center">${freteLabel}</td>`;
+                default:
+                    return `<td>-</td>`;
+            }
+        };
+
+        tr.innerHTML = currentColumnOrder.map(colKey => renderCell(colKey)).join('');
+        return tr;
+    };
+
     const renderTable = (anuncios) => {
         tableBody.innerHTML = '';
         updateHeaderClasses();
@@ -116,150 +365,48 @@ document.addEventListener('DOMContentLoaded', function () {
 
         emptyState.style.display = 'none';
 
-        anuncios.forEach(anuncio => {
-            // Badge de status
-            let statusClass = '';
-            let statusLabel = anuncio.status || '-';
-            switch (anuncio.status) {
-                case 'active':
-                    statusClass = 'qty-ok';
-                    statusLabel = 'Ativo';
-                    break;
-                case 'paused':
-                    statusClass = 'qty-low';
-                    statusLabel = 'Pausado';
-                    break;
-                case 'closed':
-                case 'under_review':
-                    statusClass = 'qty-zero';
-                    statusLabel = anuncio.status === 'closed' ? 'Encerrado' : 'Em revisão';
-                    break;
-                default:
-                    statusClass = '';
+        const groupedData = groupAnunciosByCatalog(anuncios);
+        const colCount = currentColumnOrder.length;
+
+        groupedData.forEach(groupEntry => {
+            if (groupEntry.isCatalogGroup) {
+                const { catalogProductId, totalCount, items } = groupEntry;
+
+                // Gera o Link de Busca ML para os anúncios atualmente visíveis no grupo
+                const numericIds = items.map(item => String(item.id_anuncio || '').replace(/\D/g, '')).filter(Boolean);
+                const searchParam = encodeURIComponent(numericIds.join(' '));
+                const mlSearchUrl = `https://vendedores.mercadolivre.com.br/anuncios/lista/promos?page=1&search=${searchParam}`;
+
+                // Renderiza cabeçalho do grupo de catálogo com o total persistente e o Link de Busca ML
+                const headerTr = document.createElement('tr');
+                headerTr.className = 'catalog-group-header-row';
+                headerTr.innerHTML = `
+                    <td colspan="${colCount}">
+                        <div class="catalog-group-header-content">
+                            <i class="fas fa-layer-group"></i> Catálogo: <strong>${escapeHtml(catalogProductId)}</strong>
+                            <span class="catalog-group-badge-count">${totalCount} anúncio(s) conectado(s) neste catálogo</span>
+                            <div class="catalog-group-ml-container">
+                                <strong>Link de Busca:</strong>
+                                <a href="${mlSearchUrl}" target="_blank" class="catalog-group-ml-link" title="Abrir busca destes anúncios no Mercado Livre">
+                                    <i class="fas fa-external-link-alt"></i> Mercado Livre
+                                </a>
+                            </div>
+                        </div>
+                    </td>
+                `;
+                tableBody.appendChild(headerTr);
+
+                items.forEach((anuncio, idx) => {
+                    const isLast = idx === items.length - 1;
+                    const tr = buildAnuncioRow(anuncio);
+                    tr.classList.add('catalog-group-row');
+                    if (isLast) tr.classList.add('catalog-group-last-row');
+                    tableBody.appendChild(tr);
+                });
+            } else {
+                const tr = buildAnuncioRow(groupEntry.item);
+                tableBody.appendChild(tr);
             }
-
-            // Badge de estoque ML
-            const estoqueML = anuncio.estoque_ml != null ? anuncio.estoque_ml : '-';
-            const estoqueMLClass = estoqueML === '-' ? '' :
-                estoqueML === 0 ? 'qty-zero' :
-                    estoqueML <= 5 ? 'qty-low' : 'qty-ok';
-
-            // Prazo de disponibilidade: garante "dias" em tudo que é número limpo
-            let prazoLabel = '-';
-            if (anuncio.prazo_disponibilidade != null && anuncio.prazo_disponibilidade !== '') {
-                const dias = String(anuncio.prazo_disponibilidade).replace(/\D/g, '');
-                prazoLabel = dias !== '' ? `${dias} dias` : anuncio.prazo_disponibilidade;
-            }
-
-            // Frete formatado em R$
-            const freteVal = Number(anuncio.frete) || 0;
-            const freteLabel = freteVal > 0
-                ? freteVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-                : 'R$ 0,00';
-
-            // Preços formatados em R$
-            const precoVal = Number(anuncio.preco) || 0;
-            const precoLabel = precoVal > 0 ? precoVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-';
-
-            const precoPromoVal = Number(anuncio.preco_promocional) || null;
-            const precoPromoLabel = precoPromoVal ? precoPromoVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-';
-
-            // Verifica se tem promo para riscar o preço original
-            const finalPrecoOriginalHtml = precoPromoVal
-                ? `<span style="text-decoration: line-through; color: #888; font-size: 0.85rem;">${precoLabel}</span>`
-                : precoLabel;
-
-            const finalPrecoPromoHtml = precoPromoVal
-                ? `<span style="color: #2e7d32; font-weight: bold;">${precoPromoLabel}</span>`
-                : '-';
-
-            // Estoque Bling (da cached_products.estoque_plataforma)
-            const estoqueBling = anuncio.estoque_plataforma != null ? anuncio.estoque_plataforma : '-';
-            const estoqueBlingClass = estoqueBling === '-' ? '' :
-                estoqueBling === 0 ? 'qty-zero' :
-                    estoqueBling <= 5 ? 'qty-low' : 'qty-ok';
-
-            const tr = document.createElement('tr');
-
-            const catalogBadge = anuncio.catalog_listing
-                ? ` <span class="qty-badge" style="background-color: rgba(156, 39, 176, 0.15); color: #9c27b0; font-size: 0.7rem; padding: 0.15rem 0.35rem; min-width: auto; margin-left: 5px;">Catálogo</span>`
-                : '';
-
-            let winBoxBadge = '-';
-            if (anuncio.catalog_listing) {
-                winBoxBadge = anuncio.ganhando_catalogo
-                    ? `<span class="qty-badge" style="background-color: #e8f5e9; color: #2e7d32;">Ganhando</span>`
-                    : `<span class="qty-badge" style="background-color: #ffebee; color: #c62828;">Perdendo</span>`;
-            }
-
-            const tipoHtml = anuncio.tipo_anuncio === 'Premium'
-                ? `<span class="qty-badge" style="background-color: #fff3e0; color: #e65100;">${anuncio.tipo_anuncio}</span>`
-                : `<span class="qty-badge" style="background-color: #f5f5f5; color: #616161;">${anuncio.tipo_anuncio || '-'}</span>`;
-
-            const experienciaHtml = anuncio.experiencia_compra ? `${anuncio.experiencia_compra}%` : '0%';
-
-            const tarifaVal = Number(anuncio.tarifa) || 0;
-            const tarifaHtml = tarifaVal > 0 ? `${tarifaVal.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })}%` : '-';
-
-            const urlAnuncio = anuncio.permalink || (anuncio.id_anuncio ? `https://produto.mercadolivre.com.br/${anuncio.id_anuncio}` : '#');
-            const imgHtml = anuncio.thumbnail 
-                ? `<img src="${anuncio.thumbnail}" alt="Foto" style="width: 36px; height: 36px; object-fit: contain; border-radius: 4px; vertical-align: middle; background: #fff;" />` 
-                : '-';
-
-            const renderCell = (colKey) => {
-                switch (colKey) {
-                    case 'id_anuncio':
-                        const copyIdBtnHtml = anuncio.id_anuncio 
-                            ? `<button class="btn-copy-id-anuncio" data-id-anuncio="${escapeHtml(anuncio.id_anuncio)}" title="Copiar ID do Anúncio" style="background: none; border: none; color: #888; cursor: pointer; padding: 2px 4px; font-size: 0.8rem; transition: color 0.2s;"><i class="far fa-copy"></i></button>`
-                            : '';
-                        return `<td><div style="display: inline-flex; align-items: center; gap: 4px;"><a href="${urlAnuncio}" target="_blank" style="color: #f39c12; font-weight: bold; text-decoration: none;" title="Abrir anúncio no Mercado Livre">${escapeHtml(anuncio.id_anuncio || '-')}</a>${copyIdBtnHtml}</div></td>`;
-                    case 'thumbnail':
-                        return `<td class="text-center">${imgHtml}</td>`;
-                    case 'sku':
-                        const copyBtnHtml = anuncio.sku 
-                            ? `<button class="btn-copy-sku" data-sku="${escapeHtml(anuncio.sku)}" title="Copiar SKU" style="background: none; border: none; color: #888; cursor: pointer; padding: 2px 4px; font-size: 0.8rem; transition: color 0.2s;"><i class="far fa-copy"></i></button>`
-                            : '';
-                        return `<td><div style="display: inline-flex; align-items: center; gap: 4px;"><strong>${escapeHtml(anuncio.sku || '-')}</strong>${copyBtnHtml}${catalogBadge}</div></td>`;
-                    case 'descricao':
-                        return `<td style="min-width: 450px; max-width: 550px; word-break: break-word; white-space: normal; line-height: 1.2;">${escapeHtml(anuncio.descricao || '-')}</td>`;
-                    case 'tipo_anuncio':
-                        return `<td>${tipoHtml}</td>`;
-                    case 'status':
-                        return `<td><span class="qty-badge ${statusClass}">${statusLabel}</span></td>`;
-                    case 'ganhando_catalogo':
-                        return `<td class="text-center">${winBoxBadge}</td>`;
-                    case 'prazo_disponibilidade':
-                        return `<td class="text-center">${prazoLabel}</td>`;
-                    case 'estoque_plataforma':
-                        return `<td class="text-center"><span class="qty-badge ${estoqueBlingClass}">${estoqueBling}</span></td>`;
-                    case 'experiencia_compra':
-                        return `<td class="text-center">${experienciaHtml}</td>`;
-                    case 'vendas_total':
-                        return `<td class="text-center">${Number(anuncio.vendas_total || 0).toLocaleString('pt-BR')}</td>`;
-                    case 'preco':
-                        return `<td class="text-center">${finalPrecoOriginalHtml}</td>`;
-                    case 'preco_promocional':
-                        return `<td class="text-center">${finalPrecoPromoHtml}</td>`;
-                    case 'tarifa':
-                        return `<td class="text-center">${tarifaHtml}</td>`;
-                    case 'margem_lucro':
-                        const margemVal = Number(anuncio.margem_lucro);
-                        if (anuncio.margem_lucro == null || isNaN(margemVal) || (margemVal === 0 && (!anuncio.custo_produto || Number(anuncio.custo_produto) === 0))) {
-                            return `<td class="text-center">-</td>`;
-                        }
-                        const margemClass = margemVal >= 15 ? 'qty-ok' : (margemVal >= 5 ? 'qty-low' : 'qty-zero');
-                        return `<td class="text-center"><span class="qty-badge ${margemClass}">${margemVal.toFixed(2).replace('.', ',')}%</span></td>`;
-                    case 'estoque_ml':
-                        return `<td class="text-center"><span class="qty-badge ${estoqueMLClass}">${estoqueML}</span></td>`;
-                    case 'frete':
-                        return `<td class="text-center">${freteLabel}</td>`;
-                    default:
-                        return `<td>-</td>`;
-                }
-            };
-
-            tr.innerHTML = currentColumnOrder.map(colKey => renderCell(colKey)).join('');
-            tableBody.appendChild(tr);
         });
     };
 
@@ -709,6 +856,14 @@ document.addEventListener('DOMContentLoaded', function () {
         loadAnuncios();
     });
 
+    // Filtro de empresa / loja
+    if (filtroEmpresa) {
+        filtroEmpresa.addEventListener('change', () => {
+            currentPage = 1;
+            loadAnuncios();
+        });
+    }
+
     // Botão de sincronização
     btnSincronizar.addEventListener('click', handleSync);
 
@@ -730,6 +885,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
             const tipo = filtroTipo.value;
             if (tipo) params.set('tipo', tipo);
+
+            const empresa = filtroEmpresa ? filtroEmpresa.value : '';
+            if (empresa) params.set('empresa', empresa);
 
             // Redireciona para baixar o arquivo
             window.location.href = `/api/anuncios/exportar?${params.toString()}`;

@@ -24,12 +24,11 @@ exports.processUpload = async (req, res) => {
     }
 
     const inputFilePath = req.file.path;
+    const accountName = req.body.accountName || req.body.contaFaturamento || 'lucas';
 
     try {
-        // Chama o serviço que criamos anteriormente
-        // Ele vai demorar um pouco (pois tem os delays de 400ms), 
-        // então o navegador vai ficar "carregando" até o download começar.
-        const reportFileName = await mlBatchService.processarArquivoDePedidos(inputFilePath);
+        // Chama o serviço passando a conta escolhida
+        const reportFileName = await mlBatchService.processarArquivoDePedidos(inputFilePath, accountName);
 
         const reportsDir = path.join(__dirname, '..', 'reports');
         const reportPath = path.join(reportsDir, reportFileName);

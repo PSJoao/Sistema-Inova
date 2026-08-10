@@ -7,7 +7,10 @@ const fs = require('fs');
 const { getValidBlingToken } = require('./blingTokenManager');
 
 const BLING_API_BASE_URL = 'https://api.bling.com.br/Api/v3';
-const TARGET_STATUS_ID = '716469'; // ID da situação solicitado
+const TARGET_STATUS_IDS = {
+    lucas: '716469',
+    eliane: '840705'
+};
 const MAX_RETRIES = 5;
 const DELAY_MS = 400;
 
@@ -41,13 +44,17 @@ async function executeWithRetry(requestFn, context) {
         } catch (error) {
             lastError = error;
             const status = error.response ? error.response.status : 'Network/Unknown';
-            console.warn(`[ML Batch] Erro na tentativa ${attempt}/${MAX_RETRIES} para ${context}. Status: ${status}. Motivo: ${error.message}`);
+            const detail = error.response?.data ? JSON.stringify(error.response.data) : error.message;
+            console.warn(`[ML Batch] Erro na tentativa ${attempt}/${MAX_RETRIES} para ${context}. Status: ${status}. Motivo: ${detail}`);
+
+            // Não tenta novamente se for erro 4xx do cliente (ex: 400 Bad Request, 404 Not Found, 422 Unprocessable)
+            // exceto 429 (Rate Limit Exceeded)
+            if (error.response && error.response.status >= 400 && error.response.status < 500 && error.response.status !== 429) {
+                break;
+            }
 
             if (attempt === MAX_RETRIES) break;
 
-            // Backoff exponencial leve ou fixo? O pedido foi fixo 400ms entre ações, 
-            // mas para retry de erro é bom esperar um pouco mais. Vou colocar um progressivo simples.
-            // Mas mantendo o "pausa entre buscas" mandatório de 400ms fora daqui.
             const retryDelay = 1000 * attempt;
             await sleep(retryDelay);
         }
@@ -110,8 +117,10 @@ exports.processarArquivoDeMapeamento = async (inputFilePath) => {
     }
 };
 
-exports.processarArquivoDePedidos = async (inputFilePath) => {
-    console.log(`[ML Batch] Iniciando processamento do arquivo: ${inputFilePath}`);
+exports.processarArquivoDePedidos = async (inputFilePath, accountName = 'lucas') => {
+    const validAccount = (accountName && accountName.toLowerCase() === 'eliane') ? 'eliane' : 'lucas';
+    const targetStatusId = TARGET_STATUS_IDS[validAccount] || TARGET_STATUS_IDS.lucas;
+    console.log(`[ML Batch - ${validAccount.toUpperCase()}] Iniciando processamento do arquivo: ${inputFilePath} (Target Status: ${targetStatusId})`);
 
     // 1. Ler o arquivo Excel
     const workbook = xlsx.readFile(inputFilePath);
@@ -134,7 +143,7 @@ exports.processarArquivoDePedidos = async (inputFilePath) => {
 
         if (!numeroLoja) continue;
 
-        console.log(`[ML Batch] Processando pedido Loja: ${numeroLoja}...`);
+        console.log(`[ML Batch - ${validAccount.toUpperCase()}] Processando pedido Loja: ${numeroLoja}...`);
 
         try {
             // --- PASSO A: BUSCAR ID DO PEDIDO (COM LÓGICA DE FALLBACK) ---
@@ -145,10 +154,10 @@ exports.processarArquivoDePedidos = async (inputFilePath) => {
             // TENTATIVA 1: Busca Direta pelo número da planilha
             try {
                 const searchFn = async () => {
-                    const token = await getValidBlingToken('lucas');
+                    const token = await getValidBlingToken(validAccount);
                     const cleanNumeroLoja = numeroLoja.replace(/#/g, '');
-                    return axios.get(`${BLING_API_BASE_URL}/pedidos/vendas`, {
-                        params: { 'numerosLojas[]': cleanNumeroLoja },
+                    const url = `${BLING_API_BASE_URL}/pedidos/vendas?numerosLojas[]=${encodeURIComponent(cleanNumeroLoja)}`;
+                    return axios.get(url, {
                         headers: { Authorization: `Bearer ${token}` }
                     });
                 };
@@ -177,9 +186,9 @@ exports.processarArquivoDePedidos = async (inputFilePath) => {
 
                     try {
                         const fallbackSearchFn = async () => {
-                            const token = await getValidBlingToken('lucas');
-                            return axios.get(`${BLING_API_BASE_URL}/pedidos/vendas`, {
-                                params: { 'numerosLojas[]': numeroReal },
+                            const token = await getValidBlingToken(validAccount);
+                            const url = `${BLING_API_BASE_URL}/pedidos/vendas?numerosLojas[]=${encodeURIComponent(numeroReal)}`;
+                            return axios.get(url, {
                                 headers: { Authorization: `Bearer ${token}` }
                             });
                         };
@@ -205,21 +214,21 @@ exports.processarArquivoDePedidos = async (inputFilePath) => {
             const situacaoAtual = String(pedidoEncontrado.situacao?.id);
 
             // Verifica redundância
-            if (situacaoAtual === TARGET_STATUS_ID) {
-                console.log(`   > Pedido ${numeroLoja} (ID: ${pedidoId}) já está na situação correta (${TARGET_STATUS_ID}). Pulando.`);
+            if (situacaoAtual === targetStatusId) {
+                console.log(`   > Pedido ${numeroLoja} (ID: ${pedidoId}) já está na situação correta (${targetStatusId}). Pulando.`);
                 successList.push([numeroLoja, 'Já estava atualizado (Ignorado)']);
                 continue; // Pula para o próximo loop sem fazer o PATCH
             }
 
-            console.log(`   > ID Bling encontrado: ${pedidoId}. Atualizando situação...`);
+            console.log(`   > ID Bling encontrado: ${pedidoId}. Atualizando situação para ${targetStatusId}...`);
 
             // --- PASSO B: ATUALIZAR SITUAÇÃO (PATCH) ---
             await sleep(DELAY_MS); // Pausa mandatória entre busca e atualização
 
             const updateFn = async () => {
-                const token = await getValidBlingToken('lucas');
-                const url = `${BLING_API_BASE_URL}/pedidos/vendas/${pedidoId}/situacoes/${TARGET_STATUS_ID}`;
-                return axios.patch(url, {}, {
+                const token = await getValidBlingToken(validAccount);
+                const url = `${BLING_API_BASE_URL}/pedidos/vendas/${pedidoId}/situacoes/${targetStatusId}`;
+                return axios.patch(url, { id: Number(targetStatusId) }, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
             };
@@ -228,10 +237,18 @@ exports.processarArquivoDePedidos = async (inputFilePath) => {
 
             // Sucesso
             successList.push([numeroLoja, 'Atualizado com sucesso']);
-            console.log(`   > Sucesso: ${numeroLoja} -> Status ${TARGET_STATUS_ID}`);
+            console.log(`   > Sucesso: ${numeroLoja} -> Status ${targetStatusId}`);
 
         } catch (err) {
-            const msg = err.response?.data?.error?.description || err.message;
+            let msg = err.message;
+            if (err.response?.data) {
+                const errorData = err.response.data;
+                const errorDesc = errorData.error?.description || errorData.error?.message;
+                const fieldsMsg = errorData.error?.fields
+                    ? errorData.error.fields.map(f => `${f.field || f.element || ''}: ${f.msg || f.description || f.message || ''}`).join(', ')
+                    : '';
+                msg = [errorDesc, fieldsMsg].filter(Boolean).join(' | ') || JSON.stringify(errorData);
+            }
             errorList.push([numeroLoja, msg]);
             console.error(`   > Falha: ${numeroLoja} - ${msg}`);
         }

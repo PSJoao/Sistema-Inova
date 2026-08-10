@@ -19,24 +19,24 @@ const BLING_API_BASE_URL = 'https://api.bling.com.br/Api/v3';
 
 // --- MAPA DE TRANSPORTADORAS E FUNÇÕES AUXILIARES DE MAPEAMENTO ---
 const TRANSPORTADORA_APELIDOS_MAP = {
-  'JEW TRANSPORTES LTDA': 'JEW',
-  'DOMINALOG': 'DOMINALOG',
-  'I. AMORIN TRANSPORTES EIRELI': 'LOG+',
-  'I AMORIN TRANSPORTES EIRELLI': 'LOG+',
-  'LOG MAIS TRANSPORTES LTDA': 'LOG+',
-  'RISSO ENCOMENDAS CENTRO OESTE LTDA': 'RISSO',
-  'MFA TRANSPORTES E LOGISTICA': 'MFA',
-  'M F A TRANSPORTES E LOGISTICA LTDA': 'MFA',
-  'MFA TRANSPORTES E LOGISTICA LTDA': 'MFA',
-  'GAO LOG TRANSPORTES': 'GAOLOG',
-  'ATUAL CARGAS E TRANSPORTES LTDA': 'ATUAL CARGAS',
-  'FRENET': 'FRENET',
-  'NOVO MERCADO LIVRE': 'NOVO MERCADO LIVRE',
-  'MERCADO LIVRE ELIANE': 'MERCADO LIVRE ELIANE',
-  'SHOPEE MAGAZINE' : 'SHOPEE MAGAZINE',
-  'MERCADO LIVRE MAGAZINE': 'MERCADO LIVRE MAGAZINE',
-  'MAGALU ENTREGAS' : 'MAGALU ENTREGAS'
-  // Adicione mais mapeamentos exatos conforme necessário. Priorize nomes completos do Bling.
+    'JEW TRANSPORTES LTDA': 'JEW',
+    'DOMINALOG': 'DOMINALOG',
+    'I. AMORIN TRANSPORTES EIRELI': 'LOG+',
+    'I AMORIN TRANSPORTES EIRELLI': 'LOG+',
+    'LOG MAIS TRANSPORTES LTDA': 'LOG+',
+    'RISSO ENCOMENDAS CENTRO OESTE LTDA': 'RISSO',
+    'MFA TRANSPORTES E LOGISTICA': 'MFA',
+    'M F A TRANSPORTES E LOGISTICA LTDA': 'MFA',
+    'MFA TRANSPORTES E LOGISTICA LTDA': 'MFA',
+    'GAO LOG TRANSPORTES': 'GAOLOG',
+    'ATUAL CARGAS E TRANSPORTES LTDA': 'ATUAL CARGAS',
+    'FRENET': 'FRENET',
+    'NOVO MERCADO LIVRE': 'NOVO MERCADO LIVRE',
+    'MERCADO LIVRE ELIANE': 'MERCADO LIVRE ELIANE',
+    'SHOPEE MAGAZINE': 'SHOPEE MAGAZINE',
+    'MERCADO LIVRE MAGAZINE': 'MERCADO LIVRE MAGAZINE',
+    'MAGALU ENTREGAS': 'MAGALU ENTREGAS'
+    // Adicione mais mapeamentos exatos conforme necessário. Priorize nomes completos do Bling.
 };
 
 function getApelidoFromNomeCompleto(nomeCompleto) {
@@ -47,7 +47,7 @@ function getApelidoFromNomeCompleto(nomeCompleto) {
             return TRANSPORTADORA_APELIDOS_MAP[key];
         }
     }
-    const parts = nomeUpper.split(/[\s-]+/); 
+    const parts = nomeUpper.split(/[\s-]+/);
     if (parts[0] && parts[0].length > 1) {
         const apelidoGerado = parts[0].substring(0, 15).replace(/[^A-Z0-9&]/ig, '');
         if (apelidoGerado.length > 1) {
@@ -60,8 +60,8 @@ function getApelidoFromNomeCompleto(nomeCompleto) {
 
 function getNomeCompletoFromApelido(apelido) {
     if (!apelido) {
-        return 'Transportadora Não Definida';
-    }
+        return 'Transportadora Não Definida';
+    }
     const apelidoUpper = apelido.toUpperCase();
     for (const nomeCompleto in TRANSPORTADORA_APELIDOS_MAP) {
         if (TRANSPORTADORA_APELIDOS_MAP[nomeCompleto].toUpperCase() === apelidoUpper) {
@@ -71,7 +71,7 @@ function getNomeCompletoFromApelido(apelido) {
     // Se o apelido foi um fallback (ex: primeira palavra), ele pode não estar no mapa para reverter.
     // Neste caso, o relatório usará o próprio apelido.
     console.warn(`Nome completo oficial não encontrado no mapa para o apelido "${apelido}". O relatório usará o apelido.`);
-    return apelido; 
+    return apelido;
 }
 
 // --- FUNÇÕES AUXILIARES BLING ---
@@ -103,9 +103,9 @@ async function blingApiGet(url, accountName) {
                 'Authorization': `${credentials.tokenType} ${credentials.accessToken}`,
                 'Accept': 'application/json'
             },
-            timeout: 20000 
+            timeout: 20000
         });
-        return response.data; 
+        return response.data;
     } catch (error) {
         let errorMessage = `Erro na API Bling GET ${url} para conta ${accountName}.`;
         let errorStatus = 500;
@@ -130,7 +130,7 @@ async function blingApiGet(url, accountName) {
 // --- FUNÇÃO DE GERAÇÃO DE EXCEL ---
 async function generateExcelReport(relationId, transportadoraApelido, tituloRelacaoAba, client) {
     console.log(`[Excel Simplificado] Iniciando geração para Relação ID: ${relationId}`);
-    
+
     // 1. Coleta de Dados do Banco
     const itemsResult = await client.query(
         `SELECT enf.nfe_numero
@@ -143,10 +143,10 @@ async function generateExcelReport(relationId, transportadoraApelido, tituloRela
 
     if (itemsParaRelacao.length === 0) {
         console.log("[Excel Simplificado] Nenhum item bipado encontrado. Nenhum relatório será gerado.");
-        return null; 
+        return null;
     }
 
-    
+
     const transportadoraCompleto = getNomeCompletoFromApelido(transportadoraApelido);
     const dataRelacao = new Date().toLocaleDateString('pt-BR');
 
@@ -162,7 +162,7 @@ async function generateExcelReport(relationId, transportadoraApelido, tituloRela
         { header: 'Nº Nota Fiscal', key: 'nfe_numero', width: 20 },
         { header: 'Data', key: 'data', width: 15 }
     ];
-    
+
     // Estilo para o cabeçalho
     sheet.getRow(1).font = { bold: true };
 
@@ -176,7 +176,7 @@ async function generateExcelReport(relationId, transportadoraApelido, tituloRela
     });
 
     // 5. Salva o novo arquivo Excel
-    const reportsDir = path.join(__dirname, '../relacoes'); 
+    const reportsDir = path.join(__dirname, '../relacoes');
     await fs.mkdir(reportsDir, { recursive: true });
     // Cria um nome de arquivo único baseado no título da aba
     const fileName = `${finalNomeAba}.xlsx`;
@@ -207,8 +207,8 @@ async function generateExcelReport(relationId, transportadoraApelido, tituloRela
  * Renderiza a página principal do módulo de Relações, listando transportadoras com NFs pendentes.
  */
 exports.getIndexRelacoes = async (req, res) => {
-  try {
-    const transportadorasQuery = `
+    try {
+        const transportadorasQuery = `
       SELECT DISTINCT transportadora_apelido, COUNT(*) as pending_count
       FROM emission_nfe_reports
       WHERE (status_para_relacao = 'pendente' OR status_para_relacao = 'justificada_adiada')
@@ -216,39 +216,39 @@ exports.getIndexRelacoes = async (req, res) => {
         AND cancelada = false
       GROUP BY transportadora_apelido ORDER BY transportadora_apelido ASC;
     `;
-    
-    const justificativasQuery = `
+
+        const justificativasQuery = `
         SELECT DISTINCT justificativa FROM emission_nfe_reports
         WHERE justificativa IS NOT NULL AND justificativa <> ''
         ORDER BY justificativa ASC;
     `;
 
-    const [transportadorasResult, justificativasResult] = await Promise.all([
-        pool.query(transportadorasQuery),
-        pool.query(justificativasQuery)
-    ]);
-    
-    const transportadoras = transportadorasResult.rows.map(row => ({
-        apelido: row.transportadora_apelido,
-        count: parseInt(row.pending_count, 10)
-    }));
+        const [transportadorasResult, justificativasResult] = await Promise.all([
+            pool.query(transportadorasQuery),
+            pool.query(justificativasQuery)
+        ]);
 
-    const transportadorasEscondidas = ['NOVO MERCADO LIVRE', 'MERCADO LIVRE ELIANE', 'MERCADO LIVRE MAGAZINE', 'SHOPEE MAGAZINE', 'MAGALU ENTREGAS', 'FRENET'];
-    const transportadorasVisiveis = transportadoras.filter(transp => !transportadorasEscondidas.includes(transp.apelido.toUpperCase()));
-    
-    const justificativas = justificativasResult.rows.map(row => row.justificativa);
+        const transportadoras = transportadorasResult.rows.map(row => ({
+            apelido: row.transportadora_apelido,
+            count: parseInt(row.pending_count, 10)
+        }));
 
-    res.render('relacao/index', {
-      title: 'Relações de Transportadoras',
-      transportadoras: transportadorasVisiveis,
-      justificativas: justificativas,
-      layout: 'main'
-    });
-  } catch (error) {
-    console.error("Erro ao buscar dados para a página de relações:", error);
-    req.flash('error', 'Erro ao carregar a página de relações.');
-    res.redirect('/');
-  }
+        const transportadorasEscondidas = ['NOVO MERCADO LIVRE', 'MERCADO LIVRE ELIANE', 'MERCADO LIVRE MAGAZINE', 'SHOPEE MAGAZINE', 'MAGALU ENTREGAS', 'FRENET'];
+        const transportadorasVisiveis = transportadoras.filter(transp => !transportadorasEscondidas.includes(transp.apelido.toUpperCase()));
+
+        const justificativas = justificativasResult.rows.map(row => row.justificativa);
+
+        res.render('relacao/index', {
+            title: 'Relações de Transportadoras',
+            transportadoras: transportadorasVisiveis,
+            justificativas: justificativas,
+            layout: 'main'
+        });
+    } catch (error) {
+        console.error("Erro ao buscar dados para a página de relações:", error);
+        req.flash('error', 'Erro ao carregar a página de relações.');
+        res.redirect('/');
+    }
 };
 
 /**
@@ -282,11 +282,11 @@ exports.getNfeHistoryApi = async (req, res) => {
                 queryParams.push(justificativa);
             }
         }
-        
+
         if (search) {
-             whereClauses.push(`(enf.nfe_numero ILIKE $${paramIndex} OR cn.product_descriptions_list ILIKE $${paramIndex} OR enf.transportadora_apelido ILIKE $${paramIndex})`);
-             queryParams.push(`%${search}%`);
-             paramIndex++;
+            whereClauses.push(`(enf.nfe_numero ILIKE $${paramIndex} OR cn.product_descriptions_list ILIKE $${paramIndex} OR enf.transportadora_apelido ILIKE $${paramIndex})`);
+            queryParams.push(`%${search}%`);
+            paramIndex++;
         }
 
         const whereCondition = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
@@ -365,7 +365,7 @@ exports.getMissingProductCountApi = async (req, res) => {
         if (allProductIds.size === 0) {
             return res.status(200).json({ structureCounts: [] });
         }
-        
+
         // 2. Buscar todas as estruturas relacionadas de uma vez
         const structuresResult = await pool.query(
             `SELECT parent_product_bling_id, structure_name FROM cached_structures WHERE parent_product_bling_id = ANY($1::text[])`,
@@ -377,7 +377,7 @@ exports.getMissingProductCountApi = async (req, res) => {
         // 3. Contabilizar
         nfeResult.rows.forEach(nf => {
             const productIdsInNfe = (nf.product_ids_list || '').split(';').map(id => id.trim()).filter(Boolean);
-            
+
             productIdsInNfe.forEach(productId => {
                 if (parentProductsWithStructures.has(productId)) {
                     // É um produto composto, contamos suas estruturas
@@ -460,15 +460,15 @@ exports.getBipagemPage = async (req, res) => {
             `;
             queryParams = [transportadoraApelido];
         }
-        
+
         const nfsResult = await pool.query(nfsQuery, queryParams);
-        
+
         // MODIFICADO: Adicionado 'justificativa' ao objeto mapeado
         const notasFiscaisPendentes = nfsResult.rows.map(nf => ({
-            idRelatorio: nf.id, 
-            numeroNF: nf.nfe_numero, 
+            idRelatorio: nf.id,
+            numeroNF: nf.nfe_numero,
             chaveAcesso44d: nf.nfe_chave_acesso_44d,
-            totalVolumes: nf.total_volumes_calculado, 
+            totalVolumes: nf.total_volumes_calculado,
             contaBling: nf.bling_account_type,
             produtos: nf.product_descriptions_list || "Nenhum produto listado.",
             justificativa: nf.justificativa || null // Passa a justificativa (ou null se não houver)
@@ -483,10 +483,10 @@ exports.getBipagemPage = async (req, res) => {
                  FROM transportation_relation_items tri
                  JOIN emission_nfe_reports enr ON tri.nfe_report_id = enr.id
                  WHERE tri.relation_id = $1 AND tri.status_item = 'incluida_bipada'
-                 AND enr.cancelada = false`, 
+                 AND enr.cancelada = false`,
                 [edit_relation_id]
             );
-            
+
             // Para cada nota, adiciona a chave de acesso ao array o número de vezes correspondente aos volumes
             relationItemsResult.rows.forEach(item => {
                 for (let i = 0; i < item.total_volumes_calculado; i++) {
@@ -501,7 +501,7 @@ exports.getBipagemPage = async (req, res) => {
         }
 
         const nomeCompleto = getNomeCompletoFromApelido(transportadoraApelido);
-        
+
         // Agora 'notasFiscaisPendentes' contém a justificativa e será passado para o template 'bipagem.hbs'
         res.render('relacao/bipagem', {
             title: `Relação para ${nomeCompleto}`,
@@ -569,15 +569,15 @@ exports.getPendentesApi = async (req, res) => {
             `;
             queryParams = [transportadoraApelido];
         }
-        
+
         const nfsResult = await pool.query(nfsQuery, queryParams);
-        
+
         // Mapeia os dados para o formato que o frontend espera
         const notasFiscaisPendentes = nfsResult.rows.map(nf => ({
-            idRelatorio: nf.id, 
-            numeroNF: nf.nfe_numero, 
+            idRelatorio: nf.id,
+            numeroNF: nf.nfe_numero,
             chaveAcesso44d: nf.nfe_chave_acesso_44d,
-            totalVolumes: nf.total_volumes_calculado, 
+            totalVolumes: nf.total_volumes_calculado,
             contaBling: nf.bling_account_type,
             produtos: nf.product_descriptions_list || "Nenhum produto listado.",
             justificativa: nf.justificativa || null
@@ -596,11 +596,11 @@ exports.getPendentesApi = async (req, res) => {
  */
 exports.finalizeRelacao = async (req, res) => {
     const { transportadoraApelido } = req.params;
-    const { bipadoItems, naoBipadoItems, editingRelationId } = req.body; 
+    const { bipadoItems, naoBipadoItems, editingRelationId } = req.body;
     const username = req.user.username || 'sistema';
 
     if (!transportadoraApelido) return res.status(400).json({ message: "Apelido da transportadora não fornecido." });
-    
+
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -651,7 +651,7 @@ exports.finalizeRelacao = async (req, res) => {
                 if (!item.nfe_report_id) continue;
                 let statusItemNaRelacao = item.naoVaiSair === true ? 'cancelada_desta_relacao' : 'justificada_nao_incluida';
                 let novoStatusParaReportPrincipal = item.naoVaiSair === true ? 'cancelada_permanente' : 'justificada_adiada';
-                
+
                 await client.query(
                     `INSERT INTO transportation_relation_items (relation_id, nfe_report_id, status_item, justificativa)
                     VALUES ($1, $2, $3, $4)
@@ -661,16 +661,16 @@ exports.finalizeRelacao = async (req, res) => {
                         status_item = EXCLUDED.status_item,
                         justificativa = EXCLUDED.justificativa;`,
                     [newRelationId, item.nfe_report_id, statusItemNaRelacao, item.justificativa || null]
-                    );
+                );
                 await client.query(
                     "UPDATE emission_nfe_reports SET status_para_relacao = $1, justificativa = $2 WHERE id = $3 AND (status_para_relacao = 'pendente' OR status_para_relacao = 'justificada_adiada')",
                     [novoStatusParaReportPrincipal, item.justificativa, item.nfe_report_id]
                 );
             }
         }
-        
+
         //const generatedExcelPath = await generateExcelReport(newRelationId, transportadoraApelido, tituloRelacao, client);
-        
+
         /*if (generatedExcelPath) {
             const fileNameOnly = path.basename(generatedExcelPath);
             await client.query('UPDATE transportation_relations SET arquivo_excel_path = $1 WHERE id = $2', 
@@ -681,8 +681,8 @@ exports.finalizeRelacao = async (req, res) => {
         console.log(`[FINALIZE_RELACAO] Estado de bipagem salvo para '${transportadoraApelido}' foi limpo.`);
 
         await client.query('COMMIT');
-        
-        res.status(201).json({ 
+
+        res.status(201).json({
             message: `Relação para ${transportadoraApelido} (ID: ${newRelationId}) foi ${editingRelationId ? 'atualizada' : 'salva'} com sucesso.`,
             relationId: newRelationId,
             //excelPath: generatedExcelPath ? path.basename(generatedExcelPath) : null
@@ -717,7 +717,7 @@ exports.downloadRelacaoExcel = async (req, res) => {
 
         const { transportadora_apelido, validated_at } = relacaoResult.rows[0];
         const nomeCompleto = transportadora_apelido;
-        const dataFormatada = new Date(validated_at).toLocaleDateString('pt-BR').replace(/\//g, '-');
+        const dataFormatada = new Date(validated_at).toLocaleDateString('pt-BR');
 
         // 2. Busca os itens da relação
         const itemsResult = await pool.query(
@@ -736,7 +736,7 @@ exports.downloadRelacaoExcel = async (req, res) => {
 
         worksheet.columns = [
             { header: 'Nº Nota Fiscal', key: 'nfe_numero', width: 20 },
-            { header: 'Nº Pedido', key: 'pedido_venda', width: 25},
+            { header: 'Nº Pedido', key: 'pedido_venda', width: 25 },
             { header: 'Data', key: 'data', width: 15 },
             { header: 'Transportadora', key: 'transportadora', width: 40 }
         ];
@@ -864,9 +864,9 @@ exports.getPrintableRelacaoPage = async (req, res) => {
 
         const elianeBlingIds = nfsEliane.map(nf => nf.bling_id);
         const lucasBlingIds = nfsLucas.map(nf => nf.bling_id);
-        
+
         const nfsPorParDeColunas = 50; // Cada "página" de colunas tem 50 linhas de dados (11 a 60)
-        
+
         // O número de linhas na tabela será definido pela maior das duas listas
         const totalVisualRows = Math.max(nfsEliane.length, nfsLucas.length);
 
@@ -904,7 +904,7 @@ exports.getPrintableRelacaoPage = async (req, res) => {
             lucasNfs: nfsLucas.length, lucasVols: nfsLucas.reduce((s, i) => s + (i.total_volumes_calculado || 0), 0),
             geralNfs: itemsParaRelacao.length, geralVols: itemsParaRelacao.reduce((s, i) => s + (i.total_volumes_calculado || 0), 0)
         };
-        
+
         res.render('relacao/print-relacao', {
             layout: 'print',
             title: `Impressão Relação - ${transportadora_apelido}`,
@@ -952,7 +952,7 @@ exports.updateNfeJustificationApi = async (req, res) => {
             // Se a nota não for encontrada, lança um erro para acionar o rollback
             throw new Error("Nota Fiscal não encontrada.");
         }
-        
+
         // Isto garante que o histórico de justificativas em relações antigas também seja atualizado.
         const updateRelationItemsQuery = `
             UPDATE transportation_relation_items
@@ -1102,7 +1102,7 @@ exports.deleteRelacao = async (req, res) => {
 
         // Apenas chama a função de lógica interna
         await _deleteRelationLogic(client, relationId);
-        
+
         await client.query('COMMIT');
         res.status(200).json({ message: `Relação excluída e notas retornadas ao status pendente.` });
 
@@ -1205,7 +1205,7 @@ exports.updateNfeVolumes = async (req, res) => {
             return res.status(404).json({ message: 'Nota Fiscal não encontrada.' });
         }
 
-        res.status(200).json({ 
+        res.status(200).json({
             message: `Volumes da NF Nº ${result.rows[0].nfe_numero} atualizados para ${newVolumes}.`
         });
 
@@ -1255,7 +1255,7 @@ exports.getNfeWeightApi = async (req, res) => {
         // Se a query não retornar nada (ex: nenhum produto encontrado), o valor será 'null'.
         // O '|| 0' garante que, nesse caso, retornemos 0.
         const totalWeight = parseFloat(productWeightsResult.rows[0].total_weight) || 0;
-        
+
         console.log('Peso total final calculado (considerando quantidades):', totalWeight);
         console.log('-----------------------------------');
 

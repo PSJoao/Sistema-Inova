@@ -45,4 +45,9 @@ router.post('/api/anuncios/importar-custos', authController.requireAuth, upload.
 router.get('/api/anuncios/promocoes/listagem', authController.requireAuth, anunciosController.getPromocoesApi);
 router.get('/api/anuncios/promocoes/exportar', authController.requireAuth, authController.requireModule('produtos_gerenciar'), anunciosController.exportarPromocoesExcel);
 
+// --- Central de Promoções (Listagem Única) ---
+router.get('/anuncios/central-promocoes', anunciosController.renderCentralPromocoesPage);
+router.get('/api/anuncios/central-promocoes/listagem', authController.requireAuth, anunciosController.getCentralPromocoesApi);
+router.post('/api/anuncios/central-promocoes/reembolso', authController.requireAuth, anunciosController.salvarReembolsoMaximo);
+
 module.exports = router;

@@ -18,11 +18,11 @@ exports.handleWebhook = (req, res) => {
 
         // Se após a conversão não houver objeto válido, ignora
         if (!payload || typeof payload !== 'object' || Object.keys(payload).length === 0) {
-            console.log('[Bling Webhook] Corpo da requisição recebido está vazio ou inválido:', req.body);
+            //console.log('[Bling Webhook] Corpo da requisição recebido está vazio ou inválido:', req.body);
             return;
         }
 
-        console.log(`[Bling Webhook] Evento recebido: "${payload.event || 'desconhecido'}" | CompanyID: "${payload.companyId || 'N/A'}" | EventID: "${payload.eventId || 'N/A'}"`);
+        //console.log(`[Bling Webhook] Evento recebido: "${payload.event || 'desconhecido'}" | CompanyID: "${payload.companyId || 'N/A'}" | EventID: "${payload.eventId || 'N/A'}"`);
 
         // Dispara o processamento assíncrono
         blingWebhookService.processWebhook(payload);

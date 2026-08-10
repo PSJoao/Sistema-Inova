@@ -4,6 +4,9 @@ Subpágina de Gerenciamento de Promoções do Mercado Livre
 --}}
 <link rel="stylesheet" href="/public/styles/estoque.css">
 <link rel="stylesheet" href="/public/styles/promocoes.css">
+<link rel="stylesheet" href="/public/styles/catalog-group.css">
+<link rel="stylesheet" href="/public/styles/multi-select-filter.css">
+<script src="/public/scripts/multiSelectPromoFilter.js"></script>
 
 <div class="content-card">
     {{!-- Cabeçalho da Página --}}
@@ -13,12 +16,16 @@ Subpágina de Gerenciamento de Promoções do Mercado Livre
             <a href="/anuncios" class="btn btn-outline-accent" style="display: inline-flex; align-items: center;">
                 <i class="fas fa-arrow-left me-2"></i>Voltar para Anúncios
             </a>
+            <a href="/anuncios/central-promocoes" class="btn btn-outline-accent"
+                style="display: inline-flex; align-items: center;">
+                <i class="fas fa-bullhorn me-2"></i>Central de Promoções
+            </a>
             <button id="btnExportarPromos" class="btn btn-outline-accent">
                 <i class="fas fa-file-excel me-2"></i>Exportar Relatório
             </button>
-            <button id="btnSincronizar" class="btn btn-accent">
+            {{!--<button id="btnSincronizar" class="btn btn-accent">
                 <i class="fas fa-sync me-2"></i>Sincronizar Anúncios
-            </button>
+            </button>--}}
         </div>
     </div>
 
@@ -30,7 +37,7 @@ Subpágina de Gerenciamento de Promoções do Mercado Livre
         </div>
         <div class="estoque-filter-group">
             <label for="filtroStatus">Status</label>
-            <select id="filtroStatus" class="form-control" style="min-width: 140px;">
+            <select id="filtroStatus" class="form-control" style="min-width: 130px;">
                 <option value="">Todos</option>
                 <option value="active">Ativo</option>
                 <option value="paused">Pausado</option>
@@ -41,23 +48,96 @@ Subpágina de Gerenciamento de Promoções do Mercado Livre
         </div>
         <div class="estoque-filter-group">
             <label for="filtroCatalogo">Catálogo</label>
-            <select id="filtroCatalogo" class="form-control" style="min-width: 150px;">
+            <select id="filtroCatalogo" class="form-control" style="min-width: 140px;">
                 <option value="">Todos</option>
                 <option value="com">Com Catálogo</option>
                 <option value="sem">Sem Catálogo</option>
             </select>
         </div>
         <div class="estoque-filter-group">
+            <label for="filtroEmpresa">Empresa / Loja</label>
+            <select id="filtroEmpresa" class="form-control" style="min-width: 140px;">
+                <option value="">Todas</option>
+            </select>
+        </div>
+        <div class="estoque-filter-group multi-select-group" style="min-width: 210px;">
+            <label for="filtroNomePromoBtn">Nome da Promoção</label>
+            <button type="button" id="filtroNomePromoBtn" class="form-control multi-select-btn">
+                <span class="multi-select-btn-content">
+                    <span class="multi-select-badge" style="display: none;">0</span>
+                    <span class="multi-select-btn-text">Todas as Promoções</span>
+                </span>
+                <i class="fas fa-chevron-down multi-select-arrow"></i>
+            </button>
+            <div id="filtroNomePromoDropdown" class="multi-select-dropdown-menu" style="display: none;">
+                <div class="multi-select-header">
+                    <input type="text" class="multi-select-search" placeholder="Pesquisar promoção..." />
+                    <div class="multi-select-quick-actions">
+                        <button type="button" class="multi-select-quick-btn btn-select-all">Selecionar Tudo</button>
+                        <button type="button" class="multi-select-quick-btn btn-clear-all">Limpar Seleção</button>
+                    </div>
+                </div>
+                <div class="multi-select-list" id="filtroNomePromoList"></div>
+                <div class="multi-select-footer">
+                    <button type="button" class="btn btn-sm btn-outline-accent btn-clear-filter">Limpar</button>
+                    <button type="button" class="btn btn-sm btn-accent btn-apply-filter">Aplicar</button>
+                </div>
+            </div>
+        </div>
+        <div class="estoque-filter-group">
             <label for="filtroTipo">Tipo de Anúncio</label>
-            <select id="filtroTipo" class="form-control" style="min-width: 140px;">
+            <select id="filtroTipo" class="form-control" style="min-width: 110px;">
                 <option value="">Todos</option>
                 <option value="Clássico">Clássico</option>
                 <option value="Premium">Premium</option>
             </select>
         </div>
         <div class="estoque-filter-group">
+            <label for="filtroPromoStatus">Estado Promoção</label>
+            <select id="filtroPromoStatus" class="form-control" style="min-width: 140px;">
+                <option value="">Todas</option>
+                <option value="ativas">Ativas</option>
+                <option value="elegiveis">Elegíveis</option>
+            </select>
+        </div>
+        <div class="estoque-filter-group">
+            <label for="filtroPromoReembolso">Reembolso ML</label>
+            <select id="filtroPromoReembolso" class="form-control" style="min-width: 140px;">
+                <option value="">Todos</option>
+                <option value="com">Com Reembolso</option>
+                <option value="sem">Sem Reembolso</option>
+            </select>
+        </div>
+        <div class="estoque-filter-group">
+            <label>Margem Promo (%)</label>
+            <div style="display: flex; gap: 4px; align-items: center;">
+                <input type="number" step="0.1" id="filtroMargemMin" class="form-control" placeholder="Mín %"
+                    style="width: 90px; text-align: center;">
+                <span style="color: var(--text-muted); font-size: 0.8rem;">até</span>
+                <input type="number" step="0.1" id="filtroMargemMax" class="form-control" placeholder="Máx %"
+                    style="width: 90px; text-align: center;">
+            </div>
+        </div>
+        <div class="estoque-filter-group">
+            <label>Margem Reemb. Máx (%)</label>
+            <div style="display: flex; gap: 4px; align-items: center;">
+                <input type="number" step="0.1" id="filtroMargemReembMin" class="form-control" placeholder="Mín %"
+                    style="width: 90px; text-align: center;">
+                <span style="color: var(--text-muted); font-size: 0.8rem;">até</span>
+                <input type="number" step="0.1" id="filtroMargemReembMax" class="form-control" placeholder="Máx %"
+                    style="width: 90px; text-align: center;">
+            </div>
+        </div>
+        <div class="estoque-filter-group">
+            <label for="filtroMargemAbaixoReemb">Margem vs Reemb. Máx</label>
+            <select id="filtroMargemAbaixoReemb" class="form-control" style="max-width: 180px;">
+                <option value="">Todas</option>
+                <option value="abaixo">Margem &lt; Reemb. Máx (+0,03%)</option>
+            </select>
+        </div>
+        <div class="estoque-filter-group">
             <label for="filtroLimite">Mostrar</label>
-            <select id="filtroLimite" class="form-control" style="min-width: 80px;">
+            <select id="filtroLimite" class="form-control" style="min-width: 70px;">
                 <option value="20">20</option>
                 <option value="50" selected>50</option>
                 <option value="100">100</option>
@@ -73,12 +153,16 @@ Subpágina de Gerenciamento de Promoções do Mercado Livre
                 <tr>
                     <th class="sortable" data-column="id_anuncio">ID Anúncio</th>
                     <th class="text-center">Foto</th>
+                    <th class="sortable" data-column="empresa">Empresa / Loja</th>
                     <th class="sortable" data-column="sku">SKU</th>
                     <th class="sortable" data-column="tipo_anuncio">Tipo</th>
                     <th class="sortable" data-column="status">Status</th>
                     <th class="sortable text-center" data-column="ganhando_catalogo">Concorrência</th>
                     <th class="sortable text-center" data-column="frete">Frete</th>
                     <th class="sortable text-center" data-column="estoque_plataforma">Estoque Bling</th>
+                    <th class="sortable text-center" data-column="nome_promo_ativa">Promoção Ativa</th>
+                    <th class="sortable text-center" data-column="preco_promocional">Promo (R$)</th>
+                    <th class="sortable text-center" data-column="margem_lucro">Margem Promo (%)</th>
                     <th style="min-width: 420px; white-space: normal;">Promoções Disponíveis</th>
                 </tr>
             </thead>
@@ -95,7 +179,8 @@ Subpágina de Gerenciamento de Promoções do Mercado Livre
     <div id="empty-state" class="estoque-empty-state" style="display: none;">
         <i class="fas fa-bullhorn"></i>
         <p>Nenhum anúncio com promoções encontrado.</p>
-        <p style="font-size: 0.85rem;">Clique em "Sincronizar Anúncios" para buscar dados atualizados do Mercado Livre.</p>
+        <p style="font-size: 0.85rem;">Clique em "Sincronizar Anúncios" para buscar dados atualizados do Mercado Livre.
+        </p>
     </div>
 </div>
 

@@ -1,0 +1,137 @@
+{{!--
+views/produtos/central-promocoes.handlebars
+Central de Promoções — Listagem única de promoções agrupadas por ID
+--}}
+<link rel="stylesheet" href="/public/styles/estoque.css">
+<link rel="stylesheet" href="/public/styles/central-promocoes.css">
+<link rel="stylesheet" href="/public/styles/multi-select-filter.css">
+<script src="/public/scripts/multiSelectPromoFilter.js"></script>
+
+<div class="content-card">
+    {{!-- Cabeçalho da Página --}}
+    <div class="page-header-actions">
+        <h1 class="page-title">{{title}}</h1>
+        <div style="display: flex; justify-content: end; gap: 10px;">
+            <a href="/anuncios" class="btn btn-outline-accent" style="display: inline-flex; align-items: center;">
+                <i class="fas fa-arrow-left me-2"></i>Voltar para Anúncios
+            </a>
+            <a href="/anuncios/promocoes" class="btn btn-outline-accent"
+                style="display: inline-flex; align-items: center;">
+                <i class="fas fa-tags me-2"></i>Promoções por Anúncio
+            </a>
+        </div>
+    </div>
+
+    {{!-- Contadores --}}
+    <div class="central-promos-summary" id="promos-summary" style="display: none;">
+        <div class="central-summary-item">
+            <div class="central-summary-icon icon-total"><i class="fas fa-bullhorn"></i></div>
+            <div>
+                <div class="central-summary-value" id="summary-total">0</div>
+                <div class="central-summary-label">Promoções Únicas</div>
+            </div>
+        </div>
+        <div class="central-summary-item">
+            <div class="central-summary-icon icon-active"><i class="fas fa-check-circle"></i></div>
+            <div>
+                <div class="central-summary-value" id="summary-active">0</div>
+                <div class="central-summary-label">Ativas</div>
+            </div>
+        </div>
+        <div class="central-summary-item">
+            <div class="central-summary-icon icon-reembolso"><i class="fas fa-percentage"></i></div>
+            <div>
+                <div class="central-summary-value" id="summary-reembolso">0</div>
+                <div class="central-summary-label">Com Reembolso Definido</div>
+            </div>
+        </div>
+    </div>
+
+    {{!-- Barra de Filtros --}}
+    <div class="estoque-filters-bar">
+        <div class="estoque-filter-group" style="flex-grow: 1; min-width: 250px;">
+            <label for="buscaPromo">Busca por Nome</label>
+            <input type="text" id="buscaPromo" class="form-control" placeholder="Nome da promoção...">
+        </div>
+        <div class="estoque-filter-group multi-select-group" style="min-width: 210px;">
+            <label for="filtroNomePromoCentralBtn">Nome da Promoção</label>
+            <button type="button" id="filtroNomePromoCentralBtn" class="form-control multi-select-btn">
+                <span class="multi-select-btn-content">
+                    <span class="multi-select-badge" style="display: none;">0</span>
+                    <span class="multi-select-btn-text">Todas as Promoções</span>
+                </span>
+                <i class="fas fa-chevron-down multi-select-arrow"></i>
+            </button>
+            <div id="filtroNomePromoCentralDropdown" class="multi-select-dropdown-menu" style="display: none;">
+                <div class="multi-select-header">
+                    <input type="text" class="multi-select-search" placeholder="Pesquisar promoção..." />
+                    <div class="multi-select-quick-actions">
+                        <button type="button" class="multi-select-quick-btn btn-select-all">Selecionar Tudo</button>
+                        <button type="button" class="multi-select-quick-btn btn-clear-all">Limpar Seleção</button>
+                    </div>
+                </div>
+                <div class="multi-select-list" id="filtroNomePromoCentralList"></div>
+                <div class="multi-select-footer">
+                    <button type="button" class="btn btn-sm btn-outline-accent btn-clear-filter">Limpar</button>
+                    <button type="button" class="btn btn-sm btn-accent btn-apply-filter">Aplicar</button>
+                </div>
+            </div>
+        </div>
+        <div class="estoque-filter-group">
+            <label for="filtroReembolso">Reembolso Máx.</label>
+            <select id="filtroReembolso" class="form-control" style="min-width: 160px;">
+                <option value="">Todos</option>
+                <option value="com">Com Reembolso</option>
+                <option value="sem">Sem Reembolso</option>
+            </select>
+        </div>
+        <div class="estoque-filter-group">
+            <label for="filtroReembolsoML">Reembolso ML</label>
+            <select id="filtroReembolsoML" class="form-control" style="min-width: 160px;">
+                <option value="">Todos</option>
+                <option value="com">Com Reembolso ML</option>
+                <option value="sem">Sem Reembolso ML</option>
+            </select>
+        </div>
+        <div class="estoque-filter-group">
+            <label for="filtroEmpresaCentral">Empresa / Loja</label>
+            <select id="filtroEmpresaCentral" class="form-control" style="min-width: 150px;">
+                <option value="">Todas</option>
+            </select>
+        </div>
+        <div class="estoque-filter-group">
+            <label for="filtroPromoStatusCentral">Status</label>
+            <select id="filtroPromoStatusCentral" class="form-control" style="min-width: 140px;">
+                <option value="">Todos</option>
+                <option value="active">Ativas</option>
+                <option value="candidate">Elegíveis</option>
+                <option value="finished">Finalizadas</option>
+            </select>
+        </div>
+    </div>
+
+    {{!-- Grid de Cards --}}
+    <div id="promos-grid" class="central-promos-grid mt-3"></div>
+
+    {{!-- Paginação --}}
+    <div id="pagination-container" class="estoque-pagination"></div>
+
+    {{!-- Loading --}}
+    <div id="promos-loading" class="central-loading">
+        <div class="spinner-border text-warning" role="status">
+            <span class="visually-hidden">Carregando...</span>
+        </div>
+        <p class="mt-2 mb-0">Carregando promoções...</p>
+    </div>
+
+    {{!-- Estado Vazio --}}
+    <div id="promos-empty" class="central-empty-state" style="display: none;">
+        <i class="fas fa-bullhorn"></i>
+        <p>Nenhuma promoção encontrada.</p>
+        <p style="font-size: 0.82rem;">Verifique os filtros ou sincronize os anúncios.</p>
+    </div>
+</div>
+
+{{#section "scripts"}}
+<script src="/public/scripts/centralPromocoesManager.js"></script>
+{{/section}}

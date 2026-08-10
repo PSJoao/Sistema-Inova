@@ -10,6 +10,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const filtroStatus = document.getElementById('filtroStatus');
     const filtroCatalogo = document.getElementById('filtroCatalogo');
     const filtroTipo = document.getElementById('filtroTipo');
+    const filtroEmpresa = document.getElementById('filtroEmpresa');
+    const filtroNomePromo = document.getElementById('filtroNomePromo');
+    const filtroPromoStatus = document.getElementById('filtroPromoStatus');
+    const filtroPromoReembolso = document.getElementById('filtroPromoReembolso');
+    const filtroMargemMin = document.getElementById('filtroMargemMin');
+    const filtroMargemMax = document.getElementById('filtroMargemMax');
+    const filtroMargemReembMin = document.getElementById('filtroMargemReembMin');
+    const filtroMargemReembMax = document.getElementById('filtroMargemReembMax');
+    const filtroMargemAbaixoReemb = document.getElementById('filtroMargemAbaixoReemb');
     const filtroLimite = document.getElementById('filtroLimite');
 
     const tableBody = document.getElementById('table-body');
@@ -26,9 +35,24 @@ document.addEventListener('DOMContentLoaded', () => {
     let orderDir = 'DESC';
     let debounceTimer = null;
     let rawAnunciosList = [];
+    let catalogTotals = {};
     let columnExcelFilters = {};
     let activeDropdownMenu = null;
     let clickTimer = null;
+    let promoPagesState = {}; // Guarda a página interna de promoções por id_anuncio { [id_anuncio]: pageNum }
+    let reembolsoMap = {}; // Mapa de reembolso máximo por promo_id { [promo_id]: reembolso_maximo_pct }
+
+    // Multi-Select Filter de Nome de Promoção
+    const promoMultiFilter = typeof MultiSelectPromoFilter !== 'undefined' ? new MultiSelectPromoFilter({
+        btnId: 'filtroNomePromoBtn',
+        dropdownId: 'filtroNomePromoDropdown',
+        listId: 'filtroNomePromoList',
+        placeholder: 'Todas as Promoções',
+        onFilterChange: () => {
+            currentPage = 1;
+            applyExcelFiltersAndRender();
+        }
+    }) : null;
 
     // =============================================
     // === UTILIDADES ===
@@ -71,6 +95,131 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) { return []; }
     };
 
+    const calculatePromoMargin = (anuncio, p) => {
+        const promoPrice = Number(p.price) || 0;
+        const custo = Number(anuncio.custo_produto) || 0;
+        if (custo <= 0 || promoPrice <= 0) return null;
+
+        const precoOriginal = Number(anuncio.preco) || promoPrice;
+        const impostoPct = Number(anuncio.imposto) || 0;
+        const tarifaBasePct = Number(anuncio.tarifa) || 0;
+        const frete = Number(anuncio.frete) || 0;
+        const meliPct = p.meli_percentage != null ? Number(p.meli_percentage) : 0;
+
+        // Reembolso ML em R$ = (meliPct / 100) * precoOriginal (arredondado com 2 casas decimais)
+        const reembolsoVal = Number(((meliPct / 100.0) * precoOriginal).toFixed(2));
+        const comissaoReais = promoPrice * (tarifaBasePct / 100.0);
+        const comissaoEfetiva = comissaoReais - reembolsoVal;
+        const impostoReais = promoPrice * (impostoPct / 100.0);
+
+        const despesas = custo + frete + comissaoEfetiva + impostoReais;
+        const lucro = promoPrice - despesas;
+        return (lucro / promoPrice) * 100.0;
+    };
+
+    const calculateReembolsoMaxMargin = (anuncio, p, reembolsoMaxPct) => {
+        const promoPrice = Number(p.price) || 0;
+        const custo = Number(anuncio.custo_produto) || 0;
+        if (custo <= 0 || promoPrice <= 0 || !reembolsoMaxPct) return null;
+
+        const tarifaBasePct = Number(anuncio.tarifa) || 0;
+        const impostoPct = Number(anuncio.imposto) || 6;
+        const frete = Number(anuncio.frete) || 0;
+
+        const comissaoBase = promoPrice * (tarifaBasePct / 100.0);
+        const reembolsoVal = promoPrice * (Number(reembolsoMaxPct) / 100.0);
+        const comissaoEfetiva = comissaoBase - reembolsoVal;
+        const impostoReais = promoPrice * (impostoPct / 100.0);
+
+        const despesas = custo + frete + comissaoEfetiva + impostoReais;
+        const lucro = promoPrice - despesas;
+        return (lucro / promoPrice) * 100.0;
+    };
+
+    const getFilteredPromosForAnuncio = (anuncio) => {
+        let promos = parsePromos(anuncio.promocoes_json);
+        promos = promos.filter(p => p && p.price != null && Number(p.price) > 0);
+
+        const buscaVal = buscaInput ? buscaInput.value.trim().toLowerCase() : '';
+        const promoStatusVal = filtroPromoStatus ? filtroPromoStatus.value : '';
+        const promoNameVal = filtroNomePromo ? filtroNomePromo.value : '';
+        const promoReembolsoVal = filtroPromoReembolso ? filtroPromoReembolso.value : '';
+        const minValStr = filtroMargemMin ? filtroMargemMin.value.trim() : '';
+        const maxValStr = filtroMargemMax ? filtroMargemMax.value.trim() : '';
+        const minReembValStr = filtroMargemReembMin ? filtroMargemReembMin.value.trim() : '';
+        const maxReembValStr = filtroMargemReembMax ? filtroMargemReembMax.value.trim() : '';
+
+        const margemMinVal = minValStr !== '' ? parseFloat(minValStr) : null;
+        const margemMaxVal = maxValStr !== '' ? parseFloat(maxValStr) : null;
+        const margemReembMinVal = minReembValStr !== '' ? parseFloat(minReembValStr) : null;
+        const margemReembMaxVal = maxReembValStr !== '' ? parseFloat(maxReembValStr) : null;
+
+        const matchesAnuncioMeta = buscaVal && (
+            (anuncio.sku && String(anuncio.sku).toLowerCase().includes(buscaVal)) ||
+            (anuncio.descricao && String(anuncio.descricao).toLowerCase().includes(buscaVal)) ||
+            (anuncio.id_anuncio && String(anuncio.id_anuncio).toLowerCase().includes(buscaVal))
+        );
+
+        return promos.filter(p => {
+            // Se houver busca e o metadado do anúncio não coincidir, verifica o nome ou id da promoção
+            if (buscaVal && !matchesAnuncioMeta) {
+                const promoName = String(p.name || '').toLowerCase();
+                const promoId = String(p.id || '').toLowerCase();
+                if (!promoName.includes(buscaVal) && !promoId.includes(buscaVal)) return false;
+            }
+
+            // 0. Filtro por Nome de Promoção (Multi-Select)
+            if (promoMultiFilter && promoMultiFilter.hasFilter() && !promoMultiFilter.matches(p.name)) return false;
+
+            // 1. Estado da Promoção (Ativas vs Elegíveis)
+            const isActive = p.status === 'started' || p.status === 'active';
+            if (promoStatusVal === 'ativas' && !isActive) return false;
+            if (promoStatusVal === 'elegiveis' && isActive) return false;
+
+            // 2. Reembolso Mercado Livre
+            const meliPct = p.meli_percentage != null ? Number(p.meli_percentage) : 0;
+            if (promoReembolsoVal === 'com' && meliPct <= 0) return false;
+            if (promoReembolsoVal === 'sem' && meliPct > 0) return false;
+
+            // 3. Margem Promo (%)
+            if (margemMinVal !== null || margemMaxVal !== null) {
+                const margemVal = calculatePromoMargin(anuncio, p);
+                if (margemVal === null || isNaN(margemVal)) return false;
+                if (margemMinVal !== null && !isNaN(margemMinVal) && margemVal < margemMinVal) return false;
+                if (margemMaxVal !== null && !isNaN(margemMaxVal) && margemVal > margemMaxVal) return false;
+            }
+
+            // 4. Margem Reembolso Máximo (%)
+            if (margemReembMinVal !== null || margemReembMaxVal !== null) {
+                const promoId = p.id || null;
+                const reembMaxPct = promoId ? reembolsoMap[promoId] : null;
+                if (reembMaxPct == null || Number(reembMaxPct) <= 0) return false;
+
+                const margemVal = calculateReembolsoMaxMargin(anuncio, p, Number(reembMaxPct));
+                if (margemVal === null || isNaN(margemVal)) return false;
+                if (margemReembMinVal !== null && !isNaN(margemReembMinVal) && margemVal < margemReembMinVal) return false;
+                if (margemReembMaxVal !== null && !isNaN(margemReembMaxVal) && margemVal > margemReembMaxVal) return false;
+            }
+
+            // 5. Margem Promo < Margem do Reembolso Máximo (diferença > 0.03%)
+            const isAbaixoSelected = filtroMargemAbaixoReemb && (filtroMargemAbaixoReemb.value === 'abaixo' || filtroMargemAbaixoReemb.checked);
+            if (isAbaixoSelected) {
+                const promoId = p.id || null;
+                const reembMaxPct = promoId ? reembolsoMap[promoId] : null;
+                if (reembMaxPct == null || Number(reembMaxPct) <= 0) return false;
+
+                const margemPromo = calculatePromoMargin(anuncio, p);
+                const margemReembMax = calculateReembolsoMaxMargin(anuncio, p, Number(reembMaxPct));
+                if (margemPromo === null || isNaN(margemPromo) || margemReembMax === null || isNaN(margemReembMax)) return false;
+
+                const diff = margemReembMax - margemPromo;
+                if (diff <= 0.03) return false;
+            }
+
+            return true;
+        });
+    };
+
     // =============================================
     // === CARREGAMENTO DE DADOS ===
     // =============================================
@@ -91,12 +240,39 @@ document.addEventListener('DOMContentLoaded', () => {
             if (filtroStatus.value) params.set('status', filtroStatus.value);
             if (filtroCatalogo.value) params.set('catalog', filtroCatalogo.value);
             if (filtroTipo.value) params.set('tipo', filtroTipo.value);
+            if (filtroEmpresa && filtroEmpresa.value) params.set('empresa', filtroEmpresa.value);
 
             const response = await fetch(`/api/anuncios/promocoes/listagem?${params.toString()}`);
             if (!response.ok) throw new Error('Erro ao buscar dados das promoções.');
 
             const result = await response.json();
             const fetched = result.data || [];
+            reembolsoMap = result.reembolso_map || {};
+            catalogTotals = result.catalog_totals || {};
+
+            if (filtroEmpresa && filtroEmpresa.options.length <= 1) {
+                const uniqueEmpresas = Array.from(new Set(fetched.map(a => a.empresa).filter(Boolean))).sort();
+                uniqueEmpresas.forEach(emp => {
+                    const opt = document.createElement('option');
+                    opt.value = emp;
+                    opt.textContent = emp;
+                    filtroEmpresa.appendChild(opt);
+                });
+            }
+
+            if (promoMultiFilter) {
+                const promoCounts = {};
+                fetched.forEach(a => {
+                    let promos = parsePromos(a.promocoes_json);
+                    promos.forEach(p => {
+                        if (p && p.name) {
+                            promoCounts[p.name] = (promoCounts[p.name] || 0) + 1;
+                        }
+                    });
+                });
+                const options = Object.keys(promoCounts).map(name => ({ name, count: promoCounts[name] }));
+                promoMultiFilter.setOptions(options);
+            }
 
             // Filtra apenas anúncios com pelo menos 1 promoção com preço > 0
             rawAnunciosList = fetched.filter(anuncio => {
@@ -127,7 +303,7 @@ document.addEventListener('DOMContentLoaded', () => {
         emptyState.style.display = 'none';
         tableBody.innerHTML = `
             <tr>
-                <td colspan="9" class="text-center text-danger py-4">
+                <td colspan="13" class="text-center text-danger py-4">
                     <i class="fas fa-exclamation-circle fa-2x mb-2"></i>
                     <p class="mb-0">${escapeHtml(msg)}</p>
                 </td>
@@ -156,12 +332,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 return anuncio.frete != null ? `R$ ${Number(anuncio.frete).toFixed(2).replace('.', ',')}` : 'R$ 0,00';
             case 'estoque_plataforma':
                 return anuncio.estoque_plataforma != null ? String(anuncio.estoque_plataforma) : '-';
+            case 'nome_promo_ativa':
+                return anuncio.nome_promo_ativa || '-';
+            case 'preco_promocional':
+                return anuncio.preco_promocional ? `R$ ${Number(anuncio.preco_promocional).toFixed(2).replace('.', ',')}` : '-';
+            case 'margem_lucro':
+                if (anuncio.margem_lucro == null || isNaN(anuncio.margem_lucro)) return '-';
+                return `${Number(anuncio.margem_lucro).toFixed(2).replace('.', ',')}%`;
             default: return '-';
         }
     };
 
     const applyExcelFiltersAndRender = () => {
         let filteredList = rawAnunciosList.filter(anuncio => {
+            // Valida se o anúncio possui promoções correspondentes aos filtros ativos
+            const matchingPromos = getFilteredPromosForAnuncio(anuncio);
+            if (matchingPromos.length === 0) return false;
+
             for (const [colKey, selectedSet] of Object.entries(columnExcelFilters)) {
                 if (selectedSet && selectedSet.size > 0) {
                     if (!selectedSet.has(String(getColumnValue(anuncio, colKey)))) return false;
@@ -195,25 +382,31 @@ document.addEventListener('DOMContentLoaded', () => {
     // === RENDERIZAR PROMOÇÕES (CARDS EXPANDIDOS) ===
     // =============================================
 
+    const PROMOS_PER_PAGE = 3;
+
     const renderPromocoesCell = (anuncio) => {
-        let promos = parsePromos(anuncio.promocoes_json);
-        // Filtra somente promoções com preço > 0
-        promos = promos.filter(p => p && p.price != null && Number(p.price) > 0);
+        let promos = getFilteredPromosForAnuncio(anuncio);
 
         if (promos.length === 0) {
-            return `<span style="color: var(--text-muted); font-style: italic; font-size: 0.82rem;">Sem promoções válidas</span>`;
+            return `<span style="color: var(--text-muted); font-style: italic; font-size: 0.82rem;">Sem promoções correspondentes</span>`;
         }
 
-        // Ordena: ativas primeiro
-        promos.sort((a, b) => {
-            const aActive = a.status === 'started' || a.status === 'active';
-            const bActive = b.status === 'started' || b.status === 'active';
-            if (aActive && !bActive) return -1;
-            if (!aActive && bActive) return 1;
-            return 0;
-        });
+        // Ordena: do preço mais baixo para o preço mais alto
+        promos.sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0));
 
-        const cardsHtml = promos.map(p => {
+        const totalPromos = promos.length;
+        const totalPages = Math.ceil(totalPromos / PROMOS_PER_PAGE);
+
+        const idAnuncioStr = String(anuncio.id_anuncio || '');
+        let currentPromoPage = promoPagesState[idAnuncioStr] || 1;
+        if (currentPromoPage > totalPages) currentPromoPage = totalPages;
+        if (currentPromoPage < 1) currentPromoPage = 1;
+        promoPagesState[idAnuncioStr] = currentPromoPage;
+
+        const startIndex = (currentPromoPage - 1) * PROMOS_PER_PAGE;
+        const visiblePromos = promos.slice(startIndex, startIndex + PROMOS_PER_PAGE);
+
+        const cardsHtml = visiblePromos.map(p => {
             const isActive = p.status === 'started' || p.status === 'active';
             const promoPrice = Number(p.price);
             const promoPriceStr = `R$ ${promoPrice.toFixed(2).replace('.', ',')}`;
@@ -223,7 +416,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const name = escapeHtml(p.name || p.id || 'Campanha Promocional');
 
-            // Status Badge (sem ícone de bolinha, como solicitado)
+            // Status Badge
             const statusBadge = isActive
                 ? `<span class="qty-badge qty-ok" style="font-size: 0.72rem; padding: 2px 6px; min-width: auto; font-weight: 700;">Ativa</span>`
                 : `<span class="qty-badge" style="font-size: 0.72rem; padding: 2px 6px; min-width: auto; background: rgba(255,255,255,0.08); color: var(--text-muted); font-weight: 600;">Elegível</span>`;
@@ -244,21 +437,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Margem de Lucro Específica da Promoção
             let margemHtml = '';
-            const custo = Number(anuncio.custo_produto) || 0;
-            if (custo > 0 && promoPrice > 0) {
-                const impostoPct = Number(anuncio.imposto) || 0;
-                const tarifaBasePct = Number(anuncio.tarifa) || 0;
-                const frete = Number(anuncio.frete) || 0;
-
-                const tarifaEfetivaPct = Math.max(0, tarifaBasePct - meliPct);
-                const tarifaReais = promoPrice * (tarifaEfetivaPct / 100.0);
-                const impostoReais = promoPrice * (impostoPct / 100.0);
-                const despesas = custo + frete + tarifaReais + impostoReais;
-                const lucro = promoPrice - despesas;
-                const margemVal = (lucro / promoPrice) * 100.0;
-
+            const margemVal = calculatePromoMargin(anuncio, p);
+            if (margemVal !== null && !isNaN(margemVal)) {
                 const margemClass = margemVal >= 15 ? 'qty-ok' : (margemVal >= 5 ? 'qty-low' : 'qty-zero');
                 margemHtml = `<span class="qty-badge ${margemClass}" style="font-size: 0.72rem; padding: 2px 6px; min-width: auto;" title="Margem de lucro calculada com base no preço promocional">Margem: ${margemVal.toFixed(2).replace('.', ',')}%</span>`;
+            }
+
+            // Reembolso Máximo (da Central de Promoções)
+            let reembolsoMaxHtml = '';
+            let margemReembolsoMaxHtml = '';
+            const promoId = p.id || null;
+            if (promoId && reembolsoMap[promoId] != null && Number(reembolsoMap[promoId]) > 0) {
+                const reembolsoPct = Number(reembolsoMap[promoId]);
+                const reembolsoReais = (reembolsoPct / 100.0) * promoPrice;
+                reembolsoMaxHtml = `<span class="promo-pill-meli" style="background: rgba(156, 39, 176, 0.15); color: #ce93d8; border-color: rgba(156, 39, 176, 0.3);" title="Reembolso Máximo definido na Central de Promoções"><i class="fas fa-hand-holding-usd" style="font-size: 0.65rem; margin-right: 2px;"></i>Reemb. Máx: ${reembolsoPct.toFixed(1).replace('.', ',')}% (R$ ${reembolsoReais.toFixed(2).replace('.', ',')})</span>`;
+
+                const margemReembMax = calculateReembolsoMaxMargin(anuncio, p, reembolsoPct);
+                if (margemReembMax !== null && !isNaN(margemReembMax)) {
+                    margemReembolsoMaxHtml = `<span class="qty-badge" style="background: rgba(233, 30, 99, 0.15); color: #ec407a; border: 1px solid rgba(233, 30, 99, 0.3); font-size: 0.72rem; padding: 2px 6px; min-width: auto;" title="Margem de lucro calculada com base no Reembolso Máximo (${reembolsoPct}%)">Margem Reemb. Máx: ${margemReembMax.toFixed(2).replace('.', ',')}%</span>`;
+                }
             }
 
             // Datas
@@ -289,18 +486,162 @@ document.addEventListener('DOMContentLoaded', () => {
                         ${meliBadge}
                         ${sellerBadge}
                         ${margemHtml}
+                        ${reembolsoMaxHtml}
+                        ${margemReembolsoMaxHtml}
                     </div>
                     ${dateHtml}
                 </div>
             `;
         }).join('');
 
-        return `<div class="promo-cards-wrapper">${cardsHtml}</div>`;
+        let paginationHtml = '';
+        if (totalPages > 1) {
+            paginationHtml = `
+                <div class="promo-inner-pagination">
+                    <span class="promo-inner-info">
+                        <strong>${startIndex + 1}-${Math.min(startIndex + PROMOS_PER_PAGE, totalPromos)}</strong> de <strong>${totalPromos}</strong>
+                    </span>
+                    <div class="promo-inner-controls">
+                        <button type="button" class="btn-promo-page btn-promo-prev" data-id-anuncio="${escapeHtml(anuncio.id_anuncio)}" data-target-page="${currentPromoPage - 1}" ${currentPromoPage === 1 ? 'disabled' : ''} title="Página anterior de promoções">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <span class="promo-inner-page-num">${currentPromoPage}/${totalPages}</span>
+                        <button type="button" class="btn-promo-page btn-promo-next" data-id-anuncio="${escapeHtml(anuncio.id_anuncio)}" data-target-page="${currentPromoPage + 1}" ${currentPromoPage === totalPages ? 'disabled' : ''} title="Próxima página de promoções">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="promo-cards-container" data-id-anuncio="${escapeHtml(anuncio.id_anuncio)}">
+                <div class="promo-cards-wrapper">${cardsHtml}</div>
+                ${paginationHtml}
+            </div>
+        `;
     };
 
     // =============================================
     // === RENDERIZAR TABELA ===
     // =============================================
+
+    const groupAnunciosByCatalog = (anunciosList) => {
+        const catalogGroups = new Map();
+        const standaloneList = [];
+
+        anunciosList.forEach(item => {
+            const catId = item.catalog_product_id ? String(item.catalog_product_id).trim() : '';
+            const totalCount = catId ? (catalogTotals[catId] || 0) : 0;
+
+            // Só cria grupo se o total real de anúncios desse catálogo na conta for MAIOR que 1
+            if (catId && totalCount > 1) {
+                if (!catalogGroups.has(catId)) {
+                    catalogGroups.set(catId, { totalCount, items: [] });
+                }
+                catalogGroups.get(catId).items.push(item);
+            } else {
+                standaloneList.push({ isCatalogGroup: false, item });
+            }
+        });
+
+        const result = [];
+        catalogGroups.forEach((groupData, catId) => {
+            result.push({
+                isCatalogGroup: true,
+                catalogProductId: catId,
+                totalCount: groupData.totalCount,
+                items: groupData.items
+            });
+        });
+
+        standaloneList.forEach(s => result.push(s));
+        return result;
+    };
+
+    const buildAnuncioRow = (anuncio) => {
+        const statusClass = anuncio.status === 'active' ? 'qty-ok' :
+            anuncio.status === 'paused' ? 'qty-low' :
+                anuncio.status === 'closed' ? 'qty-zero' : '';
+
+        const statusLabel = anuncio.status === 'active' ? 'Ativo' :
+            anuncio.status === 'paused' ? 'Pausado' :
+                anuncio.status === 'closed' ? 'Fechado' :
+                    anuncio.status === 'under_review' ? 'Em análise' :
+                        anuncio.status === 'inactive' ? 'Inativo' : anuncio.status || '-';
+
+        const catalogBadge = anuncio.catalog_listing
+            ? ` <span class="qty-badge" style="background-color: rgba(156, 39, 176, 0.15); color: #9c27b0; font-size: 0.7rem; padding: 0.15rem 0.35rem; min-width: auto; margin-left: 5px;">Catálogo</span>`
+            : '';
+
+        let winBoxBadge = '-';
+        if (anuncio.catalog_listing) {
+            winBoxBadge = anuncio.ganhando_catalogo
+                ? `<span class="qty-badge" style="background-color: #e8f5e9; color: #2e7d32;">Ganhando</span>`
+                : `<span class="qty-badge" style="background-color: #ffebee; color: #c62828;">Perdendo</span>`;
+        }
+
+        const tipoHtml = anuncio.tipo_anuncio === 'Premium'
+            ? `<span class="qty-badge" style="background-color: #fff3e0; color: #e65100;">${anuncio.tipo_anuncio}</span>`
+            : `<span class="qty-badge" style="background-color: #f5f5f5; color: #616161;">${anuncio.tipo_anuncio || '-'}</span>`;
+
+        const freteVal = Number(anuncio.frete) || 0;
+        const freteLabel = freteVal > 0 ? `R$ ${freteVal.toFixed(2).replace('.', ',')}` : 'R$ 0,00';
+
+        const estoqueBling = anuncio.estoque_plataforma != null ? anuncio.estoque_plataforma : '-';
+        const estoqueBlingClass = estoqueBling === '-' ? '' :
+            estoqueBling === 0 ? 'qty-zero' :
+                estoqueBling <= 5 ? 'qty-low' : 'qty-ok';
+
+        const urlAnuncio = anuncio.permalink || (anuncio.id_anuncio ? `https://produto.mercadolivre.com.br/${anuncio.id_anuncio}` : '#');
+        const imgHtml = anuncio.thumbnail
+            ? `<img src="${anuncio.thumbnail}" alt="Foto" style="width: 36px; height: 36px; object-fit: contain; border-radius: 4px; vertical-align: middle; background: #fff;" />`
+            : '-';
+
+        const copyIdBtnHtml = anuncio.id_anuncio
+            ? `<button class="btn-copy-id-anuncio" data-id-anuncio="${escapeHtml(anuncio.id_anuncio)}" title="Copiar ID do Anúncio" style="background: none; border: none; color: #888; cursor: pointer; padding: 2px 4px; font-size: 0.8rem; transition: color 0.2s;"><i class="far fa-copy"></i></button>`
+            : '';
+
+        const copyBtnHtml = anuncio.sku
+            ? `<button class="btn-copy-sku" data-sku="${escapeHtml(anuncio.sku)}" title="Copiar SKU" style="background: none; border: none; color: #888; cursor: pointer; padding: 2px 4px; font-size: 0.8rem; transition: color 0.2s;"><i class="far fa-copy"></i></button>`
+            : '';
+
+        const nomePromoAtivaHtml = anuncio.nome_promo_ativa
+            ? `<span class="qty-badge" style="background-color: rgba(40, 167, 69, 0.15); color: #6ee7b7; font-size: 0.72rem; padding: 2px 6px;">${escapeHtml(anuncio.nome_promo_ativa)}</span>`
+            : '-';
+
+        const precoPromoVal = (anuncio.nome_promo_ativa && anuncio.preco_promocional != null) ? Number(anuncio.preco_promocional) : null;
+        const precoPromoHtml = precoPromoVal != null && precoPromoVal > 0
+            ? `R$ ${precoPromoVal.toFixed(2).replace('.', ',')}`
+            : '-';
+
+        let margemPromoVal = (anuncio.nome_promo_ativa && anuncio.margem_lucro != null) ? Number(anuncio.margem_lucro) : null;
+        let margemPromoHtml = '-';
+        if (margemPromoVal != null && !isNaN(margemPromoVal)) {
+            const margemClass = margemPromoVal >= 15 ? 'qty-ok' : (margemPromoVal >= 5 ? 'qty-low' : 'qty-zero');
+            margemPromoHtml = `<span class="qty-badge ${margemClass}">${margemPromoVal.toFixed(2).replace('.', ',')}%</span>`;
+        }
+
+        const promosCellHtml = renderPromocoesCell(anuncio);
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><div style="display: inline-flex; align-items: center; gap: 4px;"><a href="${urlAnuncio}" target="_blank" style="color: #f39c12; font-weight: bold; text-decoration: none;" title="Abrir anúncio no Mercado Livre">${escapeHtml(anuncio.id_anuncio || '-')}</a>${copyIdBtnHtml}</div></td>
+            <td class="text-center">${imgHtml}</td>
+            <td><span class="qty-badge" style="background-color: rgba(33, 150, 243, 0.15); color: #64b5f6; font-size: 0.75rem; padding: 2px 6px;">${escapeHtml(anuncio.empresa || '-')}</span></td>
+            <td><div style="display: inline-flex; align-items: center; gap: 4px;"><strong>${escapeHtml(anuncio.sku || '-')}</strong>${copyBtnHtml}${catalogBadge}</div></td>
+            <td>${tipoHtml}</td>
+            <td><span class="qty-badge ${statusClass}">${statusLabel}</span></td>
+            <td class="text-center">${winBoxBadge}</td>
+            <td class="text-center">${freteLabel}</td>
+            <td class="text-center"><span class="qty-badge ${estoqueBlingClass}">${estoqueBling}</span></td>
+            <td class="text-center">${nomePromoAtivaHtml}</td>
+            <td class="text-center" style="font-weight: 600; color: #fff;">${precoPromoHtml}</td>
+            <td class="text-center">${margemPromoHtml}</td>
+            <td style="white-space: normal; min-width: 420px;">${promosCellHtml}</td>
+        `;
+        return tr;
+    };
 
     const renderTable = (data) => {
         if (!data || data.length === 0) {
@@ -312,68 +653,48 @@ document.addEventListener('DOMContentLoaded', () => {
         emptyState.style.display = 'none';
         tableBody.innerHTML = '';
 
-        data.forEach(anuncio => {
-            const statusClass = anuncio.status === 'active' ? 'qty-ok' :
-                anuncio.status === 'paused' ? 'qty-low' :
-                    anuncio.status === 'closed' ? 'qty-zero' : '';
+        const groupedData = groupAnunciosByCatalog(data);
+        const colCount = 13;
 
-            const statusLabel = anuncio.status === 'active' ? 'Ativo' :
-                anuncio.status === 'paused' ? 'Pausado' :
-                    anuncio.status === 'closed' ? 'Fechado' :
-                        anuncio.status === 'under_review' ? 'Em análise' :
-                            anuncio.status === 'inactive' ? 'Inativo' : anuncio.status || '-';
+        groupedData.forEach(groupEntry => {
+            if (groupEntry.isCatalogGroup) {
+                const { catalogProductId, totalCount, items } = groupEntry;
 
-            const catalogBadge = anuncio.catalog_listing
-                ? ` <span class="qty-badge" style="background-color: rgba(156, 39, 176, 0.15); color: #9c27b0; font-size: 0.7rem; padding: 0.15rem 0.35rem; min-width: auto; margin-left: 5px;">Catálogo</span>`
-                : '';
+                // Gera o Link de Busca ML para os anúncios atualmente visíveis no grupo
+                const numericIds = items.map(item => String(item.id_anuncio || '').replace(/\D/g, '')).filter(Boolean);
+                const searchParam = encodeURIComponent(numericIds.join(' '));
+                const mlSearchUrl = `https://vendedores.mercadolivre.com.br/anuncios/lista/promos?page=1&search=${searchParam}`;
 
-            let winBoxBadge = '-';
-            if (anuncio.catalog_listing) {
-                winBoxBadge = anuncio.ganhando_catalogo
-                    ? `<span class="qty-badge" style="background-color: #e8f5e9; color: #2e7d32;">Ganhando</span>`
-                    : `<span class="qty-badge" style="background-color: #ffebee; color: #c62828;">Perdendo</span>`;
+                // Renderiza cabeçalho do grupo de catálogo com total persistente e Link de Busca ML
+                const headerTr = document.createElement('tr');
+                headerTr.className = 'catalog-group-header-row';
+                headerTr.innerHTML = `
+                    <td colspan="${colCount}">
+                        <div class="catalog-group-header-content">
+                            <i class="fas fa-layer-group"></i> Catálogo: <strong>${escapeHtml(catalogProductId)}</strong>
+                            <span class="catalog-group-badge-count">${totalCount} anúncio(s) conectado(s) neste catálogo</span>
+                            <div class="catalog-group-ml-container">
+                                <strong>Link de Busca:</strong>
+                                <a href="${mlSearchUrl}" target="_blank" class="catalog-group-ml-link" title="Abrir busca destes anúncios no Mercado Livre">
+                                    <i class="fas fa-external-link-alt"></i> Mercado Livre
+                                </a>
+                            </div>
+                        </div>
+                    </td>
+                `;
+                tableBody.appendChild(headerTr);
+
+                items.forEach((anuncio, idx) => {
+                    const isLast = idx === items.length - 1;
+                    const tr = buildAnuncioRow(anuncio);
+                    tr.classList.add('catalog-group-row');
+                    if (isLast) tr.classList.add('catalog-group-last-row');
+                    tableBody.appendChild(tr);
+                });
+            } else {
+                const tr = buildAnuncioRow(groupEntry.item);
+                tableBody.appendChild(tr);
             }
-
-            const tipoHtml = anuncio.tipo_anuncio === 'Premium'
-                ? `<span class="qty-badge" style="background-color: #fff3e0; color: #e65100;">${anuncio.tipo_anuncio}</span>`
-                : `<span class="qty-badge" style="background-color: #f5f5f5; color: #616161;">${anuncio.tipo_anuncio || '-'}</span>`;
-
-            const freteVal = Number(anuncio.frete) || 0;
-            const freteLabel = freteVal > 0 ? `R$ ${freteVal.toFixed(2).replace('.', ',')}` : 'R$ 0,00';
-
-            const estoqueBling = anuncio.estoque_plataforma != null ? anuncio.estoque_plataforma : '-';
-            const estoqueBlingClass = estoqueBling === '-' ? '' :
-                estoqueBling === 0 ? 'qty-zero' :
-                    estoqueBling <= 5 ? 'qty-low' : 'qty-ok';
-
-            const urlAnuncio = anuncio.permalink || (anuncio.id_anuncio ? `https://produto.mercadolivre.com.br/${anuncio.id_anuncio}` : '#');
-            const imgHtml = anuncio.thumbnail
-                ? `<img src="${anuncio.thumbnail}" alt="Foto" style="width: 36px; height: 36px; object-fit: contain; border-radius: 4px; vertical-align: middle; background: #fff;" />`
-                : '-';
-
-            const copyIdBtnHtml = anuncio.id_anuncio
-                ? `<button class="btn-copy-id-anuncio" data-id-anuncio="${escapeHtml(anuncio.id_anuncio)}" title="Copiar ID do Anúncio" style="background: none; border: none; color: #888; cursor: pointer; padding: 2px 4px; font-size: 0.8rem; transition: color 0.2s;"><i class="far fa-copy"></i></button>`
-                : '';
-
-            const copyBtnHtml = anuncio.sku
-                ? `<button class="btn-copy-sku" data-sku="${escapeHtml(anuncio.sku)}" title="Copiar SKU" style="background: none; border: none; color: #888; cursor: pointer; padding: 2px 4px; font-size: 0.8rem; transition: color 0.2s;"><i class="far fa-copy"></i></button>`
-                : '';
-
-            const promosCellHtml = renderPromocoesCell(anuncio);
-
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td><div style="display: inline-flex; align-items: center; gap: 4px;"><a href="${urlAnuncio}" target="_blank" style="color: #f39c12; font-weight: bold; text-decoration: none;" title="Abrir anúncio no Mercado Livre">${escapeHtml(anuncio.id_anuncio || '-')}</a>${copyIdBtnHtml}</div></td>
-                <td class="text-center">${imgHtml}</td>
-                <td><div style="display: inline-flex; align-items: center; gap: 4px;"><strong>${escapeHtml(anuncio.sku || '-')}</strong>${copyBtnHtml}${catalogBadge}</div></td>
-                <td>${tipoHtml}</td>
-                <td><span class="qty-badge ${statusClass}">${statusLabel}</span></td>
-                <td class="text-center">${winBoxBadge}</td>
-                <td class="text-center">${freteLabel}</td>
-                <td class="text-center"><span class="qty-badge ${estoqueBlingClass}">${estoqueBling}</span></td>
-                <td style="white-space: normal; min-width: 420px;">${promosCellHtml}</td>
-            `;
-            tableBody.appendChild(tr);
         });
     };
 
@@ -389,35 +710,50 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const { currentPage: cp, totalPages, totalItems } = pagination;
-        let html = `<span class="pagination-info">${totalItems} anúncio(s) com promoções — Página ${cp} de ${totalPages}</span>`;
-        html += '<div class="pagination-buttons">';
+        let html = '';
 
-        html += `<button class="btn-page" ${cp === 1 ? 'disabled' : ''} data-page="${cp - 1}"><i class="fas fa-chevron-left"></i></button>`;
+        // Botão anterior
+        html += `<button ${currentPage <= 1 ? 'disabled' : ''} data-page="${currentPage - 1}">
+                    <i class="fas fa-chevron-left"></i>
+                 </button>`;
 
-        let startP = Math.max(1, cp - 2);
-        let endP = Math.min(totalPages, cp + 2);
+        // Páginas
+        const maxVisible = 5;
+        let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+        let endPage = Math.min(pagination.totalPages, startPage + maxVisible - 1);
 
-        if (startP > 1) {
-            html += `<button class="btn-page" data-page="1">1</button>`;
-            if (startP > 2) html += '<span class="pagination-ellipsis">...</span>';
-        }
-        for (let i = startP; i <= endP; i++) {
-            html += `<button class="btn-page ${i === cp ? 'active' : ''}" data-page="${i}">${i}</button>`;
-        }
-        if (endP < totalPages) {
-            if (endP < totalPages - 1) html += '<span class="pagination-ellipsis">...</span>';
-            html += `<button class="btn-page" data-page="${totalPages}">${totalPages}</button>`;
+        if (endPage - startPage < maxVisible - 1) {
+            startPage = Math.max(1, endPage - maxVisible + 1);
         }
 
-        html += `<button class="btn-page" ${cp === totalPages ? 'disabled' : ''} data-page="${cp + 1}"><i class="fas fa-chevron-right"></i></button>`;
-        html += '</div>';
+        if (startPage > 1) {
+            html += `<button data-page="1">1</button>`;
+            if (startPage > 2) html += `<span class="pagination-info">...</span>`;
+        }
+
+        for (let i = startPage; i <= endPage; i++) {
+            html += `<button data-page="${i}" class="${i === currentPage ? 'active' : ''}">${i}</button>`;
+        }
+
+        if (endPage < pagination.totalPages) {
+            if (endPage < pagination.totalPages - 1) html += `<span class="pagination-info">...</span>`;
+            html += `<button data-page="${pagination.totalPages}">${pagination.totalPages}</button>`;
+        }
+
+        // Botão próximo
+        html += `<button ${currentPage >= pagination.totalPages ? 'disabled' : ''} data-page="${currentPage + 1}">
+                    <i class="fas fa-chevron-right"></i>
+                 </button>`;
+
+        html += `<span class="pagination-info">${pagination.totalItems} anúncio(s) com promoções — Página ${currentPage} de ${pagination.totalPages}</span>`;
 
         paginationContainer.innerHTML = html;
-        paginationContainer.querySelectorAll('.btn-page[data-page]').forEach(btn => {
+
+        // Event listeners
+        paginationContainer.querySelectorAll('button[data-page]').forEach(btn => {
             btn.addEventListener('click', () => {
                 const tp = parseInt(btn.dataset.page, 10);
-                if (tp && tp !== currentPage) {
+                if (tp && tp !== currentPage && !btn.disabled) {
                     currentPage = tp;
                     applyExcelFiltersAndRender();
                 }
@@ -633,6 +969,25 @@ document.addEventListener('DOMContentLoaded', () => {
     filtroStatus.addEventListener('change', () => { currentPage = 1; loadPromocoes(); });
     filtroCatalogo.addEventListener('change', () => { currentPage = 1; loadPromocoes(); });
     filtroTipo.addEventListener('change', () => { currentPage = 1; loadPromocoes(); });
+    if (filtroEmpresa) {
+        filtroEmpresa.addEventListener('change', () => {
+            currentPage = 1;
+            loadPromocoes();
+        });
+    }
+
+    if (filtroPromoStatus) filtroPromoStatus.addEventListener('change', () => { currentPage = 1; applyExcelFiltersAndRender(); });
+    if (filtroPromoReembolso) filtroPromoReembolso.addEventListener('change', () => { currentPage = 1; applyExcelFiltersAndRender(); });
+    if (filtroMargemAbaixoReemb) filtroMargemAbaixoReemb.addEventListener('change', () => { currentPage = 1; applyExcelFiltersAndRender(); });
+
+    const handleMargemInput = () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => { currentPage = 1; applyExcelFiltersAndRender(); }, 400);
+    };
+    if (filtroMargemMin) filtroMargemMin.addEventListener('input', handleMargemInput);
+    if (filtroMargemMax) filtroMargemMax.addEventListener('input', handleMargemInput);
+    if (filtroMargemReembMin) filtroMargemReembMin.addEventListener('input', handleMargemInput);
+    if (filtroMargemReembMax) filtroMargemReembMax.addEventListener('input', handleMargemInput);
 
     if (btnSincronizar) btnSincronizar.addEventListener('click', handleSync);
 
@@ -643,6 +998,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (filtroStatus.value) params.set('status', filtroStatus.value);
             if (filtroCatalogo.value) params.set('catalog', filtroCatalogo.value);
             if (filtroTipo.value) params.set('tipo', filtroTipo.value);
+            if (filtroEmpresa && filtroEmpresa.value) params.set('empresa', filtroEmpresa.value);
+            if (filtroPromoStatus && filtroPromoStatus.value) params.set('promoStatus', filtroPromoStatus.value);
+            if (filtroPromoReembolso && filtroPromoReembolso.value) params.set('promoReembolso', filtroPromoReembolso.value);
+            if (filtroMargemMin && filtroMargemMin.value.trim()) params.set('margemMin', filtroMargemMin.value.trim());
+            if (filtroMargemMax && filtroMargemMax.value.trim()) params.set('margemMax', filtroMargemMax.value.trim());
+            if (filtroMargemReembMin && filtroMargemReembMin.value.trim()) params.set('margemReembMin', filtroMargemReembMin.value.trim());
+            if (filtroMargemReembMax && filtroMargemReembMax.value.trim()) params.set('margemReembMax', filtroMargemReembMax.value.trim());
             window.location.href = `/api/anuncios/promocoes/exportar?${params.toString()}`;
         });
     }
@@ -681,6 +1043,26 @@ document.addEventListener('DOMContentLoaded', () => {
                         setTimeout(() => { icon.className = 'far fa-copy'; icon.style.color = '#888'; }, 1500);
                     }
                 }).catch(err => console.error('Erro ao copiar ID do Anúncio:', err));
+            }
+            return;
+        }
+
+        // Paginação interna de promoções da linha do anúncio
+        const promoBtn = e.target.closest('.btn-promo-page');
+        if (promoBtn && !promoBtn.disabled) {
+            e.stopPropagation();
+            e.preventDefault();
+            const idAnuncio = promoBtn.dataset.idAnuncio;
+            const targetPage = parseInt(promoBtn.dataset.targetPage, 10);
+            if (idAnuncio && targetPage) {
+                promoPagesState[idAnuncio] = targetPage;
+                const anuncio = rawAnunciosList.find(a => String(a.id_anuncio) === String(idAnuncio));
+                if (anuncio) {
+                    const container = promoBtn.closest('.promo-cards-container');
+                    if (container && container.parentElement) {
+                        container.parentElement.innerHTML = renderPromocoesCell(anuncio);
+                    }
+                }
             }
         }
     });

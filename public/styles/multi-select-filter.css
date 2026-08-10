@@ -1,0 +1,200 @@
+/* public/styles/multi-select-filter.css */
+/* Estilização idêntica às comboboxes e seletores de filtro padrão do sistema (form-control e excel-filter-dropdown) */
+
+.multi-select-group {
+    position: relative;
+}
+
+/* Seletor principal: 100% idêntico a .form-control */
+.multi-select-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0.65rem 0.9rem;
+    font-size: 0.95rem;
+    font-weight: 400;
+    line-height: 1.5;
+    color: var(--text-primary, #ffffff) !important;
+    background-color: var(--bg-primary, #121217) !important;
+    background-clip: padding-box;
+    border: 1px solid var(--bg-tertiary, rgba(255, 255, 255, 0.12)) !important;
+    border-radius: var(--border-radius-md, 6px);
+    cursor: pointer;
+    text-align: left;
+    user-select: none;
+    transition: border-color var(--transition-fast, 0.15s), box-shadow var(--transition-fast, 0.15s);
+    box-sizing: border-box;
+}
+
+.multi-select-btn:hover,
+.multi-select-btn:focus,
+.multi-select-group.open .multi-select-btn {
+    color: var(--text-primary, #ffffff) !important;
+    background-color: var(--bg-primary, #121217) !important;
+    border-color: var(--accent-orange, #f39c12) !important;
+    box-shadow: 0 0 0 0.2rem rgba(240, 124, 0, 0.25);
+    outline: 0;
+}
+
+.multi-select-btn-content {
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    flex-grow: 1;
+    margin-right: 6px;
+}
+
+.multi-select-btn-text {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.95rem;
+}
+
+.multi-select-badge {
+    background-color: var(--accent-orange, #f39c12);
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 0.72rem;
+    padding: 2px 7px;
+    border-radius: 4px;
+    margin-right: 6px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.multi-select-arrow {
+    font-size: 0.8rem;
+    color: var(--text-muted, #888888);
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+    margin-left: 8px;
+}
+
+.multi-select-group.open .multi-select-arrow {
+    transform: rotate(180deg);
+}
+
+/* Menu Dropdown: 100% idêntico ao estilo .excel-filter-dropdown */
+.multi-select-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 1060;
+    width: 270px;
+    background-color: #1e1e24;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+    padding: 12px;
+    font-size: 0.85rem;
+    color: #e0e0e0;
+    font-family: inherit;
+    backdrop-filter: blur(10px);
+    animation: multiSelectFadeIn 0.15s ease-out;
+    box-sizing: border-box;
+}
+
+@keyframes multiSelectFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.multi-select-search {
+    width: 100%;
+    background: #2a2a32;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #fff;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 0.8rem;
+    outline: none;
+    margin-bottom: 8px;
+    box-sizing: border-box;
+}
+
+.multi-select-search:focus {
+    border-color: var(--accent-orange, #f39c12);
+}
+
+.multi-select-quick-actions {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    margin-bottom: 8px;
+    padding: 0 2px;
+}
+
+.multi-select-quick-btn {
+    background: none;
+    border: none;
+    color: var(--accent-orange, #f39c12);
+    cursor: pointer;
+    padding: 0;
+    font-weight: 600;
+}
+
+.multi-select-quick-btn:hover {
+    text-decoration: underline;
+}
+
+.multi-select-list {
+    max-height: 180px;
+    overflow-y: auto;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 6px;
+    padding: 6px;
+    margin-bottom: 10px;
+}
+
+.multi-select-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    user-select: none;
+}
+
+.multi-select-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.multi-select-item input[type="checkbox"] {
+    accent-color: var(--accent-orange, #f39c12);
+    cursor: pointer;
+    width: 14px;
+    height: 14px;
+}
+
+.multi-select-item-label {
+    flex-grow: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.8rem;
+    color: #e0e0e0;
+    cursor: pointer;
+}
+
+.multi-select-item-count {
+    font-size: 0.74rem;
+    color: var(--text-muted, #888888);
+}
+
+.multi-select-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding-top: 4px;
+}
