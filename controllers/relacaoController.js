@@ -153,7 +153,7 @@ async function generateExcelReport(relationId, transportadoraApelido, tituloRela
     // 2. Setup do Workbook e da Planilha (Sempre um novo arquivo)
     const workbook = new ExcelJS.Workbook();
     // Usa o título da aba (que já contém a data) para o nome do arquivo, garantindo unicidade.
-    const finalNomeAba = tituloRelacaoAba.replace(/[\/\\]/g, '-').substring(0, 31);
+    const finalNomeAba = tituloRelacaoAba.replace(/[\*\?:\\\/\[\]]/g, '-').substring(0, 31);
     const sheet = workbook.addWorksheet(finalNomeAba);
 
     // 3. Definição das Colunas Simplificadas
@@ -731,7 +731,7 @@ exports.downloadRelacaoExcel = async (req, res) => {
 
         // 3. Cria o arquivo Excel em memória
         const workbook = new ExcelJS.Workbook();
-        const sheetName = `${transportadora_apelido} ${dataFormatada}`;
+        const sheetName = `${transportadora_apelido} ${dataFormatada}`.replace(/[\*\?:\\\/\[\]]/g, '-').substring(0, 31);
         const worksheet = workbook.addWorksheet(sheetName);
 
         worksheet.columns = [
@@ -761,7 +761,8 @@ exports.downloadRelacaoExcel = async (req, res) => {
         }
 
         // 4. Envia o arquivo para o navegador
-        const fileName = `Relacao-${transportadora_apelido}-${dataFormatada}.xlsx`;
+        const fileNameData = dataFormatada.replace(/[\/\\]/g, '-');
+        const fileName = `Relacao-${transportadora_apelido}-${fileNameData}.xlsx`;
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
 
