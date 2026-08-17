@@ -11,8 +11,9 @@
             <a href="/rastreio" class="back-link"><i class="fas fa-arrow-left"></i> Voltar para a listagem</a>
             <h1 class="page-title">{{title}}</h1>
         </div>
-        <div class="header-actions-buttons">
+        <div class="header-actions-buttons" style="display: flex; gap: 10px; flex-wrap: wrap;">
             <button id="btn-enviar-email" class="btn btn-warning"><i class="fas fa-envelope"></i> Enviar Posição de Entrega</button>
+            <button id="btn-enviar-email-barragem" class="btn btn-danger"><i class="fas fa-ban"></i> Solicitar Barragem e Retorno</button>
         </div>
     </div>
 
@@ -314,14 +315,14 @@
             }
 
             // =================================================================================
-            // NOVO BLOCO DE CÓDIGO PARA O BOTÃO DE E-MAIL (ADICIONADO DE FORMA SEGURA)
+            // BLOCO DE CÓDIGO PARA OS BOTÕES DE E-MAIL (ENVIAR POSIÇÃO / SOLICITAR BARRAGEM)
             // =================================================================================
+            const pedidoId = '{{pedido.id}}';
+            const pedidoNfe = '{{pedido.numero_nfe}}';
+            const transportadoraNome = '{{pedido.transportadora}}';
+
             const btnEnviarEmail = document.getElementById('btn-enviar-email');
             if (btnEnviarEmail) {
-                const pedidoId = '{{pedido.id}}';
-                const pedidoNfe = '{{pedido.numero_nfe}}';
-                const transportadoraNome = '{{pedido.transportadora}}';
-
                 btnEnviarEmail.addEventListener('click', () => {
                     const confirmationMessage = `
                         <p>Você confirma o envio do e-mail de cobrança?</p>
@@ -338,6 +339,40 @@
                             ModalSystem.showLoading('Enviando e-mail...');
                             try {
                                 const response = await fetch(`/rastreio/api/enviar-email-cobranca/${pedidoId}`, {
+                                    method: 'POST'
+                                });
+                                const result = await response.json();
+                                if (!response.ok) throw new Error(result.message || 'Ocorreu um erro no servidor.');
+                                ModalSystem.alert(result.message, 'Sucesso', () => {
+                                    window.location.reload();
+                                });
+                            } catch (error) {
+                                ModalSystem.alert(`Erro: ${error.message}`, 'Falha na Operação');
+                            }
+                        },
+                        null // onCancelCallback
+                    );
+                });
+            }
+
+            const btnEnviarEmailBarragem = document.getElementById('btn-enviar-email-barragem');
+            if (btnEnviarEmailBarragem) {
+                btnEnviarEmailBarragem.addEventListener('click', () => {
+                    const confirmationMessage = `
+                        <p>Você confirma o envio do e-mail de <strong>solicitação de barragem e retorno</strong>?</p>
+                        <div style="margin-top: 1rem; text-align: left; font-size: 0.9rem;">
+                            <p><strong>Transportadora:</strong> ${transportadoraNome}</p>
+                            <p><strong>NFE:</strong> ${pedidoNfe}</p>
+                        </div>
+                    `;
+                    
+                    ModalSystem.confirm(
+                        confirmationMessage,
+                        'Confirmar Envio de E-mail de Barragem',
+                        async () => { // onConfirmCallback
+                            ModalSystem.showLoading('Enviando e-mail...');
+                            try {
+                                const response = await fetch(`/rastreio/api/enviar-email-barragem/${pedidoId}`, {
                                     method: 'POST'
                                 });
                                 const result = await response.json();

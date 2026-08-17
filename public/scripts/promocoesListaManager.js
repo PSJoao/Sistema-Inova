@@ -7,6 +7,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     // === Elementos da DOM ===
     const buscaInput = document.getElementById('buscaGeral');
+    const campoBuscaSelect = document.getElementById('campoBusca');
     const filtroStatus = document.getElementById('filtroStatus');
     const filtroCatalogo = document.getElementById('filtroCatalogo');
     const filtroTipo = document.getElementById('filtroTipo');
@@ -41,6 +42,40 @@ document.addEventListener('DOMContentLoaded', () => {
     let clickTimer = null;
     let promoPagesState = {}; // Guarda a página interna de promoções por id_anuncio { [id_anuncio]: pageNum }
     let reembolsoMap = {}; // Mapa de reembolso máximo por promo_id { [promo_id]: reembolso_maximo_pct }
+
+    // Ordem Padrão das Colunas
+    const DEFAULT_COLUMN_ORDER = [
+        'id_anuncio',
+        'thumbnail',
+        'empresa',
+        'sku',
+        'tipo_anuncio',
+        'status',
+        'ganhando_catalogo',
+        'frete',
+        'estoque_plataforma',
+        'nome_promo_ativa',
+        'preco_promocional',
+        'margem_lucro',
+        'promocoes_disponiveis'
+    ];
+    const DEFAULT_COLUMN_WIDTHS = {
+        'id_anuncio': 150,
+        'thumbnail': 65,
+        'empresa': 140,
+        'sku': 150,
+        'tipo_anuncio': 105,
+        'status': 100,
+        'ganhando_catalogo': 115,
+        'frete': 95,
+        'estoque_plataforma': 115,
+        'nome_promo_ativa': 150,
+        'preco_promocional': 110,
+        'margem_lucro': 130,
+        'promocoes_disponiveis': 420
+    };
+    let currentColumnOrder = [...DEFAULT_COLUMN_ORDER];
+    let currentColumnWidths = { ...DEFAULT_COLUMN_WIDTHS };
 
     // Multi-Select Filter de Nome de Promoção
     const promoMultiFilter = typeof MultiSelectPromoFilter !== 'undefined' ? new MultiSelectPromoFilter({
@@ -100,7 +135,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const custo = Number(anuncio.custo_produto) || 0;
         if (custo <= 0 || promoPrice <= 0) return null;
 
-        const precoOriginal = Number(anuncio.preco) || promoPrice;
+        const precoOriginal = (p.original_price != null && Number(p.original_price) > 0)
+            ? Number(p.original_price)
+            : (Number(anuncio.preco) || promoPrice);
         const impostoPct = Number(anuncio.imposto) || 0;
         const tarifaBasePct = Number(anuncio.tarifa) || 0;
         const frete = Number(anuncio.frete) || 0;
@@ -123,11 +160,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (custo <= 0 || promoPrice <= 0 || !reembolsoMaxPct) return null;
 
         const tarifaBasePct = Number(anuncio.tarifa) || 0;
-        const impostoPct = Number(anuncio.imposto) || 6;
+        const impostoPct = Number(anuncio.imposto) || 0;
         const frete = Number(anuncio.frete) || 0;
 
         const comissaoBase = promoPrice * (tarifaBasePct / 100.0);
-        const reembolsoVal = promoPrice * (Number(reembolsoMaxPct) / 100.0);
+        // Reembolso Máximo calculado em cima do VALOR PROMOCIONAL (promoPrice)
+        const reembolsoVal = Number(((Number(reembolsoMaxPct) / 100.0) * promoPrice).toFixed(2));
         const comissaoEfetiva = comissaoBase - reembolsoVal;
         const impostoReais = promoPrice * (impostoPct / 100.0);
 
@@ -235,8 +273,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 all: 'true'
             });
 
-            const busca = buscaInput.value.trim();
-            if (busca) params.set('search', busca);
+            const busca = buscaInput ? buscaInput.value.trim() : '';
+            if (busca) {
+                params.set('search', busca);
+                params.set('searchField', campoBuscaSelect ? campoBuscaSelect.value : 'id_anuncio');
+            }
             if (filtroStatus.value) params.set('status', filtroStatus.value);
             if (filtroCatalogo.value) params.set('catalog', filtroCatalogo.value);
             if (filtroTipo.value) params.set('tipo', filtroTipo.value);
@@ -408,53 +449,90 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const cardsHtml = visiblePromos.map(p => {
             const isActive = p.status === 'started' || p.status === 'active';
-            const promoPrice = Number(p.price);
+            const promoPrice = Number(p.price) || 0;
             const promoPriceStr = `R$ ${promoPrice.toFixed(2).replace('.', ',')}`;
-            const origPriceStr = (p.original_price != null && Number(p.original_price) > promoPrice)
-                ? `R$ ${Number(p.original_price).toFixed(2).replace('.', ',')}`
+            
+            const origPriceVal = (p.original_price != null && Number(p.original_price) > 0)
+                ? Number(p.original_price)
+                : (anuncio.preco != null && Number(anuncio.preco) > 0 ? Number(anuncio.preco) : null);
+            
+            const precoRef = origPriceVal || promoPrice;
+            const origPriceStr = (origPriceVal && origPriceVal > promoPrice)
+                ? `R$ ${origPriceVal.toFixed(2).replace('.', ',')}`
                 : '';
 
             const name = escapeHtml(p.name || p.id || 'Campanha Promocional');
 
             // Status Badge
             const statusBadge = isActive
-                ? `<span class="qty-badge qty-ok" style="font-size: 0.72rem; padding: 2px 6px; min-width: auto; font-weight: 700;">Ativa</span>`
-                : `<span class="qty-badge" style="font-size: 0.72rem; padding: 2px 6px; min-width: auto; background: rgba(255,255,255,0.08); color: var(--text-muted); font-weight: 600;">Elegível</span>`;
+                ? `<span class="promo-status-badge promo-status-active"><i class="fas fa-circle promo-pulse-dot"></i> Ativa</span>`
+                : `<span class="promo-status-badge promo-status-eligible">Elegível</span>`;
 
-            // Meli Reimbursement
+            // 1. Reembolso ML (Tarifa coberta pelo Mercado Livre em R$)
             const meliPct = p.meli_percentage != null ? Number(p.meli_percentage) : 0;
             let meliBadge = '';
             if (meliPct > 0) {
-                meliBadge = `<span class="promo-pill-meli" title="Reembolso de tarifa concedido pelo Mercado Livre sobre o preço promocional">Reembolso ML: ${meliPct.toFixed(1).replace('.', ',')}%</span>`;
+                const meliReais = (meliPct / 100.0) * precoRef;
+                meliBadge = `
+                    <span class="promo-flag-chip promo-flag-meli" title="Reembolso ML: R$ ${meliReais.toFixed(2).replace('.', ',')} (${meliPct.toFixed(1).replace('.', ',')}% sobre R$ ${precoRef.toFixed(2).replace('.', ',')})">
+                        <i class="fas fa-hand-holding-usd"></i>
+                        <span class="promo-flag-val">+R$ ${meliReais.toFixed(2).replace('.', ',')}</span>
+                        <span class="promo-flag-sub">${meliPct.toFixed(1).replace('.', ',')}%</span>
+                    </span>
+                `;
             }
 
-            // Seller Discount
+            // 2. Desconto do Vendedor (em R$)
             const sellerPct = p.seller_percentage != null ? Number(p.seller_percentage) : 0;
             let sellerBadge = '';
             if (sellerPct > 0) {
-                sellerBadge = `<span class="promo-pill-seller">Vendedor: ${sellerPct.toFixed(1).replace('.', ',')}%</span>`;
+                const sellerReais = (sellerPct / 100.0) * precoRef;
+                sellerBadge = `
+                    <span class="promo-flag-chip promo-flag-seller" title="Desconto Vendedor: R$ ${sellerReais.toFixed(2).replace('.', ',')} (${sellerPct.toFixed(1).replace('.', ',')}% sobre R$ ${precoRef.toFixed(2).replace('.', ',')})">
+                        <i class="fas fa-tag"></i>
+                        <span class="promo-flag-val">-R$ ${sellerReais.toFixed(2).replace('.', ',')}</span>
+                        <span class="promo-flag-sub">${sellerPct.toFixed(1).replace('.', ',')}%</span>
+                    </span>
+                `;
             }
 
-            // Margem de Lucro Específica da Promoção
+            // 3. Margem de Lucro Específica da Promoção (%)
             let margemHtml = '';
             const margemVal = calculatePromoMargin(anuncio, p);
             if (margemVal !== null && !isNaN(margemVal)) {
-                const margemClass = margemVal >= 15 ? 'qty-ok' : (margemVal >= 5 ? 'qty-low' : 'qty-zero');
-                margemHtml = `<span class="qty-badge ${margemClass}" style="font-size: 0.72rem; padding: 2px 6px; min-width: auto;" title="Margem de lucro calculada com base no preço promocional">Margem: ${margemVal.toFixed(2).replace('.', ',')}%</span>`;
+                const margemClass = margemVal >= 15 ? 'promo-margin-ok' : (margemVal >= 5 ? 'promo-margin-low' : 'promo-margin-zero');
+                const margemNivel = margemVal >= 15 ? 'Alta' : (margemVal >= 5 ? 'Média' : 'Baixa');
+                margemHtml = `
+                    <span class="promo-flag-chip ${margemClass}" title="Margem de Lucro da Promoção: ${margemVal.toFixed(2).replace('.', ',')}% (Nível ${margemNivel})">
+                        <i class="fas fa-chart-line"></i>
+                        <span class="promo-flag-val">${margemVal.toFixed(2).replace('.', ',')}%</span>
+                    </span>
+                `;
             }
 
-            // Reembolso Máximo (da Central de Promoções)
+            // 4. Reembolso Máximo (da Central de Promoções) e 5. Margem c/ Reembolso Máximo
             let reembolsoMaxHtml = '';
             let margemReembolsoMaxHtml = '';
             const promoId = p.id || null;
             if (promoId && reembolsoMap[promoId] != null && Number(reembolsoMap[promoId]) > 0) {
                 const reembolsoPct = Number(reembolsoMap[promoId]);
                 const reembolsoReais = (reembolsoPct / 100.0) * promoPrice;
-                reembolsoMaxHtml = `<span class="promo-pill-meli" style="background: rgba(156, 39, 176, 0.15); color: #ce93d8; border-color: rgba(156, 39, 176, 0.3);" title="Reembolso Máximo definido na Central de Promoções"><i class="fas fa-hand-holding-usd" style="font-size: 0.65rem; margin-right: 2px;"></i>Reemb. Máx: ${reembolsoPct.toFixed(1).replace('.', ',')}% (R$ ${reembolsoReais.toFixed(2).replace('.', ',')})</span>`;
+                reembolsoMaxHtml = `
+                    <span class="promo-flag-chip promo-flag-reemb-max" title="Reembolso Máximo (Central): R$ ${reembolsoReais.toFixed(2).replace('.', ',')} (${reembolsoPct.toFixed(1).replace('.', ',')}% sobre o valor promocional R$ ${promoPrice.toFixed(2).replace('.', ',')})">
+                        <i class="fas fa-award"></i>
+                        <span class="promo-flag-val">R$ ${reembolsoReais.toFixed(2).replace('.', ',')}</span>
+                        <span class="promo-flag-sub">${reembolsoPct.toFixed(1).replace('.', ',')}%</span>
+                    </span>
+                `;
 
                 const margemReembMax = calculateReembolsoMaxMargin(anuncio, p, reembolsoPct);
                 if (margemReembMax !== null && !isNaN(margemReembMax)) {
-                    margemReembolsoMaxHtml = `<span class="qty-badge" style="background: rgba(233, 30, 99, 0.15); color: #ec407a; border: 1px solid rgba(233, 30, 99, 0.3); font-size: 0.72rem; padding: 2px 6px; min-width: auto;" title="Margem de lucro calculada com base no Reembolso Máximo (${reembolsoPct}%)">Margem Reemb. Máx: ${margemReembMax.toFixed(2).replace('.', ',')}%</span>`;
+                    margemReembolsoMaxHtml = `
+                        <span class="promo-flag-chip promo-flag-margem-max" title="Margem estimada com Reembolso Máximo (${reembolsoPct}%): ${margemReembMax.toFixed(2).replace('.', ',')}%">
+                            <i class="fas fa-calculator"></i>
+                            <span class="promo-flag-val">${margemReembMax.toFixed(2).replace('.', ',')}%</span>
+                        </span>
+                    `;
                 }
             }
 
@@ -478,16 +556,18 @@ document.addEventListener('DOMContentLoaded', () => {
                         <span class="promo-card-title">${name}</span>
                         ${statusBadge}
                     </div>
-                    <div class="promo-card-details">
-                        <div>
+                    <div class="promo-card-body">
+                        <div class="promo-price-wrapper">
                             <span class="promo-price-main">${promoPriceStr}</span>
                             ${origPriceStr ? `<span class="promo-price-orig">(${origPriceStr})</span>` : ''}
                         </div>
-                        ${meliBadge}
-                        ${sellerBadge}
-                        ${margemHtml}
-                        ${reembolsoMaxHtml}
-                        ${margemReembolsoMaxHtml}
+                        <div class="promo-flags-grid">
+                            ${meliBadge}
+                            ${sellerBadge}
+                            ${margemHtml}
+                            ${reembolsoMaxHtml}
+                            ${margemReembolsoMaxHtml}
+                        </div>
                     </div>
                     ${dateHtml}
                 </div>
@@ -559,7 +639,56 @@ document.addEventListener('DOMContentLoaded', () => {
         return result;
     };
 
-    const buildAnuncioRow = (anuncio) => {
+    const normalizeTipo = (tipo) => {
+        const t = String(tipo || '').toLowerCase();
+        if (t.includes('premium') || t === 'gold_pro') return 'Premium';
+        if (t.includes('clássico') || t.includes('classico') || t === 'gold_special') return 'Clássico';
+        return tipo || '';
+    };
+
+    const detectCatalogSiblingsMap = (anunciosList) => {
+        const siblingMap = new Map();
+        const catalogActiveMap = new Map();
+
+        // 1. Agrupa anúncios de catálogo ATIVOS da listagem filtrada por catalog_product_id
+        (anunciosList || []).forEach(item => {
+            const catId = item.catalog_product_id ? String(item.catalog_product_id).trim() : '';
+            const isCatalog = Boolean(item.catalog_listing && item.catalog_listing !== 'false' && item.catalog_listing !== '0');
+            const isActive = item.status === 'active';
+
+            if (catId && isCatalog && isActive) {
+                if (!catalogActiveMap.has(catId)) {
+                    catalogActiveMap.set(catId, []);
+                }
+                catalogActiveMap.get(catId).push(item);
+            }
+        });
+
+        // 2. Para cada anúncio, armazena a lista de TODOS os seus outros irmãos ativos no mesmo catálogo
+        catalogActiveMap.forEach((items) => {
+            if (items.length >= 2) {
+                items.forEach(item => {
+                    const siblings = items.filter(other => String(other.id_anuncio) !== String(item.id_anuncio));
+                    if (siblings.length > 0) {
+                        siblingMap.set(String(item.id_anuncio), siblings);
+                    }
+                });
+            }
+        });
+
+        return siblingMap;
+    };
+
+    const buildAnuncioRow = (anuncio, siblings = [], isStandalone = false) => {
+        const siblingList = Array.isArray(siblings) ? siblings : (siblings ? [siblings] : []);
+
+        // Link de busca de promoções ML para anúncios individuais/sozinhos
+        const numericId = String(anuncio.id_anuncio || '').replace(/\D/g, '');
+        const mlSearchUrl = numericId ? `https://vendedores.mercadolivre.com.br/anuncios/lista/promos?page=1&search=${numericId}` : null;
+        const standaloneMlSearchHtml = (isStandalone && mlSearchUrl)
+            ? `<a href="${mlSearchUrl}" target="_blank" class="standalone-ml-link" title="Abrir busca deste anúncio na Central de Promoções do Mercado Livre"><i class="fas fa-external-link-alt"></i> Busca ML</a>`
+            : '';
+
         const statusClass = anuncio.status === 'active' ? 'qty-ok' :
             anuncio.status === 'paused' ? 'qty-low' :
                 anuncio.status === 'closed' ? 'qty-zero' : '';
@@ -581,9 +710,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 : `<span class="qty-badge" style="background-color: #ffebee; color: #c62828;">Perdendo</span>`;
         }
 
-        const tipoHtml = anuncio.tipo_anuncio === 'Premium'
-            ? `<span class="qty-badge" style="background-color: #fff3e0; color: #e65100;">${anuncio.tipo_anuncio}</span>`
-            : `<span class="qty-badge" style="background-color: #f5f5f5; color: #616161;">${anuncio.tipo_anuncio || '-'}</span>`;
+        const tipoNorm = normalizeTipo(anuncio.tipo_anuncio);
+        const tipoHtml = tipoNorm === 'Premium'
+            ? `<span class="qty-badge" style="background-color: #fff3e0; color: #e65100;">${anuncio.tipo_anuncio || 'Premium'}</span>`
+            : `<span class="qty-badge" style="background-color: #f5f5f5; color: #616161;">${anuncio.tipo_anuncio || 'Clássico'}</span>`;
 
         const freteVal = Number(anuncio.frete) || 0;
         const freteLabel = freteVal > 0 ? `R$ ${freteVal.toFixed(2).replace('.', ',')}` : 'R$ 0,00';
@@ -622,24 +752,119 @@ document.addEventListener('DOMContentLoaded', () => {
             margemPromoHtml = `<span class="qty-badge ${margemClass}">${margemPromoVal.toFixed(2).replace('.', ',')}%</span>`;
         }
 
+        // =============================================
+        // === SUB-LINHAS SOMBRA DOS IRMÃOS DO CATÁLOGO ===
+        // =============================================
+        const siblingShadowTipo = siblingList.map(sib => {
+            const sibTipoNorm = normalizeTipo(sib.tipo_anuncio);
+            const sibTipoBadge = sibTipoNorm === 'Premium'
+                ? `<span class="qty-badge sibling-shadow-badge" style="background-color: rgba(255, 243, 224, 0.2); color: #ffb74d; border: 1px solid rgba(255, 183, 77, 0.3);">${escapeHtml(sib.tipo_anuncio || 'Premium')}</span>`
+                : `<span class="qty-badge sibling-shadow-badge" style="background-color: rgba(245, 245, 245, 0.15); color: #b0bec5; border: 1px solid rgba(176, 190, 197, 0.3);">${escapeHtml(sib.tipo_anuncio || 'Clássico')}</span>`;
+            return `<div class="sibling-shadow-container" title="Anúncio Irmão do Catálogo: ${sibTipoNorm} (${escapeHtml(sib.id_anuncio)})">${sibTipoBadge}</div>`;
+        }).join('');
+
+        const siblingShadowStatus = siblingList.map(sib => {
+            const sibStatusLabel = sib.status === 'active' ? 'Ativo' :
+                sib.status === 'paused' ? 'Pausado' :
+                    sib.status === 'closed' ? 'Fechado' :
+                        sib.status === 'under_review' ? 'Em análise' :
+                            sib.status === 'inactive' ? 'Inativo' : sib.status || '-';
+            const sibStatusClass = sib.status === 'active' ? 'qty-ok' : sib.status === 'paused' ? 'qty-low' : 'qty-zero';
+            return `<div class="sibling-shadow-container" title="Status do Irmão"><span class="qty-badge ${sibStatusClass} sibling-shadow-badge" style="opacity: 0.7;">${sibStatusLabel}</span></div>`;
+        }).join('');
+
+        const siblingShadowWinBox = siblingList.map(sib => {
+            let sibWinBoxBadge = '-';
+            if (sib.catalog_listing) {
+                sibWinBoxBadge = sib.ganhando_catalogo
+                    ? `<span class="qty-badge sibling-shadow-badge" style="background-color: rgba(46, 125, 50, 0.18); color: #81c784; border: 1px solid rgba(129, 199, 132, 0.3);">Ganhando</span>`
+                    : `<span class="qty-badge sibling-shadow-badge" style="background-color: rgba(198, 40, 40, 0.18); color: #e57373; border: 1px solid rgba(229, 115, 115, 0.3);">Perdendo</span>`;
+            }
+            return `<div class="sibling-shadow-container" title="Concorrência do Irmão">${sibWinBoxBadge}</div>`;
+        }).join('');
+
+        const siblingShadowFrete = siblingList.map(sib => {
+            const sibFreteVal = Number(sib.frete) || 0;
+            const sibFreteLabel = sibFreteVal > 0 ? `R$ ${sibFreteVal.toFixed(2).replace('.', ',')}` : 'R$ 0,00';
+            return `<div class="sibling-shadow-container" title="Frete do Irmão"><span class="sibling-shadow-text">${sibFreteLabel}</span></div>`;
+        }).join('');
+
+        const siblingShadowEstoque = siblingList.map(sib => {
+            const sibEstoque = sib.estoque_plataforma != null ? sib.estoque_plataforma : '-';
+            const sibEstoqueClass = sibEstoque === '-' ? '' : sibEstoque === 0 ? 'qty-zero' : sibEstoque <= 5 ? 'qty-low' : 'qty-ok';
+            return `<div class="sibling-shadow-container" title="Estoque Bling do Irmão"><span class="qty-badge ${sibEstoqueClass} sibling-shadow-badge" style="opacity: 0.7;">${sibEstoque}</span></div>`;
+        }).join('');
+
+        const siblingShadowNomePromo = siblingList.map(sib => {
+            const sibNomePromoHtml = sib.nome_promo_ativa
+                ? `<span class="qty-badge sibling-shadow-badge" style="background-color: rgba(40, 167, 69, 0.12); color: rgba(110, 231, 183, 0.75); border: 1px solid rgba(110, 231, 183, 0.3); font-size: 0.68rem; padding: 1px 5px;">${escapeHtml(sib.nome_promo_ativa)}</span>`
+                : `<span class="sibling-shadow-text">-</span>`;
+            return `<div class="sibling-shadow-container" title="Promoção Ativa do Irmão">${sibNomePromoHtml}</div>`;
+        }).join('');
+
+        const siblingShadowPrecoPromo = siblingList.map(sib => {
+            const sibPrecoVal = (sib.nome_promo_ativa && sib.preco_promocional != null) ? Number(sib.preco_promocional) : null;
+            const sibPrecoLabel = sibPrecoVal != null && sibPrecoVal > 0 ? `R$ ${sibPrecoVal.toFixed(2).replace('.', ',')}` : '-';
+            return `<div class="sibling-shadow-container" title="Preço Promo do Irmão"><span class="sibling-shadow-text" style="font-weight: 600;">${sibPrecoLabel}</span></div>`;
+        }).join('');
+
+        const siblingShadowMargemPromo = siblingList.map(sib => {
+            let sibMargemVal = (sib.nome_promo_ativa && sib.margem_lucro != null) ? Number(sib.margem_lucro) : null;
+            let sibMargemHtml = `<span class="sibling-shadow-text">-</span>`;
+            if (sibMargemVal != null && !isNaN(sibMargemVal)) {
+                const sibMargemClass = sibMargemVal >= 15 ? 'qty-ok' : (sibMargemVal >= 5 ? 'qty-low' : 'qty-zero');
+                sibMargemHtml = `<span class="qty-badge ${sibMargemClass} sibling-shadow-badge" style="opacity: 0.7;">${sibMargemVal.toFixed(2).replace('.', ',')}%</span>`;
+            }
+            return `<div class="sibling-shadow-container" title="Margem Promo do Irmão">${sibMargemHtml}</div>`;
+        }).join('');
+
         const promosCellHtml = renderPromocoesCell(anuncio);
 
+        const renderCell = (colKey) => {
+            switch (colKey) {
+                case 'id_anuncio':
+                    return `
+                        <td>
+                            <div style="display: flex; flex-direction: column; gap: 2px;">
+                                <div style="display: inline-flex; align-items: center; gap: 4px;">
+                                    <a href="${urlAnuncio}" target="_blank" style="color: #f39c12; font-weight: bold; text-decoration: none;" title="Abrir anúncio no Mercado Livre">${escapeHtml(anuncio.id_anuncio || '-')}</a>
+                                    ${copyIdBtnHtml}
+                                </div>
+                                ${standaloneMlSearchHtml}
+                            </div>
+                        </td>
+                    `;
+                case 'thumbnail':
+                    return `<td class="text-center">${imgHtml}</td>`;
+                case 'empresa':
+                    return `<td><span class="qty-badge" style="background-color: rgba(33, 150, 243, 0.15); color: #64b5f6; font-size: 0.75rem; padding: 2px 6px;">${escapeHtml(anuncio.empresa || '-')}</span></td>`;
+                case 'sku':
+                    return `<td><div style="display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap;"><strong>${escapeHtml(anuncio.sku || '-')}</strong>${copyBtnHtml}${catalogBadge}</div></td>`;
+                case 'tipo_anuncio':
+                    return `<td>${tipoHtml}${siblingShadowTipo}</td>`;
+                case 'status':
+                    return `<td><span class="qty-badge ${statusClass}">${statusLabel}</span>${siblingShadowStatus}</td>`;
+                case 'ganhando_catalogo':
+                    return `<td class="text-center">${winBoxBadge}${siblingShadowWinBox}</td>`;
+                case 'frete':
+                    return `<td class="text-center">${freteLabel}${siblingShadowFrete}</td>`;
+                case 'estoque_plataforma':
+                    return `<td class="text-center"><span class="qty-badge ${estoqueBlingClass}">${estoqueBling}</span>${siblingShadowEstoque}</td>`;
+                case 'nome_promo_ativa':
+                    return `<td class="text-center">${nomePromoAtivaHtml}${siblingShadowNomePromo}</td>`;
+                case 'preco_promocional':
+                    return `<td class="text-center" style="font-weight: 600; color: #fff;">${precoPromoHtml}${siblingShadowPrecoPromo}</td>`;
+                case 'margem_lucro':
+                    return `<td class="text-center">${margemPromoHtml}${siblingShadowMargemPromo}</td>`;
+                case 'promocoes_disponiveis':
+                    return `<td style="white-space: normal; min-width: 250px;">${promosCellHtml}</td>`;
+                default:
+                    return `<td>-</td>`;
+            }
+        };
+
         const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td><div style="display: inline-flex; align-items: center; gap: 4px;"><a href="${urlAnuncio}" target="_blank" style="color: #f39c12; font-weight: bold; text-decoration: none;" title="Abrir anúncio no Mercado Livre">${escapeHtml(anuncio.id_anuncio || '-')}</a>${copyIdBtnHtml}</div></td>
-            <td class="text-center">${imgHtml}</td>
-            <td><span class="qty-badge" style="background-color: rgba(33, 150, 243, 0.15); color: #64b5f6; font-size: 0.75rem; padding: 2px 6px;">${escapeHtml(anuncio.empresa || '-')}</span></td>
-            <td><div style="display: inline-flex; align-items: center; gap: 4px;"><strong>${escapeHtml(anuncio.sku || '-')}</strong>${copyBtnHtml}${catalogBadge}</div></td>
-            <td>${tipoHtml}</td>
-            <td><span class="qty-badge ${statusClass}">${statusLabel}</span></td>
-            <td class="text-center">${winBoxBadge}</td>
-            <td class="text-center">${freteLabel}</td>
-            <td class="text-center"><span class="qty-badge ${estoqueBlingClass}">${estoqueBling}</span></td>
-            <td class="text-center">${nomePromoAtivaHtml}</td>
-            <td class="text-center" style="font-weight: 600; color: #fff;">${precoPromoHtml}</td>
-            <td class="text-center">${margemPromoHtml}</td>
-            <td style="white-space: normal; min-width: 420px;">${promosCellHtml}</td>
-        `;
+        tr.innerHTML = currentColumnOrder.map(colKey => renderCell(colKey)).join('');
         return tr;
     };
 
@@ -653,8 +878,9 @@ document.addEventListener('DOMContentLoaded', () => {
         emptyState.style.display = 'none';
         tableBody.innerHTML = '';
 
+        const siblingMap = detectCatalogSiblingsMap(data);
         const groupedData = groupAnunciosByCatalog(data);
-        const colCount = 13;
+        const colCount = currentColumnOrder.length;
 
         groupedData.forEach(groupEntry => {
             if (groupEntry.isCatalogGroup) {
@@ -686,16 +912,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 items.forEach((anuncio, idx) => {
                     const isLast = idx === items.length - 1;
-                    const tr = buildAnuncioRow(anuncio);
+                    const siblings = siblingMap.get(String(anuncio.id_anuncio)) || [];
+                    const tr = buildAnuncioRow(anuncio, siblings, false);
                     tr.classList.add('catalog-group-row');
                     if (isLast) tr.classList.add('catalog-group-last-row');
                     tableBody.appendChild(tr);
                 });
             } else {
-                const tr = buildAnuncioRow(groupEntry.item);
+                const siblings = siblingMap.get(String(groupEntry.item.id_anuncio)) || [];
+                const tr = buildAnuncioRow(groupEntry.item, siblings, true);
                 tableBody.appendChild(tr);
             }
         });
+
+        applyColumnWidthsDOM();
     };
 
     // =============================================
@@ -772,13 +1002,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const syncParams = {};
         const busca = buscaInput ? buscaInput.value.trim() : '';
-        if (busca) syncParams.search = busca;
+        if (busca) {
+            syncParams.search = busca;
+            syncParams.searchField = campoBuscaSelect ? campoBuscaSelect.value : 'id_anuncio';
+        }
         if (filtroStatus && filtroStatus.value) syncParams.status = filtroStatus.value;
         if (filtroCatalogo && filtroCatalogo.value) syncParams.catalog = filtroCatalogo.value;
         if (filtroTipo && filtroTipo.value) syncParams.tipo = filtroTipo.value;
+        if (filtroEmpresa && filtroEmpresa.value) syncParams.empresa = filtroEmpresa.value;
+        if (filtroMargemAbaixoReemb && filtroMargemAbaixoReemb.value) syncParams.margem_reemb = filtroMargemAbaixoReemb.value;
 
-        if (Array.isArray(rawPromocoesList) && rawPromocoesList.length > 0) {
-            syncParams.item_ids = rawPromocoesList.map(a => a.id_anuncio).filter(Boolean);
+        const hasFilters = Object.keys(syncParams).length > 0;
+
+        if (hasFilters && Array.isArray(rawAnunciosList) && rawAnunciosList.length > 0) {
+            syncParams.item_ids = rawAnunciosList.map(a => a.id_anuncio).filter(Boolean);
         }
 
         try {
@@ -937,22 +1174,403 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // =============================================
+    // === REORDENAÇÃO & PREFERÊNCIA DE COLUNAS ===
+    // =============================================
+
+    const COLUMN_LABELS = {
+        'id_anuncio': 'ID Anúncio',
+        'thumbnail': 'Foto',
+        'empresa': 'Empresa / Loja',
+        'sku': 'SKU',
+        'tipo_anuncio': 'Tipo',
+        'status': 'Status',
+        'ganhando_catalogo': 'Concorrência',
+        'frete': 'Frete',
+        'estoque_plataforma': 'Estoque Bling',
+        'nome_promo_ativa': 'Promoção Ativa',
+        'preco_promocional': 'Preço Promocional',
+        'margem_lucro': 'Margem Promo',
+        'promocoes_disponiveis': 'Promoções Disponíveis'
+    };
+
+    const applyColumnWidthsDOM = () => {
+        const table = document.querySelector('#tabela-estoque');
+        const theadTr = document.querySelector('#tabela-estoque thead tr');
+        if (!theadTr || !table) return;
+
+        table.style.tableLayout = 'fixed';
+
+        const allThs = Array.from(theadTr.querySelectorAll('th'));
+        allThs.forEach((th, thIdx) => {
+            const colKey = th.dataset.column || (th.textContent.trim().toLowerCase() === 'foto' ? 'thumbnail' : null);
+            if (!colKey) return;
+
+            const widthVal = currentColumnWidths[colKey] !== undefined ? currentColumnWidths[colKey] : DEFAULT_COLUMN_WIDTHS[colKey];
+            const isCollapsed = widthVal != null && widthVal <= 16;
+
+            if (isCollapsed) {
+                th.classList.add('is-col-collapsed');
+                th.style.width = '6px';
+                th.style.minWidth = '6px';
+                th.style.maxWidth = '6px';
+                th.title = `Coluna "${COLUMN_LABELS[colKey] || colKey}" oculta. Dê duplo clique no separador para restaurar.`;
+            } else {
+                th.classList.remove('is-col-collapsed');
+                const finalW = Math.max(30, widthVal || DEFAULT_COLUMN_WIDTHS[colKey] || 100);
+                th.style.width = finalW + 'px';
+                th.style.minWidth = finalW + 'px';
+                th.style.maxWidth = finalW + 'px';
+                th.title = '';
+            }
+
+            const colTds = document.querySelectorAll(`#tabela-estoque tbody tr:not(.catalog-group-header-row) td:nth-child(${thIdx + 1})`);
+            colTds.forEach(td => {
+                if (isCollapsed) {
+                    td.classList.add('is-col-collapsed');
+                    td.style.width = '6px';
+                    td.style.maxWidth = '6px';
+                } else {
+                    td.classList.remove('is-col-collapsed');
+                    td.style.width = '';
+                    td.style.maxWidth = '';
+                }
+            });
+        });
+    };
+
+    const fetchColumnPreferences = async () => {
+        try {
+            const res = await fetch('/api/anuncios/promocoes/column-preferences');
+            if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data.columnOrder) && data.columnOrder.length > 0) {
+                    const loadedSet = new Set(data.columnOrder);
+                    const missing = DEFAULT_COLUMN_ORDER.filter(col => !loadedSet.has(col));
+                    currentColumnOrder = [...data.columnOrder, ...missing];
+                }
+                if (data.columnWidths && typeof data.columnWidths === 'object') {
+                    currentColumnWidths = { ...DEFAULT_COLUMN_WIDTHS, ...data.columnWidths };
+                }
+            }
+        } catch (err) {
+            console.warn('[Promoções] Não foi possível carregar preferências de colunas do servidor:', err);
+        }
+        reorderTableHeaderDOM();
+        applyColumnWidthsDOM();
+        setupColumnResize();
+    };
+
+    let savePreferencesTimer = null;
+    const saveColumnPreferencesToServer = (showToastMsg = true) => {
+        if (savePreferencesTimer) clearTimeout(savePreferencesTimer);
+        savePreferencesTimer = setTimeout(async () => {
+            try {
+                await fetch('/api/anuncios/promocoes/column-preferences', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        viewName: 'promocoes_ml',
+                        columnOrder: currentColumnOrder,
+                        columnWidths: currentColumnWidths
+                    })
+                });
+                if (showToastMsg) {
+                    showToast('Personalização da tabela salva!');
+                }
+            } catch (err) {
+                console.error('[Promoções] Erro ao salvar preferências de colunas:', err);
+            }
+        }, 300);
+    };
+
+    const reorderTableHeaderDOM = () => {
+        const theadTr = document.querySelector('#tabela-estoque thead tr');
+        if (!theadTr) return;
+
+        const thMap = {};
+        const allThs = Array.from(theadTr.querySelectorAll('th'));
+        allThs.forEach(th => {
+            const colKey = th.dataset.column || (th.textContent.trim().toLowerCase() === 'foto' ? 'thumbnail' : null);
+            if (colKey) thMap[colKey] = th;
+        });
+
+        currentColumnOrder.forEach(colKey => {
+            if (thMap[colKey]) {
+                theadTr.appendChild(thMap[colKey]);
+            }
+        });
+    };
+
+    // =============================================
+    // === REDIMENSIONAMENTO DE LARGURA DE COLUNAS ===
+    // =============================================
+
+    const setupColumnResize = () => {
+        const theadTr = document.querySelector('#tabela-estoque thead tr');
+        if (!theadTr) return;
+
+        const allThs = theadTr.querySelectorAll('th');
+        allThs.forEach((th, thIdx) => {
+            const colKey = th.dataset.column || (th.textContent.trim().toLowerCase() === 'foto' ? 'thumbnail' : null);
+            if (!colKey) return;
+
+            // Remove resizer anterior se houver
+            const existingResizer = th.querySelector('.col-resizer');
+            if (existingResizer) existingResizer.remove();
+
+            const resizer = document.createElement('div');
+            resizer.className = 'col-resizer';
+            resizer.title = 'Arraste para redimensionar. Dê duplo clique para restaurar tamanho padrão.';
+            th.appendChild(resizer);
+
+            // Duplo clique no resizer restaura tamanho padrão da coluna (Estilo Excel)
+            resizer.addEventListener('dblclick', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const defaultW = DEFAULT_COLUMN_WIDTHS[colKey] || 120;
+                currentColumnWidths[colKey] = defaultW;
+                applyColumnWidthsDOM();
+                saveColumnPreferencesToServer(true);
+                showToast(`Coluna "${COLUMN_LABELS[colKey] || colKey}" restaurada!`);
+            });
+
+            // Duplo clique no th se estiver colapsado também restaura
+            th.addEventListener('dblclick', (e) => {
+                if (th.classList.contains('is-col-collapsed')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const defaultW = DEFAULT_COLUMN_WIDTHS[colKey] || 120;
+                    currentColumnWidths[colKey] = defaultW;
+                    applyColumnWidthsDOM();
+                    saveColumnPreferencesToServer(true);
+                    showToast(`Coluna "${COLUMN_LABELS[colKey] || colKey}" restaurada!`);
+                }
+            });
+
+            resizer.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+
+                if (holdTimer) {
+                    clearTimeout(holdTimer);
+                    holdTimer = null;
+                }
+                if (clickTimer) {
+                    clearTimeout(clickTimer);
+                    clickTimer = null;
+                }
+
+                const startX = e.pageX;
+                const startWidth = th.offsetWidth;
+                document.body.classList.add('is-column-resizing');
+                resizer.classList.add('is-resizing');
+
+                const onMouseMove = (moveEvent) => {
+                    const diff = moveEvent.pageX - startX;
+                    const calculatedWidth = startWidth + diff;
+
+                    if (calculatedWidth <= 16) {
+                        th.classList.add('is-col-collapsed');
+                        th.style.width = '6px';
+                        th.style.minWidth = '6px';
+                        th.style.maxWidth = '6px';
+                        currentColumnWidths[colKey] = 6;
+                    } else {
+                        th.classList.remove('is-col-collapsed');
+                        const finalW = Math.max(25, calculatedWidth);
+                        th.style.width = finalW + 'px';
+                        th.style.minWidth = finalW + 'px';
+                        th.style.maxWidth = finalW + 'px';
+                        currentColumnWidths[colKey] = finalW;
+                    }
+
+                    const colIndex = Array.from(theadTr.children).indexOf(th);
+                    if (colIndex !== -1) {
+                        const colTds = document.querySelectorAll(`#tabela-estoque tbody tr:not(.catalog-group-header-row) td:nth-child(${colIndex + 1})`);
+                        colTds.forEach(td => {
+                            if (calculatedWidth <= 16) {
+                                td.classList.add('is-col-collapsed');
+                                td.style.width = '6px';
+                                td.style.maxWidth = '6px';
+                            } else {
+                                td.classList.remove('is-col-collapsed');
+                                td.style.width = '';
+                                td.style.maxWidth = '';
+                            }
+                        });
+                    }
+                };
+
+                const onMouseUp = () => {
+                    document.body.classList.remove('is-column-resizing');
+                    resizer.classList.remove('is-resizing');
+                    window.removeEventListener('mousemove', onMouseMove);
+                    window.removeEventListener('mouseup', onMouseUp);
+
+                    applyColumnWidthsDOM();
+                    saveColumnPreferencesToServer(true);
+                };
+
+                window.addEventListener('mousemove', onMouseMove);
+                window.addEventListener('mouseup', onMouseUp);
+            });
+        });
+    };
+
+    // =============================================
+    // === REORDENAÇÃO DE COLUNAS VIA DRAG & DROP ===
+    // =============================================
+
+    let holdTimer = null;
+    let isDraggingColumn = false;
+    let draggedTh = null;
+    let dragSourceColKey = null;
+
+    const setupLongPressColumnDrag = () => {
+        const theadTr = document.querySelector('#tabela-estoque thead tr');
+        if (!theadTr) return;
+
+        const getColKey = (th) => {
+            if (!th) return null;
+            return th.dataset.column || (th.textContent.trim().toLowerCase() === 'foto' ? 'thumbnail' : null);
+        };
+
+        const handlePressStart = (e, th) => {
+            if (isDraggingColumn) return;
+            if (e.target.closest('.col-resizer')) return;
+
+            const colKey = getColKey(th);
+            if (!colKey) return;
+
+            const startX = e.clientX || e.touches?.[0]?.clientX || 0;
+            const startY = e.clientY || e.touches?.[0]?.clientY || 0;
+
+            holdTimer = setTimeout(() => {
+                if (clickTimer) {
+                    clearTimeout(clickTimer);
+                    clickTimer = null;
+                }
+
+                isDraggingColumn = true;
+                draggedTh = th;
+                dragSourceColKey = colKey;
+                th.classList.add('column-dragging');
+                if (navigator.vibrate) navigator.vibrate(50);
+                showToast('Modo de Mover Coluna Ativo! Arraste para os lados.');
+            }, 1000);
+
+            const cancelHold = (moveEvent) => {
+                if (moveEvent && moveEvent.type === 'mousemove') {
+                    const currentX = moveEvent.clientX;
+                    const currentY = moveEvent.clientY;
+                    if (Math.abs(currentX - startX) > 5 || Math.abs(currentY - startY) > 5) {
+                        if (holdTimer && !isDraggingColumn) {
+                            clearTimeout(holdTimer);
+                            holdTimer = null;
+                        }
+                    }
+                } else if (!isDraggingColumn) {
+                    if (holdTimer) {
+                        clearTimeout(holdTimer);
+                        holdTimer = null;
+                    }
+                }
+            };
+
+            window.addEventListener('mousemove', cancelHold);
+            window.addEventListener('mouseup', () => {
+                window.removeEventListener('mousemove', cancelHold);
+                if (holdTimer && !isDraggingColumn) {
+                    clearTimeout(holdTimer);
+                    holdTimer = null;
+                }
+            }, { once: true });
+        };
+
+        const allThs = theadTr.querySelectorAll('th');
+        allThs.forEach(th => {
+            th.addEventListener('mousedown', (e) => handlePressStart(e, th));
+            th.addEventListener('touchstart', (e) => handlePressStart(e, th), { passive: true });
+
+            th.addEventListener('mouseenter', () => {
+                if (isDraggingColumn && draggedTh && th !== draggedTh) {
+                    const targetColKey = getColKey(th);
+                    if (!targetColKey || !dragSourceColKey) return;
+
+                    const fromIdx = currentColumnOrder.indexOf(dragSourceColKey);
+                    const toIdx = currentColumnOrder.indexOf(targetColKey);
+
+                    if (fromIdx !== -1 && toIdx !== -1 && fromIdx !== toIdx) {
+                        currentColumnOrder.splice(fromIdx, 1);
+                        currentColumnOrder.splice(toIdx, 0, dragSourceColKey);
+
+                        reorderTableHeaderDOM();
+                        setupColumnResize();
+                        applyColumnWidthsDOM();
+                        applyExcelFiltersAndRender();
+                    }
+                }
+            });
+        });
+
+        const finishDrag = () => {
+            if (isDraggingColumn && draggedTh) {
+                draggedTh.classList.remove('column-dragging');
+                isDraggingColumn = false;
+                draggedTh = null;
+                dragSourceColKey = null;
+
+                saveColumnPreferencesToServer(true);
+            }
+        };
+
+        window.addEventListener('mouseup', finishDrag);
+        window.addEventListener('touchend', finishDrag);
+    };
+
+    // =============================================
     // === EVENT LISTENERS ===
     // =============================================
 
     // Ordenação (clique simples) + Filtro Excel (duplo clique) nos headers
     tableHeaders.forEach(th => {
         th.addEventListener('click', (e) => {
+            if (e.target.closest('.col-resizer')) return;
             if (clickTimer) clearTimeout(clickTimer);
             clickTimer = setTimeout(() => handleSort(th.dataset.column), 220);
         });
         th.addEventListener('dblclick', (e) => {
+            if (e.target.closest('.col-resizer')) return;
             if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
             e.preventDefault();
             e.stopPropagation();
             openColumnFilterMenu(th);
         });
     });
+
+    const updateSearchPlaceholder = () => {
+        if (!buscaInput || !campoBuscaSelect) return;
+        const val = campoBuscaSelect.value;
+        if (val === 'sku') {
+            buscaInput.placeholder = 'Digite o SKU do produto...';
+        } else if (val === 'descricao') {
+            buscaInput.placeholder = 'Digite palavras da descrição...';
+        } else if (val === 'geral') {
+            buscaInput.placeholder = 'Pesquisar por ID, SKU ou Descrição...';
+        } else {
+            buscaInput.placeholder = 'Digite o ID do anúncio...';
+        }
+    };
+
+    if (campoBuscaSelect) {
+        campoBuscaSelect.addEventListener('change', () => {
+            updateSearchPlaceholder();
+            if (buscaInput && buscaInput.value.trim() !== '') {
+                currentPage = 1;
+                loadPromocoes();
+            }
+        });
+    }
 
     // Busca com debounce
     buscaInput.addEventListener('input', () => {
@@ -994,7 +1612,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnExportarPromos) {
         btnExportarPromos.addEventListener('click', () => {
             const params = new URLSearchParams({ orderBy, orderDir });
-            if (buscaInput.value.trim()) params.set('search', buscaInput.value.trim());
+            if (buscaInput && buscaInput.value.trim()) {
+                params.set('search', buscaInput.value.trim());
+                params.set('searchField', campoBuscaSelect ? campoBuscaSelect.value : 'id_anuncio');
+            }
             if (filtroStatus.value) params.set('status', filtroStatus.value);
             if (filtroCatalogo.value) params.set('catalog', filtroCatalogo.value);
             if (filtroTipo.value) params.set('tipo', filtroTipo.value);
@@ -1071,5 +1692,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // === INICIALIZAÇÃO ===
     // =============================================
 
-    loadPromocoes();
+    fetchColumnPreferences().then(() => {
+        setupLongPressColumnDrag();
+        loadPromocoes();
+    });
 });

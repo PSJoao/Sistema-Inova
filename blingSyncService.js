@@ -626,13 +626,34 @@ async function processAndCacheStructuresLucas(productData, client) {
             await new Promise(resolve => setTimeout(resolve, 50));
             const componenteDetails = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${componenteId}`, 'lucas')).data;
             console.log(componenteDetails);
+
+            const fornecedorId = componenteDetails.fornecedor?.contato?.id || componenteDetails.fornecedor?.id || null;
+            const fornecedorNome = componenteDetails.fornecedor?.contato?.nome || null;
+
+            if (fornecedorId && fornecedorNome) {
+                await client.query(
+                    `INSERT INTO fornecedor (bling_id, nome, updated_at)
+                    VALUES ($1, $2, CURRENT_TIMESTAMP)
+                    ON CONFLICT (bling_id)
+                    DO UPDATE SET nome = EXCLUDED.nome, updated_at = CURRENT_TIMESTAMP`,
+                    [fornecedorId, fornecedorNome]
+                );
+            }
+
             await client.query(
                 `INSERT INTO cached_structures (
                     parent_product_bling_id, parent_product_bling_account, component_sku,
-                    component_location, structure_name, gtin, gtin_embalagem, quantidade
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    component_location, structure_name, gtin, gtin_embalagem, quantidade,
+                    fornecedor_bling_id
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 ON CONFLICT (parent_product_bling_id, parent_product_bling_account, component_sku)
-                DO UPDATE SET quantidade = EXCLUDED.quantidade`,
+                DO UPDATE SET 
+                    quantidade = EXCLUDED.quantidade,
+                    fornecedor_bling_id = EXCLUDED.fornecedor_bling_id,
+                    component_location = EXCLUDED.component_location,
+                    structure_name = EXCLUDED.structure_name,
+                    gtin = EXCLUDED.gtin,
+                    gtin_embalagem = EXCLUDED.gtin_embalagem`,
                 [
                     productData.id,
                     'lucas',
@@ -641,7 +662,8 @@ async function processAndCacheStructuresLucas(productData, client) {
                     componenteDetails.nome,
                     componenteDetails.gtin,
                     componenteDetails.gtinEmbalagem,
-                    componente.quantidade || 1
+                    componente.quantidade || 1,
+                    fornecedorId
                 ]
             );
         } catch (error) {
@@ -666,13 +688,33 @@ async function processAndCacheStructuresEliane(productData, client) {
             await new Promise(resolve => setTimeout(resolve, 50));
             const componenteDetails = (await apiRequestWithRetry(`${BLING_API_BASE_URL}/produtos/${componenteId}`, 'eliane')).data;
 
+            const fornecedorId = componenteDetails.fornecedor?.contato?.id || componenteDetails.fornecedor?.id || null;
+            const fornecedorNome = componenteDetails.fornecedor?.contato?.nome || null;
+
+            if (fornecedorId && fornecedorNome) {
+                await client.query(
+                    `INSERT INTO fornecedor (bling_id, nome, updated_at)
+                    VALUES ($1, $2, CURRENT_TIMESTAMP)
+                    ON CONFLICT (bling_id)
+                    DO UPDATE SET nome = EXCLUDED.nome, updated_at = CURRENT_TIMESTAMP`,
+                    [fornecedorId, fornecedorNome]
+                );
+            }
+
             await client.query(
                 `INSERT INTO cached_structures (
                     parent_product_bling_id, parent_product_bling_account, component_sku,
-                    component_location, structure_name, gtin, gtin_embalagem, quantidade
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    component_location, structure_name, gtin, gtin_embalagem, quantidade,
+                    fornecedor_bling_id
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 ON CONFLICT (parent_product_bling_id, parent_product_bling_account, component_sku)
-                DO UPDATE SET quantidade = EXCLUDED.quantidade`,
+                DO UPDATE SET 
+                    quantidade = EXCLUDED.quantidade,
+                    fornecedor_bling_id = EXCLUDED.fornecedor_bling_id,
+                    component_location = EXCLUDED.component_location,
+                    structure_name = EXCLUDED.structure_name,
+                    gtin = EXCLUDED.gtin,
+                    gtin_embalagem = EXCLUDED.gtin_embalagem`,
                 [
                     productData.id,
                     'eliane',
@@ -681,7 +723,8 @@ async function processAndCacheStructuresEliane(productData, client) {
                     componenteDetails.nome,
                     componenteDetails.gtin,
                     componenteDetails.gtinEmbalagem,
-                    componente.quantidade || 1
+                    componente.quantidade || 1,
+                    fornecedorId
                 ]
             );
         } catch (error) {
@@ -1591,6 +1634,8 @@ async function syncEstoquePlataforma() {
         isEstoquePlataformaSyncRunning = false;
     }
 }
+
+
 
 
 module.exports = {

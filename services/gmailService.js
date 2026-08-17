@@ -492,12 +492,77 @@ async function enviarEmailComprovanteEntrega(pedido) {
     return { success: true, message: 'E-mail de solicitação de comprovante enviado com sucesso!' };
 }
 
+async function enviarEmailBarragemManual(pedido) {
+    if (!pedido || !pedido.nfe_numero) {
+        throw new Error('Dados do pedido inválidos para enviar e-mail.');
+    }
+
+    if (pedido.email_thread_id) {
+        return { message: 'Este pedido já possui uma conversa por e-mail em andamento.' };
+    }
+
+    const toEmails = getCarrierEmail(pedido.transportadora, pedido.etiqueta_uf);
+    if (!toEmails) {
+        throw new Error(`E-mails de destino não configurados para a transportadora: ${pedido.transportadora}`);
+    }
+
+    const saudaçao = new Date().getHours() < 12 ? 'Bom dia' : 'Boa tarde';
+    const emailSubject = `Solicitação de Barragem e Retorno - NF ${pedido.nfe_numero} - Inova Móveis`;
+    const emailBody = `
+        <p>${saudaçao}, equipe ${pedido.transportadora}.</p>
+        <p>Gostaríamos de solicitar, por gentileza, a barragem e o retorno da Nota Fiscal nº ${pedido.nfe_numero}, referente ao cliente ${pedido.etiqueta_nome || 'Não informado'}, com o total de ${pedido.total_volumes || 1} volume(s) (UF de destino: ${pedido.etiqueta_uf || 'N/D'}).</p>
+        <p>Solicitamos também a gentileza de nos informar uma previsão aproximada para a descarga deste produto em nossas instalações.</p>
+        <p>Agradecemos a colaboração.</p>
+        <p>Atenciosamente,</p>
+        <p>Equipe de Rastreio - Inova Móveis</p>
+    `;
+    
+    const sentMessage = await sendEmail(toEmails, emailSubject, emailBody);
+
+    if (!sentMessage || !sentMessage.threadId) {
+        throw new Error('Falha ao enviar o e-mail pela API do Gmail.');
+    }
+
+    await poolInova.query(
+        `UPDATE pedidos_em_rastreamento SET email_status = 'Email - Em Andamento', observacao = 'Barrado', email_thread_id = $1 WHERE id = $2`,
+        [sentMessage.threadId, pedido.id]
+    );
+
+    try {
+        const messageDetails = await getMessageDetails(sentMessage.id);
+        const headers = messageDetails.payload.headers;
+        const fromHeader = headers.find(h => h.name.toLowerCase() === 'from');
+        const subjectHeader = headers.find(h => h.name.toLowerCase() === 'subject');
+
+        await poolInova.query(
+            `INSERT INTO email_history 
+            (pedido_rastreamento_id, message_id, thread_id, from_address, subject, snippet, sent_at) 
+            VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+            [
+                pedido.id,
+                sentMessage.id,
+                sentMessage.threadId,
+                fromHeader ? fromHeader.value : 'N/D',
+                subjectHeader ? subjectHeader.value : 'N/D',
+                messageDetails.snippet || ''
+            ]
+        );
+        console.log(`[Gmail Service] E-mail de barragem MANUAL para NFe ${pedido.nfe_numero} salvo no histórico.`);
+    } catch (historyError) {
+        console.error(`[Gmail Service] Falha ao salvar e-mail de barragem no histórico para NFe ${pedido.nfe_numero}:`, historyError);
+    }
+
+    console.log(`[Gmail Service] E-mail de barragem MANUAL enviado para a NFe ${pedido.nfe_numero}. Thread ID: ${sentMessage.threadId}`);
+    return { message: 'E-mail de solicitação de barragem e retorno enviado com sucesso!' };
+}
+
 
 module.exports = {
     sendPositionRequestEmail,
     getThreadDetails,
     getMessageDetails,
     enviarEmailCobrancaManual,
+    enviarEmailBarragemManual,
     verificarRespostas,
     enviarEmailComprovanteEntrega
 };

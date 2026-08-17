@@ -10,6 +10,128 @@ class HubProdutosService {
         this._syncManualEmAndamento = false;
     }
 
+    // =====================================================
+    // PRAZO DE DISPONIBILIDADE (MANUFACTURING_TIME)
+    // =====================================================
+
+    /**
+     * Resolve qual conta ML (e token) é dona de um determinado item.
+     * Busca no banco de produtos pelo id_anuncio → empresa (nickname) → hub_ml_contas.
+     * @param {string} itemId - ID do anúncio (ex: MLB1234567890)
+     * @param {number} clienteId - ID do cliente autenticado
+     * @returns {object|null} - Objeto da conta ML com token válido, ou null
+     */
+    async resolverContaPorItem(itemId, clienteId = null) {
+        // 1. Busca no banco de produtos qual empresa é dona desse anúncio
+        const prodResult = await poolProdutos.query(
+            'SELECT empresa FROM produtos_anuncios WHERE id_anuncio = $1 LIMIT 1',
+            [itemId]
+        );
+
+        if (prodResult.rows.length === 0) return null;
+
+        const empresa = prodResult.rows[0].empresa;
+
+        // 2. Busca a conta ML vinculada a esse nickname (filtrando por cliente_id se informado)
+        let queryConta = 'SELECT * FROM hub_ml_contas WHERE LOWER(TRIM(nickname)) = LOWER(TRIM($1))';
+        const params = [empresa];
+
+        if (clienteId) {
+            queryConta += ' AND cliente_id = $2';
+            params.push(clienteId);
+        }
+
+        queryConta += ' LIMIT 1';
+
+        const contaResult = await poolHub.query(queryConta, params);
+
+        if (contaResult.rows.length === 0) return null;
+
+        return contaResult.rows[0];
+    }
+
+
+    /**
+     * Define o prazo de disponibilidade (MANUFACTURING_TIME) em um anúncio do ML.
+     * @param {string} itemId - ID do anúncio (ex: MLB1234567890)
+     * @param {number} dias - Quantidade de dias (1 a 45)
+     * @param {string} accessToken - Token de acesso válido da conta ML
+     * @returns {object} - Resposta da API do ML
+     */
+    async setPrazoDisponibilidade(itemId, dias, accessToken) {
+        const response = await axios.put(
+            `${ML_API_URL}/items/${itemId}`,
+            {
+                sale_terms: [
+                    {
+                        id: 'MANUFACTURING_TIME',
+                        value_name: `${dias} dias`
+                    }
+                ]
+            },
+            {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        try {
+            await poolProdutos.query(
+                'UPDATE produtos_anuncios SET prazo_disponibilidade = $1 WHERE id_anuncio = $2',
+                [`${dias} dias`, itemId]
+            );
+        } catch (errDb) {
+            console.warn(`[HUB PRODUTOS] Erro ao atualizar prazo em produtos_anuncios para ${itemId}:`, errDb.message);
+        }
+
+        return response.data;
+    }
+
+    /**
+     * Remove o prazo de disponibilidade (MANUFACTURING_TIME) de um anúncio do ML.
+     * @param {string} itemId - ID do anúncio (ex: MLB1234567890)
+     * @param {string} accessToken - Token de acesso válido da conta ML
+     * @returns {object} - Resposta da API do ML
+     */
+    async removerPrazoDisponibilidade(itemId, accessToken) {
+        const response = await axios.put(
+            `${ML_API_URL}/items/${itemId}`,
+            {
+                sale_terms: [
+                    {
+                        id: 'MANUFACTURING_TIME',
+                        value_id: null,
+                        value_name: null
+                    }
+                ]
+            },
+            {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        try {
+            await poolProdutos.query(
+                'UPDATE produtos_anuncios SET prazo_disponibilidade = NULL WHERE id_anuncio = $1',
+                [itemId]
+            );
+        } catch (errDb) {
+            console.warn(`[HUB PRODUTOS] Erro ao limpar prazo em produtos_anuncios para ${itemId}:`, errDb.message);
+        }
+
+        return response.data;
+    }
+
+
+
+    // =====================================================
+    // SINCRONIZAÇÃO DE ANÚNCIOS (existente)
+    // =====================================================
     /**
      * Sincronização manual disparada via endpoint.
      * Recebe um array de seller_ids e sincroniza os anúncios dessas contas,
@@ -70,19 +192,25 @@ class HubProdutosService {
 
         try {
             const contasResult = await poolHub.query('SELECT * FROM hub_ml_contas WHERE ativo = TRUE OR id IN (6, 7)');
-            let totalProcessados = 0;
 
-            for (const conta of contasResult.rows) {
+            // Divide os IDs em blocos de até 20 para requisição em lote na API do Mercado Livre
+            const chunkSize = 20;
+            const chunks = [];
+            for (let i = 0; i < cleanIds.length; i += chunkSize) {
+                chunks.push(cleanIds.slice(i, i + chunkSize));
+            }
+
+            // Processa todas as contas e blocos simultaneamente em paralelo
+            const contaPromises = contasResult.rows.map(async (conta) => {
                 let accessToken;
                 try {
                     accessToken = await hubTokenService.getValidAccessToken(conta);
                 } catch (err) {
-                    continue;
+                    return 0;
                 }
+                if (!accessToken) return 0;
 
-                const chunkSize = 20;
-                for (let i = 0; i < cleanIds.length; i += chunkSize) {
-                    const chunk = cleanIds.slice(i, i + chunkSize);
+                const chunkPromises = chunks.map(async (chunk) => {
                     try {
                         const idsBatch = chunk.join(',');
                         const itemsUrl = `${ML_API_URL}/items?ids=${idsBatch}`;
@@ -91,20 +219,26 @@ class HubProdutosService {
                         });
 
                         const itemsResults = itemsResponse.data || [];
-                        for (const res of itemsResults) {
-                            if (res.code === 200 && res.body) {
-                                const itemData = res.body;
-                                if (String(itemData.seller_id) === String(conta.seller_id)) {
-                                    const success = await this.processarItemCompleto(itemData, conta, accessToken);
-                                    if (success !== false) totalProcessados++;
-                                }
-                            }
-                        }
+                        const validItems = itemsResults.filter(res => res.code === 200 && res.body && String(res.body.seller_id) === String(conta.seller_id));
+
+                        const itemResults = await Promise.all(validItems.map(async (res) => {
+                            const success = await this.processarItemCompleto(res.body, conta, accessToken);
+                            return success !== false ? 1 : 0;
+                        }));
+
+                        return itemResults.reduce((acc, curr) => acc + curr, 0);
                     } catch (errChunk) {
                         console.error(`[HUB PRODUTOS] Erro ao sincronizar itens específicos ${chunk.join(',')}:`, errChunk.message);
+                        return 0;
                     }
-                }
-            }
+                });
+
+                const chunkResults = await Promise.all(chunkPromises);
+                return chunkResults.reduce((acc, curr) => acc + curr, 0);
+            });
+
+            const allResults = await Promise.all(contaPromises);
+            const totalProcessados = allResults.reduce((acc, curr) => acc + curr, 0);
 
             console.log(`[HUB PRODUTOS] Sincronização específica concluída: ${totalProcessados} item(ns) processado(s) em tempo real.`);
             return totalProcessados;

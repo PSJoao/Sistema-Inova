@@ -213,15 +213,35 @@ async function upsertProductStructure(client, productData, accountType) {
             continue;
         }
 
+        const fornecedorId = componenteDetails.fornecedor?.contato?.id || componenteDetails.fornecedor?.id || null;
+        const fornecedorNome = componenteDetails.fornecedor?.contato?.nome || null;
+
+        if (fornecedorId && fornecedorNome) {
+            await client.query(
+                `INSERT INTO fornecedor (bling_id, nome, updated_at)
+                VALUES ($1, $2, CURRENT_TIMESTAMP)
+                ON CONFLICT (bling_id)
+                DO UPDATE SET nome = EXCLUDED.nome, updated_at = CURRENT_TIMESTAMP`,
+                [fornecedorId, fornecedorNome]
+            );
+        }
+
         // Lucas usa gtin/gtinEmbalagem, Eliane usa apenas os campos básicos.
         // Unificado: Lucas e Eliane agora salvam GTIN e Quantidade
         await client.query(
             `INSERT INTO cached_structures (
                 parent_product_bling_id, parent_product_bling_account, component_sku,
-                component_location, structure_name, gtin, gtin_embalagem, quantidade
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                component_location, structure_name, gtin, gtin_embalagem, quantidade,
+                fornecedor_bling_id
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             ON CONFLICT (parent_product_bling_id, parent_product_bling_account, component_sku)
-            DO UPDATE SET quantidade = EXCLUDED.quantidade`,
+            DO UPDATE SET 
+                quantidade = EXCLUDED.quantidade,
+                fornecedor_bling_id = EXCLUDED.fornecedor_bling_id,
+                component_location = EXCLUDED.component_location,
+                structure_name = EXCLUDED.structure_name,
+                gtin = EXCLUDED.gtin,
+                gtin_embalagem = EXCLUDED.gtin_embalagem`,
             [
                 productData.id,
                 accountType,
@@ -230,7 +250,8 @@ async function upsertProductStructure(client, productData, accountType) {
                 componenteDetails.nome,
                 componenteDetails.gtin,
                 componenteDetails.gtinEmbalagem,
-                componente.quantidade || 1
+                componente.quantidade || 1,
+                fornecedorId
             ]
         );
     }

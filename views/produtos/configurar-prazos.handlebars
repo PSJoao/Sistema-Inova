@@ -1,0 +1,301 @@
+{{!--
+views/produtos/configurar-prazos.handlebars
+Configuração de Prazos de Disponibilidade Automáticos para Anúncios do Mercado Livre
+--}}
+<link rel="stylesheet" href="/public/styles/estoque.css">
+<link rel="stylesheet" href="/public/styles/configurar-prazos.css">
+
+<div class="content-card">
+    {{!-- Cabeçalho da Página --}}
+    <div class="page-header-actions">
+        <h1 class="page-title">{{title}}</h1>
+        <div style="display: flex; justify-content: end; gap: 10px;">
+            <a href="/anuncios" class="btn btn-outline-accent" style="display: inline-flex; align-items: center;">
+                <i class="fas fa-arrow-left me-2"></i>Voltar para Anúncios
+            </a>
+            <button id="btnAplicarPrazosAgora" class="btn btn-accent"
+                style="display: inline-flex; align-items: center;">
+                <i class="fas fa-bolt me-2"></i>Aplicar Prazos
+            </button>
+        </div>
+    </div>
+
+    {{!-- Banner Explicativo das Regras --}}
+    <div class="prazos-rules-banner">
+        <i class="fas fa-info-circle prazos-rules-icon"></i>
+        <div class="prazos-rules-text">
+            <strong>Regras de Prazos no Mercado Livre:</strong> Ao clicar no botão <strong>"Aplicar Prazos"</strong>, os
+            anúncios serão atualizados no ML conforme as regras abaixo:
+            <div class="prazos-rules-badges">
+                <span class="prazos-rule-tag tag-apply">
+                    <i class="fas fa-arrow-down"></i> Estoque Bling &le; 5: Aplica o Prazo
+                </span>
+                <span class="prazos-rule-tag tag-remove">
+                    <i class="fas fa-arrow-up"></i> Estoque Bling &ge; 15: Remove o Prazo
+                </span>
+                <span class="prazos-rule-tag tag-override">
+                    <i class="fas fa-layer-group"></i> Prazo por Produto sobrepõe o do Fornecedor
+                </span>
+            </div>
+        </div>
+    </div>
+
+    {{!-- Cards de Resumo / Contadores --}}
+    <div class="prazos-summary-bar">
+        <div class="prazos-summary-item">
+            <div class="prazos-summary-icon icon-fornecedores">
+                <i class="fas fa-truck-loading"></i>
+            </div>
+            <div>
+                <div class="prazos-summary-value" id="summary-total-fornecedores">0</div>
+                <div class="prazos-summary-label">Total de Fornecedores</div>
+            </div>
+        </div>
+        <div class="prazos-summary-item">
+            <div class="prazos-summary-icon icon-ativos">
+                <i class="fas fa-calendar-check"></i>
+            </div>
+            <div>
+                <div class="prazos-summary-value" id="summary-fornecedores-com-prazo">0</div>
+                <div class="prazos-summary-label">Fornecedores com Prazo Ativo</div>
+            </div>
+        </div>
+        <div class="prazos-summary-item">
+            <div class="prazos-summary-icon icon-produtos">
+                <i class="fas fa-box"></i>
+            </div>
+            <div>
+                <div class="prazos-summary-value" id="summary-produtos-com-prazo">0</div>
+                <div class="prazos-summary-label">Produtos com Prazo Ativo</div>
+            </div>
+        </div>
+    </div>
+
+    {{!-- Abas de Navegação --}}
+    <div class="prazos-tabs-nav">
+        <button type="button" class="prazos-tab-btn active" id="tabBtnFornecedores" data-target="secao-fornecedores">
+            <i class="fas fa-industry"></i> Prazos por Fornecedor
+            <span class="prazos-tab-badge" id="badgeCountFornecedores">0</span>
+        </button>
+        <button type="button" class="prazos-tab-btn" id="tabBtnProdutos" data-target="secao-produtos">
+            <i class="fas fa-boxes"></i> Prazos por Produto (SKU)
+            <span class="prazos-tab-badge" id="badgeCountProdutos">0</span>
+        </button>
+        <button type="button" class="prazos-tab-btn" id="tabBtnHistorico" data-target="secao-historico">
+            <i class="fas fa-history"></i> Histórico de Alterações
+            <span class="prazos-tab-badge" id="badgeCountHistorico">0</span>
+        </button>
+    </div>
+
+
+    {{!-- SEÇÃO 1: TABELA DE FORNECEDORES --}}
+    <div id="secao-fornecedores" class="prazos-tab-content">
+        {{!-- Filtros da Tabela de Fornecedores --}}
+        <div class="estoque-filters-bar">
+            <div class="estoque-filter-group" style="flex-grow: 1; min-width: 280px;">
+                <label for="buscaFornecedor">Buscar Fornecedor</label>
+                <input type="text" id="buscaFornecedor" class="form-control"
+                    placeholder="Digite o nome do fornecedor...">
+            </div>
+            <div class="estoque-filter-group">
+                <label for="filtroStatusPrazoForn">Status do Prazo</label>
+                <select id="filtroStatusPrazoForn" class="form-control" style="min-width: 170px;">
+                    <option value="">Todos</option>
+                    <option value="com_prazo">Com Prazo (&gt; 0)</option>
+                    <option value="sem_prazo">Sem Prazo (0)</option>
+                </select>
+            </div>
+        </div>
+
+        {{!-- Tabela de Fornecedores --}}
+        <div class="table-responsive mt-3" style="max-height: calc(100vh - 280px); overflow: auto;">
+            <table class="table" id="tabela-fornecedores" style="width: 100%; white-space: nowrap; table-layout: auto;">
+                <thead style="position: sticky; top: 0; z-index: 10; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
+                    <tr>
+                        <th class="sortable" data-column="fornecedor_nome">Nome do Fornecedor</th>
+                        <th class="sortable text-center" data-column="total_skus" style="width: 160px;">Produtos
+                            Vinculados</th>
+                        <th class="sortable text-center" data-column="prazo_dias" style="width: 220px;">Prazo Disp.
+                            (Dias)</th>
+                        <th class="text-center" style="width: 140px;">Status</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody-fornecedores">
+                    {{!-- Populado dinamicamente via JS --}}
+                </tbody>
+            </table>
+        </div>
+
+        {{!-- Loading Fornecedores --}}
+        <div id="loading-fornecedores" class="prazos-loading">
+            <div class="spinner-border text-warning" role="status">
+                <span class="visually-hidden">Carregando...</span>
+            </div>
+            <p class="mt-2 mb-0">Carregando fornecedores...</p>
+        </div>
+
+        {{!-- Estado Vazio Fornecedores --}}
+        <div id="empty-fornecedores" class="prazos-empty-state" style="display: none;">
+            <i class="fas fa-industry"></i>
+            <p>Nenhum fornecedor encontrado.</p>
+        </div>
+    </div>
+
+    {{!-- SEÇÃO 2: TABELA DE PRODUTOS (SKUS) --}}
+    <div id="secao-produtos" class="prazos-tab-content" style="display: none;">
+        {{!-- Filtros da Tabela de Produtos --}}
+        <div class="estoque-filters-bar">
+            <div class="estoque-filter-group" style="flex-grow: 1; min-width: 280px;">
+                <label for="buscaProduto">Buscar Produto</label>
+                <input type="text" id="buscaProduto" class="form-control" placeholder="SKU, descrição ou fornecedor...">
+            </div>
+            <div class="estoque-filter-group">
+                <label for="filtroFornecedorProd">Fornecedor</label>
+                <select id="filtroFornecedorProd" class="form-control" style="min-width: 180px;">
+                    <option value="">Todos os Fornecedores</option>
+                </select>
+            </div>
+            <div class="estoque-filter-group">
+                <label for="filtroTipoPrazoProd">Tipo de Prazo</label>
+                <select id="filtroTipoPrazoProd" class="form-control" style="min-width: 180px;">
+                    <option value="">Todos</option>
+                    <option value="personalizado">Com Prazo Personalizado</option>
+                    <option value="herdado">Herdado do Fornecedor</option>
+                    <option value="com_prazo_efetivo">Qualquer Prazo Ativo (&gt; 0)</option>
+                    <option value="sem_prazo">Sem Prazo (0)</option>
+                </select>
+            </div>
+            <div class="estoque-filter-group">
+                <label for="filtroLimiteProd">Mostrar</label>
+                <select id="filtroLimiteProd" class="form-control" style="min-width: 80px;">
+                    <option value="25">25</option>
+                    <option value="50" selected>50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                </select>
+            </div>
+        </div>
+
+        {{!-- Tabela de Produtos --}}
+        <div class="table-responsive mt-3" style="max-height: calc(100vh - 280px); overflow: auto;">
+            <table class="table" id="tabela-produtos" style="width: 100%; white-space: nowrap; table-layout: auto;">
+                <thead style="position: sticky; top: 0; z-index: 10; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
+                    <tr>
+                        <th class="sortable" data-column="sku" style="width: 140px;">SKU</th>
+                        <th class="sortable" data-column="descricao" style="min-width: 340px;">Descrição</th>
+                        <th class="sortable" data-column="fornecedor_nome" style="min-width: 180px;">Fornecedor</th>
+                        <th class="sortable text-center" data-column="estoque_plataforma" style="width: 130px;">Estoque
+                            Bling</th>
+                        <th class="sortable text-center" data-column="prazo_fornecedor" style="width: 160px;">Prazo
+                            Fornecedor</th>
+                        <th class="sortable text-center" data-column="prazo_personalizado" style="width: 220px;">Prazo
+                            Personalizado (Dias)</th>
+                        <th class="sortable text-center" data-column="prazo_efetivo" style="width: 180px;">Prazo Efetivo
+                        </th>
+                    </tr>
+                </thead>
+                <tbody id="tbody-produtos">
+                    {{!-- Populado dinamicamente via JS --}}
+                </tbody>
+            </table>
+        </div>
+
+
+        {{!-- Paginação de Produtos --}}
+        <div id="pagination-produtos" class="estoque-pagination"></div>
+
+        {{!-- Loading Produtos --}}
+        <div id="loading-produtos" class="prazos-loading">
+            <div class="spinner-border text-warning" role="status">
+                <span class="visually-hidden">Carregando...</span>
+            </div>
+            <p class="mt-2 mb-0">Carregando produtos...</p>
+        </div>
+
+        {{!-- Estado Vazio Produtos --}}
+        <div id="empty-produtos" class="prazos-empty-state" style="display: none;">
+            <i class="fas fa-box-open"></i>
+            <p>Nenhum produto encontrado.</p>
+        </div>
+    </div>
+
+    {{!-- SEÇÃO 3: TABELA DE HISTÓRICO --}}
+    <div id="secao-historico" class="prazos-tab-content" style="display: none;">
+        {{!-- Filtros do Histórico --}}
+        <div class="estoque-filters-bar">
+            <div class="estoque-filter-group" style="flex-grow: 1; min-width: 280px;">
+                <label for="buscaHistorico">Buscar no Histórico</label>
+                <input type="text" id="buscaHistorico" class="form-control" placeholder="ID Anúncio, SKU, fornecedor ou motivo...">
+            </div>
+            <div class="estoque-filter-group">
+                <label for="filtroAcaoHistorico">Ação Realizada</label>
+                <select id="filtroAcaoHistorico" class="form-control" style="min-width: 170px;">
+                    <option value="">Todas as Ações</option>
+                    <option value="APLICADO">Prazo Aplicado</option>
+                    <option value="REMOVIDO">Prazo Removido</option>
+                </select>
+            </div>
+            <div class="estoque-filter-group">
+                <label for="filtroStatusHistorico">Status da Execução</label>
+                <select id="filtroStatusHistorico" class="form-control" style="min-width: 150px;">
+                    <option value="">Todos</option>
+                    <option value="sucesso">Sucesso</option>
+                    <option value="falha">Com Erro</option>
+                </select>
+            </div>
+            <div class="estoque-filter-group">
+                <label for="filtroLimiteHistorico">Mostrar</label>
+                <select id="filtroLimiteHistorico" class="form-control" style="min-width: 80px;">
+                    <option value="25">25</option>
+                    <option value="50" selected>50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                </select>
+            </div>
+        </div>
+
+        {{!-- Tabela de Histórico --}}
+        <div class="table-responsive mt-3" style="max-height: calc(100vh - 280px); overflow: auto;">
+            <table class="table" id="tabela-historico" style="width: 100%; white-space: nowrap; table-layout: auto;">
+                <thead style="position: sticky; top: 0; z-index: 10; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
+                    <tr>
+                        <th class="sortable" data-column="created_at" style="width: 160px;">Data / Hora</th>
+                        <th class="sortable" data-column="id_anuncio" style="width: 140px;">ID Anúncio</th>
+                        <th class="sortable" data-column="sku" style="width: 130px;">SKU</th>
+                        <th class="sortable" data-column="descricao" style="min-width: 280px;">Descrição</th>
+                        <th class="sortable" data-column="fornecedor_nome" style="min-width: 160px;">Fornecedor</th>
+                        <th class="sortable text-center" data-column="estoque_bling" style="width: 110px;">Estoque Bling</th>
+                        <th class="sortable text-center" data-column="acao" style="width: 130px;">Ação</th>
+                        <th class="sortable text-center" data-column="prazo_novo" style="min-width: 180px;">Alteração de Prazo</th>
+                        <th style="min-width: 240px;">Motivo da Regra</th>
+                        <th class="text-center" style="width: 110px;">Status</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody-historico">
+                    {{!-- Populado dinamicamente via JS --}}
+                </tbody>
+            </table>
+        </div>
+
+        {{!-- Paginação de Histórico --}}
+        <div id="pagination-historico" class="estoque-pagination"></div>
+
+        {{!-- Loading Histórico --}}
+        <div id="loading-historico" class="prazos-loading">
+            <div class="spinner-border text-warning" role="status">
+                <span class="visually-hidden">Carregando...</span>
+            </div>
+            <p class="mt-2 mb-0">Carregando histórico...</p>
+        </div>
+
+        {{!-- Estado Vazio Histórico --}}
+        <div id="empty-historico" class="prazos-empty-state" style="display: none;">
+            <i class="fas fa-history"></i>
+            <p>Nenhum registro de histórico encontrado.</p>
+        </div>
+    </div>
+</div>
+
+{{#section "scripts"}}
+<script src="/public/scripts/configurarPrazosManager.js"></script>
+{{/section}}

@@ -51,6 +51,7 @@ router.post('/api/resolve-email/:id', rastreioController.resolveEmailThread);
 router.post('/api/mark-email-notified/:id', rastreioController.markEmailAsNotified);
 
 router.post('/api/enviar-email-cobranca/:id', rastreioController.enviarEmailCobranca);
+router.post('/api/enviar-email-barragem/:id', rastreioController.enviarEmailBarragem);
 
 
 module.exports = router;

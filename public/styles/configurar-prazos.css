@@ -1,0 +1,438 @@
+/* public/styles/configurar-prazos.css */
+
+/* === TABELAS NO PADRÃO EXATO DE ANÚNCIOS / ESTOQUE === */
+.table-responsive {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    background: var(--bg-secondary, #1a1a20);
+}
+
+#tabela-fornecedores,
+#tabela-produtos,
+#tabela-historico {
+    width: 100% !important;
+    white-space: nowrap;
+    table-layout: auto;
+    border-collapse: collapse !important;
+    color: var(--text-secondary, #ccc);
+    margin-bottom: 0 !important;
+}
+
+#tabela-fornecedores thead th,
+#tabela-produtos thead th,
+#tabela-historico thead th {
+    background-color: var(--bg-tertiary, #24242c) !important;
+    color: var(--text-primary, #fff) !important;
+    border: none !important;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.1) !important;
+    padding: 11px 16px !important;
+    font-size: 0.84rem !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.3px;
+    vertical-align: middle;
+}
+
+#tabela-fornecedores thead th.sortable,
+#tabela-produtos thead th.sortable,
+#tabela-historico thead th.sortable {
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    padding-right: 28px !important;
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+#tabela-fornecedores thead th.sortable:hover,
+#tabela-produtos thead th.sortable:hover,
+#tabela-historico thead th.sortable:hover {
+    color: var(--accent-orange, #f07c00) !important;
+    background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+#tabela-fornecedores thead th.sortable::after,
+#tabela-produtos thead th.sortable::after,
+#tabela-historico thead th.sortable::after {
+    content: '\f0dc';
+    font-family: 'Font Awesome 5 Free';
+    font-weight: 900;
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0.4;
+    font-size: 0.78rem;
+    color: var(--text-secondary, #aaa);
+}
+
+#tabela-fornecedores thead th.sortable.asc::after,
+#tabela-produtos thead th.sortable.asc::after,
+#tabela-historico thead th.sortable.asc::after {
+    content: '\f0de';
+    opacity: 1;
+    color: var(--accent-orange, #f07c00);
+}
+
+#tabela-fornecedores thead th.sortable.desc::after,
+#tabela-produtos thead th.sortable.desc::after,
+#tabela-historico thead th.sortable.desc::after {
+    content: '\f0dd';
+    opacity: 1;
+    color: var(--accent-orange, #f07c00);
+}
+
+#tabela-fornecedores tbody tr,
+#tabela-produtos tbody tr,
+#tabela-historico tbody tr {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+    transition: background-color 0.15s ease;
+    background-color: transparent !important;
+}
+
+#tabela-fornecedores tbody tr:hover,
+#tabela-produtos tbody tr:hover,
+#tabela-historico tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+#tabela-fornecedores tbody tr:last-child,
+#tabela-produtos tbody tr:last-child,
+#tabela-historico tbody tr:last-child {
+    border-bottom: none !important;
+}
+
+#tabela-fornecedores tbody td,
+#tabela-produtos tbody td,
+#tabela-historico tbody td {
+    padding: 10px 16px !important;
+    vertical-align: middle !important;
+    color: var(--text-secondary, #ccc);
+    font-size: 0.88rem;
+    border: none !important;
+}
+
+
+/* === BADGES NO PADRÃO EXACTO DE ANÚNCIOS === */
+.qty-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    min-width: 48px;
+    text-align: center;
+    line-height: 1.2;
+}
+
+.qty-badge.qty-ok {
+    background-color: rgba(46, 125, 50, 0.15) !important;
+    color: #4caf50 !important;
+    border: 1px solid rgba(76, 175, 80, 0.3) !important;
+}
+
+.qty-badge.qty-low {
+    background-color: rgba(230, 81, 0, 0.15) !important;
+    color: #ff9800 !important;
+    border: 1px solid rgba(255, 152, 0, 0.3) !important;
+}
+
+.qty-badge.qty-zero {
+    background-color: rgba(198, 40, 40, 0.15) !important;
+    color: #f44336 !important;
+    border: 1px solid rgba(244, 67, 54, 0.3) !important;
+}
+
+.qty-badge.qty-custom {
+    background-color: rgba(23, 162, 184, 0.15) !important;
+    color: #17a2b8 !important;
+    border: 1px solid rgba(23, 162, 184, 0.35) !important;
+}
+
+.qty-badge.qty-inherited {
+    background-color: rgba(240, 124, 0, 0.15) !important;
+    color: #f07c00 !important;
+    border: 1px solid rgba(240, 124, 0, 0.35) !important;
+}
+
+.qty-badge.qty-muted {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+    color: #777 !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+/* === BANNER DE REGRAS === */
+.prazos-rules-banner {
+    background: rgba(240, 124, 0, 0.07);
+    border: 1px solid rgba(240, 124, 0, 0.22);
+    border-radius: 8px;
+    padding: 12px 18px;
+    margin-bottom: 18px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 0.88rem;
+    color: #e0e0e0;
+}
+
+.prazos-rules-icon {
+    font-size: 1.4rem;
+    color: var(--accent-orange, #f07c00);
+    flex-shrink: 0;
+}
+
+.prazos-rules-text {
+    line-height: 1.45;
+}
+
+.prazos-rules-text strong {
+    color: #fff;
+}
+
+.prazos-rules-badges {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+}
+
+.prazos-rule-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.76rem;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+.prazos-rule-tag.tag-apply {
+    background: rgba(220, 53, 69, 0.2);
+    color: #ff6b6b;
+    border: 1px solid rgba(220, 53, 69, 0.4);
+}
+
+.prazos-rule-tag.tag-remove {
+    background: rgba(40, 167, 69, 0.2);
+    color: #5cd65c;
+    border: 1px solid rgba(40, 167, 69, 0.4);
+}
+
+.prazos-rule-tag.tag-override {
+    background: rgba(23, 162, 184, 0.2);
+    color: #5bc0de;
+    border: 1px solid rgba(23, 162, 184, 0.4);
+}
+
+/* === RESUMO / CONTADORES === */
+.prazos-summary-bar {
+    display: flex;
+    gap: 14px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+}
+
+.prazos-summary-item {
+    flex: 1;
+    min-width: 180px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.prazos-summary-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.prazos-summary-icon.icon-fornecedores {
+    background: rgba(240, 124, 0, 0.15);
+    color: var(--accent-orange, #f07c00);
+}
+
+.prazos-summary-icon.icon-produtos {
+    background: rgba(23, 162, 184, 0.15);
+    color: #17a2b8;
+}
+
+.prazos-summary-icon.icon-ativos {
+    background: rgba(40, 167, 69, 0.15);
+    color: #28a745;
+}
+
+.prazos-summary-value {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1.1;
+}
+
+.prazos-summary-label {
+    font-size: 0.78rem;
+    color: #999;
+    margin-top: 2px;
+}
+
+/* === ABAS DE NAVEGAÇÃO === */
+.prazos-tabs-nav {
+    display: flex;
+    gap: 8px;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.08);
+    margin-bottom: 16px;
+}
+
+.prazos-tab-btn {
+    background: none;
+    border: none;
+    padding: 10px 20px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #aaa;
+    cursor: pointer;
+    position: relative;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 6px 6px 0 0;
+}
+
+.prazos-tab-btn:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.prazos-tab-btn.active {
+    color: var(--accent-orange, #f07c00);
+    background: rgba(240, 124, 0, 0.08);
+}
+
+.prazos-tab-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--accent-orange, #f07c00);
+    border-radius: 3px 3px 0 0;
+}
+
+.prazos-tab-badge {
+    background: rgba(255, 255, 255, 0.1);
+    color: #ddd;
+    font-size: 0.75rem;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-weight: 600;
+}
+
+.prazos-tab-btn.active .prazos-tab-badge {
+    background: var(--accent-orange, #f07c00);
+    color: #fff;
+}
+
+/* === INPUT INLINE DE PRAZO === */
+.prazo-inline-wrapper {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    position: relative;
+}
+
+.prazo-inline-input {
+    width: 78px;
+    height: 32px;
+    background: #1e1e24;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #fff;
+    text-align: center;
+    outline: none;
+    transition: all 0.2s ease;
+}
+
+.prazo-inline-input:focus {
+    border-color: var(--accent-orange, #f07c00);
+    box-shadow: 0 0 0 2px rgba(240, 124, 0, 0.25);
+    background: #2a2a32;
+}
+
+.prazo-inline-input.input-has-value {
+    border-color: rgba(240, 124, 0, 0.5);
+    color: var(--accent-orange, #f07c00);
+}
+
+.prazo-inline-suffix {
+    font-size: 0.8rem;
+    color: #888;
+    font-weight: 500;
+}
+
+.prazo-saved-msg {
+    display: none;
+    font-size: 0.72rem;
+    color: #28a745;
+    font-weight: 700;
+    position: absolute;
+    top: -16px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.9);
+    padding: 1px 6px;
+    border-radius: 4px;
+    border: 1px solid rgba(40, 167, 69, 0.5);
+    white-space: nowrap;
+    animation: savedFadeIn 0.2s ease-out;
+    z-index: 10;
+}
+
+@keyframes savedFadeIn {
+    from {
+        opacity: 0;
+        transform: translate(-50%, 4px);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, 0);
+    }
+}
+
+/* === LOADING & EMPTY STATES === */
+.prazos-loading {
+    text-align: center;
+    padding: 50px 20px;
+    color: #aaa;
+}
+
+.prazos-empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: #888;
+}
+
+.prazos-empty-state i {
+    font-size: 3rem;
+    color: #555;
+    margin-bottom: 12px;
+}
+
+.prazos-empty-state p {
+    font-size: 1.05rem;
+    margin-bottom: 4px;
+}

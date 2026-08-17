@@ -549,14 +549,14 @@ const rastreioController = {
             // --- [NOVA LÓGICA] ---
             // Passo 2: Busca os dados complementares do cliente na tabela de acompanhamentos
             const acompanhamentoResult = await poolMonitora.query(
-                'SELECT etiqueta_nome, etiqueta_municipio, etiqueta_uf FROM cached_nfe WHERE nfe_numero = $1 LIMIT 1',
+                'SELECT etiqueta_nome, etiqueta_municipio, etiqueta_uf, total_volumes FROM cached_nfe WHERE nfe_numero = $1 LIMIT 1',
                 [pedido.numero_nfe]
             );
             
             // Passo 3: Junta todos os dados em um único objeto para enviar ao serviço de e-mail
             const dadosCompletosPedido = {
                 ...pedido,
-                ...acompanhamentoResult.rows[0] // Adiciona etiqueta_nome, etc. ao objeto pedido
+                ...acompanhamentoResult.rows[0] // Adiciona etiqueta_nome, total_volumes, etc. ao objeto pedido
             };
             // Renomeia nfe_numero para consistência com a função automática
             dadosCompletosPedido.nfe_numero = pedido.numero_nfe; 
@@ -568,6 +568,40 @@ const rastreioController = {
 
         } catch (error) {
             console.error(`[Rastreio Controller] Erro ao enviar e-mail de cobrança para o pedido ${id}:`, error);
+            res.status(500).json({ message: error.message || "Erro interno ao enviar o e-mail." });
+        }
+    },
+
+    enviarEmailBarragem: async (req, res) => {
+        const { id } = req.params;
+        try {
+            // Passo 1: Busca os dados básicos do pedido de rastreio
+            const rastreioResult = await poolInova.query('SELECT * FROM pedidos_em_rastreamento WHERE id = $1', [id]);
+            if (rastreioResult.rows.length === 0) {
+                return res.status(404).json({ message: 'Pedido não encontrado.' });
+            }
+            const pedido = rastreioResult.rows[0];
+
+            // Passo 2: Busca os dados complementares do cliente na tabela de acompanhamentos
+            const acompanhamentoResult = await poolMonitora.query(
+                'SELECT etiqueta_nome, etiqueta_municipio, etiqueta_uf, total_volumes FROM cached_nfe WHERE nfe_numero = $1 LIMIT 1',
+                [pedido.numero_nfe]
+            );
+            
+            // Passo 3: Junta todos os dados em um único objeto para enviar ao serviço de e-mail
+            const dadosCompletosPedido = {
+                ...pedido,
+                ...acompanhamentoResult.rows[0]
+            };
+            dadosCompletosPedido.nfe_numero = pedido.numero_nfe; 
+
+            // Passo 4: Chama o serviço para enviar o e-mail de barragem com os dados completos
+            const serviceResponse = await gmailService.enviarEmailBarragemManual(dadosCompletosPedido);
+            
+            res.status(200).json({ success: true, message: serviceResponse.message });
+
+        } catch (error) {
+            console.error(`[Rastreio Controller] Erro ao enviar e-mail de barragem para o pedido ${id}:`, error);
             res.status(500).json({ message: error.message || "Erro interno ao enviar o e-mail." });
         }
     },

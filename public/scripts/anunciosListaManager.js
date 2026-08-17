@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const paginationContainer = document.getElementById('pagination-container');
     const emptyState = document.getElementById('empty-state');
     const buscaInput = document.getElementById('buscaGeral');
+    const campoBuscaSelect = document.getElementById('campoBusca');
     const filtroLimite = document.getElementById('filtroLimite');
     const filtroStatus = document.getElementById('filtroStatus');
     const filtroCatalogo = document.getElementById('filtroCatalogo');
@@ -51,7 +52,29 @@ document.addEventListener('DOMContentLoaded', function () {
         'estoque_ml',
         'frete'
     ];
+    const DEFAULT_COLUMN_WIDTHS = {
+        'id_anuncio': 145,
+        'thumbnail': 65,
+        'empresa': 140,
+        'sku': 150,
+        'descricao': 350,
+        'tipo_anuncio': 100,
+        'status': 100,
+        'ganhando_catalogo': 110,
+        'prazo_disponibilidade': 130,
+        'estoque_plataforma': 110,
+        'experiencia_compra': 110,
+        'vendas_total': 90,
+        'preco': 100,
+        'preco_promocional': 100,
+        'nome_promo_ativa': 150,
+        'tarifa': 85,
+        'margem_lucro': 115,
+        'estoque_ml': 105,
+        'frete': 95
+    };
     let currentColumnOrder = [...DEFAULT_COLUMN_ORDER];
+    let currentColumnWidths = { ...DEFAULT_COLUMN_WIDTHS };
 
     const calculateAnuncioMargin = (anuncio) => {
         const custo = Number(anuncio.custo_produto) || 0;
@@ -110,8 +133,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 orderDir: orderDir
             });
 
-            const busca = buscaInput.value.trim();
-            if (busca) params.set('search', busca);
+            const busca = buscaInput ? buscaInput.value.trim() : '';
+            if (busca) {
+                params.set('search', busca);
+                params.set('searchField', campoBuscaSelect ? campoBuscaSelect.value : 'id_anuncio');
+            }
 
             const status = filtroStatus.value;
             if (status) params.set('status', status);
@@ -200,7 +226,7 @@ document.addEventListener('DOMContentLoaded', function () {
         return result;
     };
 
-    const buildAnuncioRow = (anuncio) => {
+    const buildAnuncioRow = (anuncio, isStandalone = false) => {
         // Badge de status
         let statusClass = '';
         let statusLabel = anuncio.status || '-';
@@ -296,7 +322,20 @@ document.addEventListener('DOMContentLoaded', function () {
                     const copyIdBtnHtml = anuncio.id_anuncio 
                         ? `<button class="btn-copy-id-anuncio" data-id-anuncio="${escapeHtml(anuncio.id_anuncio)}" title="Copiar ID do Anúncio" style="background: none; border: none; color: #888; cursor: pointer; padding: 2px 4px; font-size: 0.8rem; transition: color 0.2s;"><i class="far fa-copy"></i></button>`
                         : '';
-                    return `<td><div style="display: inline-flex; align-items: center; gap: 4px;"><a href="${urlAnuncio}" target="_blank" style="color: #f39c12; font-weight: bold; text-decoration: none;" title="Abrir anúncio no Mercado Livre">${escapeHtml(anuncio.id_anuncio || '-')}</a>${copyIdBtnHtml}</div></td>`;
+                    const numericId = String(anuncio.id_anuncio || '').replace(/\D/g, '');
+                    const mlSearchUrl = numericId ? `https://vendedores.mercadolivre.com.br/anuncios/lista/promos?page=1&search=${numericId}` : null;
+                    const standaloneMlSearchHtml = (isStandalone && mlSearchUrl)
+                        ? `<a href="${mlSearchUrl}" target="_blank" class="standalone-ml-link" title="Abrir busca deste anúncio na Central de Promoções do Mercado Livre"><i class="fas fa-external-link-alt"></i> Busca ML</a>`
+                        : '';
+                    return `<td>
+                        <div style="display: flex; flex-direction: column; gap: 2px;">
+                            <div style="display: inline-flex; align-items: center; gap: 4px;">
+                                <a href="${urlAnuncio}" target="_blank" style="color: #f39c12; font-weight: bold; text-decoration: none;" title="Abrir anúncio no Mercado Livre">${escapeHtml(anuncio.id_anuncio || '-')}</a>
+                                ${copyIdBtnHtml}
+                            </div>
+                            ${standaloneMlSearchHtml}
+                        </div>
+                    </td>`;
                 case 'thumbnail':
                     return `<td class="text-center">${imgHtml}</td>`;
                 case 'empresa':
@@ -398,16 +437,18 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 items.forEach((anuncio, idx) => {
                     const isLast = idx === items.length - 1;
-                    const tr = buildAnuncioRow(anuncio);
+                    const tr = buildAnuncioRow(anuncio, false);
                     tr.classList.add('catalog-group-row');
                     if (isLast) tr.classList.add('catalog-group-last-row');
                     tableBody.appendChild(tr);
                 });
             } else {
-                const tr = buildAnuncioRow(groupEntry.item);
+                const tr = buildAnuncioRow(groupEntry.item, true);
                 tableBody.appendChild(tr);
             }
         });
+
+        applyColumnWidthsDOM();
     };
 
     // =============================================
@@ -481,16 +522,22 @@ document.addEventListener('DOMContentLoaded', function () {
         // Coleta os filtros ativos da página para enviar na sincronização inteligente
         const syncParams = {};
         const busca = buscaInput ? buscaInput.value.trim() : '';
-        if (busca) syncParams.search = busca;
+        if (busca) {
+            syncParams.search = busca;
+            syncParams.searchField = campoBuscaSelect ? campoBuscaSelect.value : 'id_anuncio';
+        }
         if (filtroStatus && filtroStatus.value) syncParams.status = filtroStatus.value;
         if (filtroCatalogo && filtroCatalogo.value) syncParams.catalog = filtroCatalogo.value;
         if (filtroTipo && filtroTipo.value) syncParams.tipo = filtroTipo.value;
+        if (filtroEmpresa && filtroEmpresa.value) syncParams.empresa = filtroEmpresa.value;
 
-        if (Array.isArray(rawAnunciosList) && rawAnunciosList.length > 0) {
+        // Só ativa sincronização personalizada específica se HOUVER busca ou filtros ativos
+        const hasFilters = Object.keys(syncParams).length > 0;
+
+        if (hasFilters && Array.isArray(rawAnunciosList) && rawAnunciosList.length > 0) {
             syncParams.item_ids = rawAnunciosList.map(a => a.id_anuncio).filter(Boolean);
         }
 
-        const hasFilters = Object.keys(syncParams).length > 0;
         const confirmMsg = hasFilters
             ? 'Deseja sincronizar apenas os anúncios filtrados nesta busca com o Mercado Livre?<br><br><small>Sincronização dinâmica inteligente ativada.</small>'
             : 'Deseja sincronizar todos os anúncios com o Mercado Livre?<br><br><small>Isso pode levar alguns segundos...</small>';
@@ -804,6 +851,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // Cliques de ordenação e duplo clique para Filtro Combobox no cabeçalho <th>
     tableHeaders.forEach(th => {
         th.addEventListener('click', (e) => {
+            if (e.target.closest('.col-resizer')) return;
             if (clickTimer) clearTimeout(clickTimer);
             clickTimer = setTimeout(() => {
                 const column = th.dataset.column;
@@ -812,6 +860,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 
         th.addEventListener('dblclick', (e) => {
+            if (e.target.closest('.col-resizer')) return;
             if (clickTimer) {
                 clearTimeout(clickTimer);
                 clickTimer = null;
@@ -823,6 +872,30 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     // Busca com debounce de 400ms
+    const updateSearchPlaceholder = () => {
+        if (!buscaInput || !campoBuscaSelect) return;
+        const val = campoBuscaSelect.value;
+        if (val === 'sku') {
+            buscaInput.placeholder = 'Digite o SKU do produto...';
+        } else if (val === 'descricao') {
+            buscaInput.placeholder = 'Digite palavras da descrição...';
+        } else if (val === 'geral') {
+            buscaInput.placeholder = 'Pesquisar por ID, SKU ou Descrição...';
+        } else {
+            buscaInput.placeholder = 'Digite o ID do anúncio...';
+        }
+    };
+
+    if (campoBuscaSelect) {
+        campoBuscaSelect.addEventListener('change', () => {
+            updateSearchPlaceholder();
+            if (buscaInput && buscaInput.value.trim() !== '') {
+                currentPage = 1;
+                loadAnuncios();
+            }
+        });
+    }
+
     buscaInput.addEventListener('input', () => {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
@@ -874,8 +947,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 orderBy: orderBy,
                 orderDir: orderDir
             });
-            const busca = buscaInput.value.trim();
-            if (busca) params.set('search', busca);
+            const busca = buscaInput ? buscaInput.value.trim() : '';
+            if (busca) {
+                params.set('search', busca);
+                params.set('searchField', campoBuscaSelect ? campoBuscaSelect.value : 'id_anuncio');
+            }
 
             const status = filtroStatus.value;
             if (status) params.set('status', status);
@@ -909,9 +985,76 @@ document.addEventListener('DOMContentLoaded', function () {
         setTimeout(() => toast.remove(), 2500);
     };
 
-    const fetchColumnOrder = async () => {
+    const COLUMN_LABELS = {
+        'id_anuncio': 'ID Anúncio',
+        'thumbnail': 'Foto',
+        'empresa': 'Empresa / Loja',
+        'sku': 'SKU',
+        'descricao': 'Descrição',
+        'tipo_anuncio': 'Tipo',
+        'status': 'Status',
+        'ganhando_catalogo': 'Concorrência',
+        'prazo_disponibilidade': 'Prazo Disponibilidade',
+        'estoque_plataforma': 'Estoque Bling',
+        'experiencia_compra': 'Experiência Compra',
+        'vendas_total': 'Vendas',
+        'preco': 'Preço',
+        'preco_promocional': 'Preço Promocional',
+        'nome_promo_ativa': 'Promoção Ativa',
+        'tarifa': 'Tarifa',
+        'margem_lucro': 'Margem Lucro',
+        'estoque_ml': 'Estoque ML',
+        'frete': 'Frete'
+    };
+
+    const applyColumnWidthsDOM = () => {
+        const table = document.querySelector('#tabela-estoque');
+        const theadTr = document.querySelector('#tabela-estoque thead tr');
+        if (!theadTr || !table) return;
+
+        table.style.tableLayout = 'fixed';
+
+        const allThs = Array.from(theadTr.querySelectorAll('th'));
+        allThs.forEach((th, thIdx) => {
+            const colKey = th.dataset.column || (th.textContent.trim().toLowerCase() === 'foto' ? 'thumbnail' : null);
+            if (!colKey) return;
+
+            const widthVal = currentColumnWidths[colKey] !== undefined ? currentColumnWidths[colKey] : DEFAULT_COLUMN_WIDTHS[colKey];
+            const isCollapsed = widthVal != null && widthVal <= 16;
+
+            if (isCollapsed) {
+                th.classList.add('is-col-collapsed');
+                th.style.width = '6px';
+                th.style.minWidth = '6px';
+                th.style.maxWidth = '6px';
+                th.title = `Coluna "${COLUMN_LABELS[colKey] || colKey}" oculta. Dê duplo clique no separador para restaurar.`;
+            } else {
+                th.classList.remove('is-col-collapsed');
+                const finalW = Math.max(30, widthVal || DEFAULT_COLUMN_WIDTHS[colKey] || 100);
+                th.style.width = finalW + 'px';
+                th.style.minWidth = finalW + 'px';
+                th.style.maxWidth = finalW + 'px';
+                th.title = '';
+            }
+
+            const colTds = document.querySelectorAll(`#tabela-estoque tbody tr:not(.catalog-group-header-row) td:nth-child(${thIdx + 1})`);
+            colTds.forEach(td => {
+                if (isCollapsed) {
+                    td.classList.add('is-col-collapsed');
+                    td.style.width = '6px';
+                    td.style.maxWidth = '6px';
+                } else {
+                    td.classList.remove('is-col-collapsed');
+                    td.style.width = '';
+                    td.style.maxWidth = '';
+                }
+            });
+        });
+    };
+
+    const fetchColumnPreferences = async () => {
         try {
-            const res = await fetch('/api/anuncios/column-order');
+            const res = await fetch('/api/anuncios/column-preferences?view=anuncios_ml');
             if (res.ok) {
                 const data = await res.json();
                 if (Array.isArray(data.columnOrder) && data.columnOrder.length > 0) {
@@ -919,24 +1062,39 @@ document.addEventListener('DOMContentLoaded', function () {
                     const missing = DEFAULT_COLUMN_ORDER.filter(col => !loadedSet.has(col));
                     currentColumnOrder = [...data.columnOrder, ...missing];
                 }
+                if (data.columnWidths && typeof data.columnWidths === 'object') {
+                    currentColumnWidths = { ...DEFAULT_COLUMN_WIDTHS, ...data.columnWidths };
+                }
             }
         } catch (err) {
-            console.warn('[Anúncios] Não foi possível carregar ordem de colunas do servidor:', err);
+            console.warn('[Anúncios] Não foi possível carregar preferências de colunas do servidor:', err);
         }
         reorderTableHeaderDOM();
+        applyColumnWidthsDOM();
+        setupColumnResize();
     };
 
-    const saveColumnOrderToServer = async () => {
-        try {
-            await fetch('/api/anuncios/column-order', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ columnOrder: currentColumnOrder })
-            });
-            showToast('Ordem das colunas salva no seu perfil!');
-        } catch (err) {
-            console.error('[Anúncios] Erro ao salvar ordem de colunas:', err);
-        }
+    let savePreferencesTimer = null;
+    const saveColumnPreferencesToServer = (showToastMsg = true) => {
+        if (savePreferencesTimer) clearTimeout(savePreferencesTimer);
+        savePreferencesTimer = setTimeout(async () => {
+            try {
+                await fetch('/api/anuncios/column-preferences', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        viewName: 'anuncios_ml',
+                        columnOrder: currentColumnOrder,
+                        columnWidths: currentColumnWidths
+                    })
+                });
+                if (showToastMsg) {
+                    showToast('Personalização da tabela salva!');
+                }
+            } catch (err) {
+                console.error('[Anúncios] Erro ao salvar preferências de colunas:', err);
+            }
+        }, 300);
     };
 
     const reorderTableHeaderDOM = () => {
@@ -957,6 +1115,126 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     };
 
+    // =============================================
+    // === REDIMENSIONAMENTO DE LARGURA DE COLUNAS ===
+    // =============================================
+
+    const setupColumnResize = () => {
+        const theadTr = document.querySelector('#tabela-estoque thead tr');
+        if (!theadTr) return;
+
+        const allThs = theadTr.querySelectorAll('th');
+        allThs.forEach((th, thIdx) => {
+            const colKey = th.dataset.column || (th.textContent.trim().toLowerCase() === 'foto' ? 'thumbnail' : null);
+            if (!colKey) return;
+
+            // Remove resizer anterior se houver
+            const existingResizer = th.querySelector('.col-resizer');
+            if (existingResizer) existingResizer.remove();
+
+            const resizer = document.createElement('div');
+            resizer.className = 'col-resizer';
+            resizer.title = 'Arraste para redimensionar. Dê duplo clique para restaurar tamanho padrão.';
+            th.appendChild(resizer);
+
+            // Duplo clique no resizer restaura tamanho padrão da coluna (Estilo Excel)
+            resizer.addEventListener('dblclick', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const defaultW = DEFAULT_COLUMN_WIDTHS[colKey] || 120;
+                currentColumnWidths[colKey] = defaultW;
+                applyColumnWidthsDOM();
+                saveColumnPreferencesToServer(true);
+                showToast(`Coluna "${COLUMN_LABELS[colKey] || colKey}" restaurada!`);
+            });
+
+            // Duplo clique no th se estiver colapsado também restaura
+            th.addEventListener('dblclick', (e) => {
+                if (th.classList.contains('is-col-collapsed')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const defaultW = DEFAULT_COLUMN_WIDTHS[colKey] || 120;
+                    currentColumnWidths[colKey] = defaultW;
+                    applyColumnWidthsDOM();
+                    saveColumnPreferencesToServer(true);
+                    showToast(`Coluna "${COLUMN_LABELS[colKey] || colKey}" restaurada!`);
+                }
+            });
+
+            resizer.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+
+                if (holdTimer) {
+                    clearTimeout(holdTimer);
+                    holdTimer = null;
+                }
+                if (clickTimer) {
+                    clearTimeout(clickTimer);
+                    clickTimer = null;
+                }
+
+                const startX = e.pageX;
+                const startWidth = th.offsetWidth;
+                document.body.classList.add('is-column-resizing');
+                resizer.classList.add('is-resizing');
+
+                const onMouseMove = (moveEvent) => {
+                    const diff = moveEvent.pageX - startX;
+                    const calculatedWidth = startWidth + diff;
+
+                    if (calculatedWidth <= 16) {
+                        th.classList.add('is-col-collapsed');
+                        th.style.width = '6px';
+                        th.style.minWidth = '6px';
+                        th.style.maxWidth = '6px';
+                        currentColumnWidths[colKey] = 6;
+                    } else {
+                        th.classList.remove('is-col-collapsed');
+                        const finalW = Math.max(25, calculatedWidth);
+                        th.style.width = finalW + 'px';
+                        th.style.minWidth = finalW + 'px';
+                        th.style.maxWidth = finalW + 'px';
+                        currentColumnWidths[colKey] = finalW;
+                    }
+
+                    const colIndex = Array.from(theadTr.children).indexOf(th);
+                    if (colIndex !== -1) {
+                        const colTds = document.querySelectorAll(`#tabela-estoque tbody tr:not(.catalog-group-header-row) td:nth-child(${colIndex + 1})`);
+                        colTds.forEach(td => {
+                            if (calculatedWidth <= 16) {
+                                td.classList.add('is-col-collapsed');
+                                td.style.width = '6px';
+                                td.style.maxWidth = '6px';
+                            } else {
+                                td.classList.remove('is-col-collapsed');
+                                td.style.width = '';
+                                td.style.maxWidth = '';
+                            }
+                        });
+                    }
+                };
+
+                const onMouseUp = () => {
+                    document.body.classList.remove('is-column-resizing');
+                    resizer.classList.remove('is-resizing');
+                    window.removeEventListener('mousemove', onMouseMove);
+                    window.removeEventListener('mouseup', onMouseUp);
+
+                    applyColumnWidthsDOM();
+                    saveColumnPreferencesToServer(true);
+                };
+
+                window.addEventListener('mousemove', onMouseMove);
+                window.addEventListener('mouseup', onMouseUp);
+            });
+        });
+    };
+
+    // =============================================
+    // === REORDENAÇÃO DE COLUNAS VIA DRAG & DROP ===
+    // =============================================
+
     let holdTimer = null;
     let isDraggingColumn = false;
     let draggedTh = null;
@@ -973,6 +1251,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const handlePressStart = (e, th) => {
             if (isDraggingColumn) return;
+            if (e.target.closest('.col-resizer')) return;
+
             const colKey = getColKey(th);
             if (!colKey) return;
 
@@ -1039,6 +1319,8 @@ document.addEventListener('DOMContentLoaded', function () {
                         currentColumnOrder.splice(toIdx, 0, dragSourceColKey);
 
                         reorderTableHeaderDOM();
+                        setupColumnResize();
+                        applyColumnWidthsDOM();
                         applyExcelFiltersAndRender();
                     }
                 }
@@ -1052,7 +1334,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 draggedTh = null;
                 dragSourceColKey = null;
 
-                saveColumnOrderToServer();
+                saveColumnPreferencesToServer(true);
             }
         };
 
@@ -1218,7 +1500,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // === INICIALIZAÇÃO ===
     // =============================================
 
-    fetchColumnOrder().then(() => {
+    fetchColumnPreferences().then(() => {
         setupLongPressColumnDrag();
         loadAnuncios();
     });

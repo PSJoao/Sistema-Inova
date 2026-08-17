@@ -3,6 +3,8 @@ const { Pool } = require('pg');
 const axios = require('axios');
 const xlsx = require('xlsx');
 const { syncEstoquePlataforma } = require('../blingSyncService');
+const hubProdutosService = require('../hub/services/hubProdutosService');
+const hubTokenService = require('../hub/services/hubTokenService');
 
 // Pool do banco local (inovamonitoramento) - mesmo do produtosController
 const pool = new Pool({
@@ -19,6 +21,115 @@ const SELLER_IDS = ['188924862', '133882293'];
 
 /// Cache de tokens do Hub por e-mail
 let hubTokensCache = {};
+
+// =============================================
+// === CACHE DE PERFORMANCE ===
+// =============================================
+
+// Cache de catalog_totals em memória (TTL 60s)
+let catalogTotalsCache = { data: null, expiresAt: 0 };
+const CATALOG_CACHE_TTL = 60 * 1000; // 60 segundos
+
+async function getCatalogTotals() {
+    const now = Date.now();
+    if (catalogTotalsCache.data && now < catalogTotalsCache.expiresAt) {
+        return catalogTotalsCache.data;
+    }
+    try {
+        const result = await pool.query(`
+            SELECT catalog_product_id, COUNT(*)::int AS count 
+            FROM anuncios_ml 
+            WHERE catalog_product_id IS NOT NULL AND catalog_product_id != '' 
+            GROUP BY catalog_product_id;
+        `);
+        const totals = {};
+        result.rows.forEach(r => { totals[r.catalog_product_id] = r.count; });
+        catalogTotalsCache = { data: totals, expiresAt: now + CATALOG_CACHE_TTL };
+        return totals;
+    } catch (e) {
+        return catalogTotalsCache.data || {};
+    }
+}
+
+// Invalidar cache de catalog_totals (chamado após sync)
+function invalidateCatalogTotalsCache() {
+    catalogTotalsCache = { data: null, expiresAt: 0 };
+}
+
+// Helper: Retorna o JOIN SQL para estoque_plataforma
+// Tenta usar a Materialized View mv_cached_estoque (pré-calculada, ultra-rápida)
+// Se não existir, faz fallback para a subquery DISTINCT ON original
+let useMaterializedView = null; // null = não testado, true/false = resultado do teste
+
+async function getEstoqueJoinSQL() {
+    if (useMaterializedView === null) {
+        try {
+            await pool.query('SELECT 1 FROM mv_cached_estoque LIMIT 1');
+            useMaterializedView = true;
+            console.log('[Performance] Materialized View mv_cached_estoque detectada — usando JOIN otimizado.');
+        } catch (e) {
+            useMaterializedView = false;
+            console.log('[Performance] Materialized View mv_cached_estoque não encontrada — usando subquery fallback.');
+        }
+    }
+    if (useMaterializedView) {
+        return 'LEFT JOIN mv_cached_estoque cp ON cp.sku = a.sku';
+    }
+    return `LEFT JOIN (
+                    SELECT DISTINCT ON (sku) sku, estoque_plataforma
+                    FROM cached_products
+                    WHERE sku IS NOT NULL AND sku != ''
+                    ORDER BY sku, 
+                        CASE 
+                            WHEN bling_account = 'lucas' THEN 1 
+                            WHEN bling_account = 'eliane' THEN 2 
+                            ELSE 3 
+                        END,
+                        last_updated_at DESC
+                ) cp ON cp.sku = a.sku`;
+}
+
+// Helper: Retorna se a coluna has_active_promo existe na tabela
+let hasActivePromoColumn = null;
+
+async function checkHasActivePromoColumn() {
+    if (hasActivePromoColumn === null) {
+        try {
+            await pool.query('SELECT has_active_promo FROM anuncios_ml LIMIT 1');
+            hasActivePromoColumn = true;
+            console.log('[Performance] Coluna has_active_promo detectada — usando filtro otimizado para promoções.');
+        } catch (e) {
+            hasActivePromoColumn = false;
+            console.log('[Performance] Coluna has_active_promo não encontrada — usando filtro EXISTS fallback.');
+        }
+    }
+    return hasActivePromoColumn;
+}
+
+// Helper: Calcula has_active_promo a partir do JSON de promoções
+function computeHasActivePromo(promocoesJson) {
+    if (!promocoesJson) return false;
+    try {
+        const promos = typeof promocoesJson === 'string' ? JSON.parse(promocoesJson) : promocoesJson;
+        if (!Array.isArray(promos)) return false;
+        return promos.some(p => p && p.price != null && Number(p.price) > 0);
+    } catch (e) {
+        return false;
+    }
+}
+
+// Refresh da Materialized View e atualização de has_active_promo após sync
+async function refreshPerformanceArtifacts() {
+    // Refresh Materialized View
+    try {
+        await pool.query('REFRESH MATERIALIZED VIEW CONCURRENTLY mv_cached_estoque');
+        console.log('[Performance] Materialized View mv_cached_estoque refreshed.');
+    } catch (e) {
+        // View pode não existir, ignorar
+    }
+    // Invalidar cache
+    invalidateCatalogTotalsCache();
+}
 
 // =============================================
 // === HELPERS DE CÁLCULO DE MARGEM ===
@@ -168,7 +279,36 @@ exports.getAnunciosApi = async (req, res) => {
 
         if (search) {
             const searchTerm = `%${search}%`;
-            whereClauses.push(`(a.sku ILIKE $${paramIndex} OR a.descricao ILIKE $${paramIndex} OR a.id_anuncio ILIKE $${paramIndex})`);
+            const searchField = String(req.query.searchField || req.query.campo || 'id_anuncio').toLowerCase();
+
+            let targetCondition = `a.id_anuncio ILIKE $${paramIndex}`;
+            let subqueryCondition = `id_anuncio ILIKE $${paramIndex}`;
+
+            if (searchField === 'sku') {
+                targetCondition = `a.sku ILIKE $${paramIndex}`;
+                subqueryCondition = `sku ILIKE $${paramIndex}`;
+            } else if (searchField === 'descricao') {
+                targetCondition = `a.descricao ILIKE $${paramIndex}`;
+                subqueryCondition = `descricao ILIKE $${paramIndex}`;
+            } else if (searchField === 'geral' || searchField === 'all') {
+                targetCondition = `(a.sku ILIKE $${paramIndex} OR a.descricao ILIKE $${paramIndex} OR a.id_anuncio ILIKE $${paramIndex})`;
+                subqueryCondition = `(sku ILIKE $${paramIndex} OR descricao ILIKE $${paramIndex} OR id_anuncio ILIKE $${paramIndex})`;
+            }
+
+            whereClauses.push(`(
+                ${targetCondition}
+                OR (
+                    a.catalog_product_id IS NOT NULL 
+                    AND a.catalog_product_id != '' 
+                    AND a.catalog_product_id IN (
+                        SELECT catalog_product_id 
+                        FROM anuncios_ml 
+                        WHERE ${subqueryCondition}
+                          AND catalog_product_id IS NOT NULL 
+                          AND catalog_product_id != ''
+                    )
+                )
+            )`);
             queryParams.push(searchTerm);
             paramIndex++;
         }
@@ -215,10 +355,9 @@ exports.getAnunciosApi = async (req, res) => {
 
         const fetchAll = req.query.all === 'true' || req.query.fetchAll === 'true';
 
-        let dataResult;
-        if (fetchAll) {
-            const mainQuery = `
-                SELECT 
+        const estoqueJoin = await getEstoqueJoinSQL();
+
+        const selectColumns = `
                     a.id,
                     a.id_anuncio,
                     a.sku,
@@ -244,66 +383,23 @@ exports.getAnunciosApi = async (req, res) => {
                     a.margem_lucro,
                     a.promocoes_json,
                     a.last_updated_at,
-                    cp.estoque_plataforma
+                    cp.estoque_plataforma`;
+
+        let dataResult;
+        if (fetchAll) {
+            const mainQuery = `
+                SELECT ${selectColumns}
                 FROM anuncios_ml a
-                LEFT JOIN (
-                    SELECT DISTINCT ON (sku) sku, estoque_plataforma
-                    FROM cached_products
-                    WHERE sku IS NOT NULL AND sku != ''
-                    ORDER BY sku, 
-                        CASE 
-                            WHEN bling_account = 'lucas' THEN 1 
-                            WHEN bling_account = 'eliane' THEN 2 
-                            ELSE 3 
-                        END,
-                        last_updated_at DESC
-                ) cp ON cp.sku = a.sku
+                ${estoqueJoin}
                 ${whereCondition}
                 ORDER BY ${sqlOrderBy} ${safeOrderDir} NULLS LAST;
             `;
             dataResult = await pool.query(mainQuery, queryParams);
         } else {
             const mainQuery = `
-                SELECT 
-                    a.id,
-                    a.id_anuncio,
-                    a.sku,
-                    a.descricao,
-                    a.status,
-                    a.empresa,
-                    a.catalog_product_id,
-                    a.estoque_ml,
-                    a.prazo_disponibilidade,
-                    a.catalog_listing,
-                    a.frete,
-                    a.tipo_anuncio,
-                    a.ganhando_catalogo,
-                    a.experiencia_compra,
-                    a.vendas_total,
-                    a.preco,
-                    a.preco_promocional,
-                    a.tarifa,
-                    a.permalink,
-                    a.thumbnail,
-                    a.custo_produto,
-                    a.imposto,
-                    a.margem_lucro,
-                    a.promocoes_json,
-                    a.last_updated_at,
-                    cp.estoque_plataforma
+                SELECT ${selectColumns}
                 FROM anuncios_ml a
-                LEFT JOIN (
-                    SELECT DISTINCT ON (sku) sku, estoque_plataforma
-                    FROM cached_products
-                    WHERE sku IS NOT NULL AND sku != ''
-                    ORDER BY sku, 
-                        CASE 
-                            WHEN bling_account = 'lucas' THEN 1 
-                            WHEN bling_account = 'eliane' THEN 2 
-                            ELSE 3 
-                        END,
-                        last_updated_at DESC
-                ) cp ON cp.sku = a.sku
+                ${estoqueJoin}
                 ${whereCondition}
                 ORDER BY ${sqlOrderBy} ${safeOrderDir} NULLS LAST
                 LIMIT $${paramIndex++} OFFSET $${paramIndex++};
@@ -348,24 +444,14 @@ exports.getAnunciosApi = async (req, res) => {
             };
         });
 
-        // 2. Busca contagem total para paginação
+        // 2. Busca contagem total e catalog_totals EM PARALELO
         const countQuery = `SELECT COUNT(*) FROM anuncios_ml a ${whereCondition};`;
-        const countResult = await pool.query(countQuery, queryParams);
+        const [countResult, catalogTotals] = await Promise.all([
+            pool.query(countQuery, queryParams),
+            getCatalogTotals()
+        ]);
         const totalItems = parseInt(countResult.rows[0].count, 10);
         const totalPages = Math.ceil(totalItems / parseInt(limit, 10));
-
-        let catalogTotals = {};
-        try {
-            const catalogTotalsResult = await pool.query(`
-                SELECT catalog_product_id, COUNT(*)::int AS count 
-                FROM anuncios_ml 
-                WHERE catalog_product_id IS NOT NULL AND catalog_product_id != '' 
-                GROUP BY catalog_product_id;
-            `);
-            catalogTotalsResult.rows.forEach(r => {
-                catalogTotals[r.catalog_product_id] = r.count;
-            });
-        } catch (e) { }
 
         res.status(200).json({
             data: rowsWithMargin,
@@ -416,10 +502,19 @@ function matchesSyncFilters(anuncio, options) {
 
     if (search && String(search).trim() !== '') {
         const term = String(search).trim().toLowerCase();
+        const field = String(options.searchField || options.campo || 'id_anuncio').toLowerCase();
         const sku = String(anuncio.sku || '').toLowerCase();
         const desc = String(anuncio.descricao || '').toLowerCase();
         const idAnuncio = String(anuncio.id_anuncio || '').toLowerCase();
-        if (!sku.includes(term) && !desc.includes(term) && !idAnuncio.includes(term)) {
+        const catalogId = String(anuncio.catalog_product_id || '').toLowerCase();
+
+        let matchesDirectly = false;
+        if (field === 'sku') matchesDirectly = sku.includes(term);
+        else if (field === 'descricao') matchesDirectly = desc.includes(term);
+        else if (field === 'geral' || field === 'all') matchesDirectly = (sku.includes(term) || desc.includes(term) || idAnuncio.includes(term));
+        else matchesDirectly = idAnuncio.includes(term);
+
+        if (!matchesDirectly && !catalogId.includes(term)) {
             return false;
         }
     }
@@ -479,8 +574,17 @@ async function sincronizarAnunciosInterno(forcarSyncHub = false, options = {}) {
     if (forcarSyncHub) {
         const hubProdutosService = require('../hub/services/hubProdutosService');
 
+        const hasActiveFilters = Boolean(options && (
+            (options.search && String(options.search).trim() !== '') ||
+            (options.status && String(options.status).trim() !== '') ||
+            (options.catalog && String(options.catalog).trim() !== '') ||
+            (options.tipo && String(options.tipo).trim() !== '') ||
+            (options.empresa && String(options.empresa).trim() !== '') ||
+            (options.margem_reemb && String(options.margem_reemb).trim() !== '')
+        ));
+
         let specificIds = [];
-        if (Array.isArray(options.item_ids) && options.item_ids.length > 0) {
+        if (hasActiveFilters && Array.isArray(options.item_ids) && options.item_ids.length > 0) {
             // Usa os IDs de anúncio reais vindos do frontend (já são MLB IDs válidos)
             specificIds = options.item_ids.filter(id => id && String(id).toUpperCase().startsWith('MLB'));
         }
@@ -734,6 +838,27 @@ async function sincronizarAnunciosInterno(forcarSyncHub = false, options = {}) {
         // Recalcula margem de lucro com reembolso ML
         await recalcularMargensDB(client);
 
+        // Atualiza coluna has_active_promo para os anúncios sincronizados
+        try {
+            await client.query(`
+                UPDATE anuncios_ml 
+                SET has_active_promo = (
+                    promocoes_json IS NOT NULL 
+                    AND promocoes_json::text != '[]' 
+                    AND promocoes_json::text != 'null' 
+                    AND promocoes_json::text != '' 
+                    AND EXISTS (
+                        SELECT 1 FROM jsonb_array_elements(promocoes_json) elem 
+                        WHERE (elem->>'price') IS NOT NULL 
+                        AND (elem->>'price')::numeric > 0
+                    )
+                )
+                WHERE last_updated_at >= NOW() - INTERVAL '5 minutes'
+            `);
+        } catch (e) {
+            // Coluna pode não existir ainda, ignorar
+        }
+
         await client.query('COMMIT');
     } catch (dbErr) {
         await client.query('ROLLBACK');
@@ -744,12 +869,22 @@ async function sincronizarAnunciosInterno(forcarSyncHub = false, options = {}) {
 
     console.log(`[Anúncios] Sincronização finalizada no Inova: ${insertedCount} novos, ${updatedCount} atualizados, ${deletedCount} removidos (órfãos).`);
 
-    // 5. Dispara a sincronização do estoque virtual (plataforma) do Bling apenas no sync manual
+    // 5. Refresh de artefatos de performance (Materialized View + cache)
+    refreshPerformanceArtifacts().catch(err => {
+        console.error('[Performance] Erro ao refreshar artefatos:', err.message);
+    });
+
+    // 6. Dispara a sincronização do estoque virtual (plataforma) do Bling apenas no sync manual
     if (forcarSyncHub) {
         console.log('[Anúncios] Disparando sincronização do estoque plataforma (Bling)...');
-        syncEstoquePlataforma().catch(err => {
-            console.error('[Anúncios] Erro ao sincronizar estoque plataforma:', err.message);
-        });
+        syncEstoquePlataforma()
+            .then(() => {
+                // Refresh MV após estoque atualizar cached_products
+                return refreshPerformanceArtifacts();
+            })
+            .catch(err => {
+                console.error('[Anúncios] Erro ao sincronizar estoque plataforma:', err.message);
+            });
     }
 
     const message = hasFilters
@@ -808,7 +943,36 @@ exports.exportarAnunciosExcel = async (req, res) => {
 
         if (search) {
             const searchTerm = `%${search}%`;
-            whereClauses.push(`(a.sku ILIKE $${paramIndex} OR a.descricao ILIKE $${paramIndex} OR a.id_anuncio ILIKE $${paramIndex})`);
+            const searchField = String(req.query.searchField || req.query.campo || 'id_anuncio').toLowerCase();
+
+            let targetCondition = `a.id_anuncio ILIKE $${paramIndex}`;
+            let subqueryCondition = `id_anuncio ILIKE $${paramIndex}`;
+
+            if (searchField === 'sku') {
+                targetCondition = `a.sku ILIKE $${paramIndex}`;
+                subqueryCondition = `sku ILIKE $${paramIndex}`;
+            } else if (searchField === 'descricao') {
+                targetCondition = `a.descricao ILIKE $${paramIndex}`;
+                subqueryCondition = `descricao ILIKE $${paramIndex}`;
+            } else if (searchField === 'geral' || searchField === 'all') {
+                targetCondition = `(a.sku ILIKE $${paramIndex} OR a.descricao ILIKE $${paramIndex} OR a.id_anuncio ILIKE $${paramIndex})`;
+                subqueryCondition = `(sku ILIKE $${paramIndex} OR descricao ILIKE $${paramIndex} OR id_anuncio ILIKE $${paramIndex})`;
+            }
+
+            whereClauses.push(`(
+                ${targetCondition}
+                OR (
+                    a.catalog_product_id IS NOT NULL 
+                    AND a.catalog_product_id != '' 
+                    AND a.catalog_product_id IN (
+                        SELECT catalog_product_id 
+                        FROM anuncios_ml 
+                        WHERE ${subqueryCondition}
+                          AND catalog_product_id IS NOT NULL 
+                          AND catalog_product_id != ''
+                    )
+                )
+            )`);
             queryParams.push(searchTerm);
             paramIndex++;
         }
@@ -852,6 +1016,7 @@ exports.exportarAnunciosExcel = async (req, res) => {
         }
 
         // Query sem paginação para trazer tudo que foi filtrado
+        const estoqueJoin = await getEstoqueJoinSQL();
         const query = `
             SELECT 
                 a.id_anuncio,
@@ -879,18 +1044,7 @@ exports.exportarAnunciosExcel = async (req, res) => {
                 a.last_updated_at,
                 cp.estoque_plataforma
             FROM anuncios_ml a
-            LEFT JOIN (
-                SELECT DISTINCT ON (sku) sku, estoque_plataforma
-                FROM cached_products
-                WHERE sku IS NOT NULL AND sku != ''
-                ORDER BY sku, 
-                    CASE 
-                        WHEN bling_account = 'lucas' THEN 1 
-                        WHEN bling_account = 'eliane' THEN 2 
-                        ELSE 3 
-                    END,
-                    last_updated_at DESC
-            ) cp ON cp.sku = a.sku
+            ${estoqueJoin}
             ${whereCondition}
             ORDER BY ${sqlOrderBy} ${safeOrderDir} NULLS LAST;
         `;
@@ -978,54 +1132,111 @@ exports.exportarAnunciosExcel = async (req, res) => {
 
 // =============================================
 // === PREFERÊNCIAS DE COLUNAS DO USUÁRIO ===
-// =============================================
+// Helper para garantir a tabela e coluna column_widths
+let userColumnPreferencesTableChecked = false;
+async function ensureUserColumnPreferencesTable() {
+    if (userColumnPreferencesTableChecked) return;
+    try {
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS user_column_preferences (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                view_name VARCHAR(100) NOT NULL,
+                column_order JSONB,
+                column_widths JSONB,
+                updated_at TIMESTAMP DEFAULT NOW(),
+                UNIQUE(user_id, view_name)
+            );
+        `);
+        await pool.query(`
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'user_column_preferences' AND column_name = 'column_widths'
+                ) THEN
+                    ALTER TABLE user_column_preferences ADD COLUMN column_widths JSONB;
+                END IF;
+            END $$;
+        `);
+        userColumnPreferencesTableChecked = true;
+    } catch (e) {
+        console.warn('[UserColumnPreferences] Aviso ao verificar tabela:', e.message);
+    }
+}
 
 /**
- * Busca a ordem personalizada de colunas salvos no banco de dados.
+ * Busca a ordem e largura personalizada de colunas salvas no banco de dados.
  */
-exports.getColumnOrder = async (req, res) => {
+exports.getColumnPreferences = async (req, res) => {
     try {
         const userId = req.session?.user?.id || 1;
+        const viewName = req.query.view || req.query.viewName || (req.path.includes('promocoes') ? 'promocoes_ml' : 'anuncios_ml');
+
+        await ensureUserColumnPreferencesTable();
+
         const result = await pool.query(
-            `SELECT column_order FROM user_column_preferences WHERE user_id = $1 AND view_name = 'anuncios_ml'`,
-            [userId]
+            `SELECT column_order, column_widths FROM user_column_preferences WHERE user_id = $1 AND view_name = $2`,
+            [userId, viewName]
         );
+
         if (result.rows.length > 0) {
-            return res.json({ columnOrder: result.rows[0].column_order });
+            let columnOrder = result.rows[0].column_order;
+            let columnWidths = result.rows[0].column_widths;
+
+            if (typeof columnOrder === 'string') {
+                try { columnOrder = JSON.parse(columnOrder); } catch (e) { }
+            }
+            if (typeof columnWidths === 'string') {
+                try { columnWidths = JSON.parse(columnWidths); } catch (e) { }
+            }
+
+            return res.json({
+                columnOrder: columnOrder || null,
+                columnWidths: columnWidths || null
+            });
         }
-        res.json({ columnOrder: null });
+        res.json({ columnOrder: null, columnWidths: null });
     } catch (error) {
-        console.error('[Anúncios API] Erro ao buscar ordem das colunas:', error);
-        res.status(500).json({ message: 'Erro ao buscar ordem das colunas.' });
+        console.error('[Anúncios API] Erro ao buscar preferências das colunas:', error);
+        res.status(500).json({ message: 'Erro ao buscar preferências das colunas.' });
     }
 };
 
 /**
- * Salva a nova ordem personalizada de colunas no banco de dados.
+ * Salva a nova ordem e larguras personalizadas de colunas no banco de dados.
  */
-exports.saveColumnOrder = async (req, res) => {
+exports.saveColumnPreferences = async (req, res) => {
     try {
         const userId = req.session?.user?.id || 1;
-        const { columnOrder } = req.body;
-        if (!Array.isArray(columnOrder)) {
-            return res.status(400).json({ message: 'Ordem das colunas inválida.' });
-        }
+        const { columnOrder, columnWidths, viewName: bodyViewName } = req.body;
+        const viewName = bodyViewName || req.query.view || (req.path.includes('promocoes') ? 'promocoes_ml' : 'anuncios_ml');
+
+        await ensureUserColumnPreferencesTable();
+
+        const orderJson = Array.isArray(columnOrder) ? JSON.stringify(columnOrder) : null;
+        const widthsJson = (columnWidths && typeof columnWidths === 'object') ? JSON.stringify(columnWidths) : null;
 
         await pool.query(
-            `INSERT INTO user_column_preferences (user_id, view_name, column_order, updated_at)
-             VALUES ($1, 'anuncios_ml', $2, NOW())
+            `INSERT INTO user_column_preferences (user_id, view_name, column_order, column_widths, updated_at)
+             VALUES ($1, $2, $3, $4, NOW())
              ON CONFLICT (user_id, view_name) DO UPDATE SET
-             column_order = EXCLUDED.column_order,
+             column_order = COALESCE(EXCLUDED.column_order, user_column_preferences.column_order),
+             column_widths = COALESCE(EXCLUDED.column_widths, user_column_preferences.column_widths),
              updated_at = NOW()`,
-            [userId, JSON.stringify(columnOrder)]
+            [userId, viewName, orderJson, widthsJson]
         );
 
-        res.json({ success: true, message: 'Ordem das colunas salva com sucesso!' });
+        res.json({ success: true, message: 'Preferências das colunas salvas com sucesso!' });
     } catch (error) {
-        console.error('[Anúncios API] Erro ao salvar ordem das colunas:', error);
-        res.status(500).json({ message: 'Erro ao salvar ordem das colunas.' });
+        console.error('[Anúncios API] Erro ao salvar preferências das colunas:', error);
+        res.status(500).json({ message: 'Erro ao salvar preferências das colunas.' });
     }
 };
+
+// Aliases para compatibilidade retroativa
+exports.getColumnOrder = exports.getColumnPreferences;
+exports.saveColumnOrder = exports.saveColumnPreferences;
 
 /**
  * Importa planilha de custos e impostos por SKU (.xlsx / .xls / .csv)
@@ -1187,15 +1398,49 @@ exports.getPromocoesApi = async (req, res) => {
             orderDir = 'DESC'
         } = req.query;
 
+        // Usa coluna has_active_promo se disponível (índice parcial ultra-rápido)
+        // Fallback para o EXISTS pesado se a coluna não existir
+        const useOptimizedPromoFilter = await checkHasActivePromoColumn();
         let whereClauses = [
-            `a.promocoes_json IS NOT NULL AND a.promocoes_json::text != '[]' AND a.promocoes_json::text != 'null' AND a.promocoes_json::text != '' AND EXISTS (SELECT 1 FROM jsonb_array_elements(a.promocoes_json) elem WHERE (elem->>'price') IS NOT NULL AND (elem->>'price')::numeric > 0)`
+            useOptimizedPromoFilter
+                ? `a.has_active_promo = TRUE`
+                : `a.promocoes_json IS NOT NULL AND a.promocoes_json::text != '[]' AND a.promocoes_json::text != 'null' AND a.promocoes_json::text != '' AND EXISTS (SELECT 1 FROM jsonb_array_elements(a.promocoes_json) elem WHERE (elem->>'price') IS NOT NULL AND (elem->>'price')::numeric > 0)`
         ];
         const queryParams = [];
         let paramIndex = 1;
 
         if (search) {
             const searchTerm = `%${search}%`;
-            whereClauses.push(`(a.sku ILIKE $${paramIndex} OR a.descricao ILIKE $${paramIndex} OR a.id_anuncio ILIKE $${paramIndex} OR a.promocoes_json::text ILIKE $${paramIndex})`);
+            const searchField = String(req.query.searchField || req.query.campo || 'id_anuncio').toLowerCase();
+
+            let targetCondition = `a.id_anuncio ILIKE $${paramIndex}`;
+            let subqueryCondition = `id_anuncio ILIKE $${paramIndex}`;
+
+            if (searchField === 'sku') {
+                targetCondition = `a.sku ILIKE $${paramIndex}`;
+                subqueryCondition = `sku ILIKE $${paramIndex}`;
+            } else if (searchField === 'descricao') {
+                targetCondition = `a.descricao ILIKE $${paramIndex}`;
+                subqueryCondition = `descricao ILIKE $${paramIndex}`;
+            } else if (searchField === 'geral' || searchField === 'all') {
+                targetCondition = `(a.sku ILIKE $${paramIndex} OR a.descricao ILIKE $${paramIndex} OR a.id_anuncio ILIKE $${paramIndex} OR a.promocoes_json::text ILIKE $${paramIndex})`;
+                subqueryCondition = `(sku ILIKE $${paramIndex} OR descricao ILIKE $${paramIndex} OR id_anuncio ILIKE $${paramIndex} OR promocoes_json::text ILIKE $${paramIndex})`;
+            }
+
+            whereClauses.push(`(
+                ${targetCondition}
+                OR (
+                    a.catalog_product_id IS NOT NULL 
+                    AND a.catalog_product_id != '' 
+                    AND a.catalog_product_id IN (
+                        SELECT catalog_product_id 
+                        FROM anuncios_ml 
+                        WHERE ${subqueryCondition}
+                          AND catalog_product_id IS NOT NULL 
+                          AND catalog_product_id != ''
+                    )
+                )
+            )`);
             queryParams.push(searchTerm);
             paramIndex++;
         }
@@ -1239,10 +1484,9 @@ exports.getPromocoesApi = async (req, res) => {
 
         const fetchAll = req.query.all === 'true' || req.query.fetchAll === 'true';
 
-        let dataResult;
-        if (fetchAll) {
-            const mainQuery = `
-                SELECT 
+        const estoqueJoin = await getEstoqueJoinSQL();
+
+        const selectColumns = `
                     a.id,
                     a.id_anuncio,
                     a.sku,
@@ -1268,20 +1512,14 @@ exports.getPromocoesApi = async (req, res) => {
                     a.margem_lucro,
                     a.promocoes_json,
                     a.last_updated_at,
-                    cp.estoque_plataforma
+                    cp.estoque_plataforma`;
+
+        let dataResult;
+        if (fetchAll) {
+            const mainQuery = `
+                SELECT ${selectColumns}
                 FROM anuncios_ml a
-                LEFT JOIN (
-                    SELECT DISTINCT ON (sku) sku, estoque_plataforma
-                    FROM cached_products
-                    WHERE sku IS NOT NULL AND sku != ''
-                    ORDER BY sku, 
-                        CASE 
-                            WHEN bling_account = 'lucas' THEN 1 
-                            WHEN bling_account = 'eliane' THEN 2 
-                            ELSE 3 
-                        END,
-                        last_updated_at DESC
-                ) cp ON cp.sku = a.sku
+                ${estoqueJoin}
                 ${whereCondition}
                 ORDER BY ${sqlOrderBy} ${safeOrderDir} NULLS LAST;
             `;
@@ -1289,46 +1527,9 @@ exports.getPromocoesApi = async (req, res) => {
         } else {
             const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
             const mainQuery = `
-                SELECT 
-                    a.id,
-                    a.id_anuncio,
-                    a.sku,
-                    a.descricao,
-                    a.status,
-                    a.empresa,
-                    a.catalog_product_id,
-                    a.estoque_ml,
-                    a.prazo_disponibilidade,
-                    a.catalog_listing,
-                    a.frete,
-                    a.tipo_anuncio,
-                    a.ganhando_catalogo,
-                    a.experiencia_compra,
-                    a.vendas_total,
-                    a.preco,
-                    a.preco_promocional,
-                    a.tarifa,
-                    a.permalink,
-                    a.thumbnail,
-                    a.custo_produto,
-                    a.imposto,
-                    a.margem_lucro,
-                    a.promocoes_json,
-                    a.last_updated_at,
-                    cp.estoque_plataforma
+                SELECT ${selectColumns}
                 FROM anuncios_ml a
-                LEFT JOIN (
-                    SELECT DISTINCT ON (sku) sku, estoque_plataforma
-                    FROM cached_products
-                    WHERE sku IS NOT NULL AND sku != ''
-                    ORDER BY sku, 
-                        CASE 
-                            WHEN bling_account = 'lucas' THEN 1 
-                            WHEN bling_account = 'eliane' THEN 2 
-                            ELSE 3 
-                        END,
-                        last_updated_at DESC
-                ) cp ON cp.sku = a.sku
+                ${estoqueJoin}
                 ${whereCondition}
                 ORDER BY ${sqlOrderBy} ${safeOrderDir} NULLS LAST
                 LIMIT $${paramIndex++} OFFSET $${paramIndex++};
@@ -1377,34 +1578,28 @@ exports.getPromocoesApi = async (req, res) => {
             };
         });
 
+        // Busca count, reembolso e catalog_totals EM PARALELO
         const countQuery = `SELECT COUNT(*) FROM anuncios_ml a ${whereCondition};`;
-        const countResult = await pool.query(countQuery, queryParams);
+        let reembolsoPromise;
+        try {
+            reembolsoPromise = pool.query('SELECT promo_id, reembolso_maximo FROM promocoes_reembolso');
+        } catch (e) {
+            reembolsoPromise = Promise.resolve({ rows: [] });
+        }
+
+        const [countResult, reembolsoResult, catalogTotals] = await Promise.all([
+            pool.query(countQuery, queryParams),
+            reembolsoPromise,
+            getCatalogTotals()
+        ]);
+
         const totalItems = parseInt(countResult.rows[0].count, 10);
         const totalPages = Math.ceil(totalItems / parseInt(limit, 10));
 
-        // Busca mapa de reembolso máximo para exibição nos cards de promoção
-        let reembolsoMap = {};
-        try {
-            const reembolsoResult = await pool.query('SELECT promo_id, reembolso_maximo FROM promocoes_reembolso');
-            for (const row of reembolsoResult.rows) {
-                reembolsoMap[row.promo_id] = Number(row.reembolso_maximo);
-            }
-        } catch (e) {
-            // Tabela pode não existir ainda, segue sem erro
+        const reembolsoMap = {};
+        for (const row of reembolsoResult.rows) {
+            reembolsoMap[row.promo_id] = Number(row.reembolso_maximo);
         }
-
-        let catalogTotals = {};
-        try {
-            const catalogTotalsResult = await pool.query(`
-                SELECT catalog_product_id, COUNT(*)::int AS count 
-                FROM anuncios_ml 
-                WHERE catalog_product_id IS NOT NULL AND catalog_product_id != '' 
-                GROUP BY catalog_product_id;
-            `);
-            catalogTotalsResult.rows.forEach(r => {
-                catalogTotals[r.catalog_product_id] = r.count;
-            });
-        } catch (e) { }
 
         res.status(200).json({
             data: rowsWithMargin,
@@ -1437,15 +1632,48 @@ exports.exportarPromocoesExcel = async (req, res) => {
             orderDir = 'DESC'
         } = req.query;
 
+        // Usa coluna has_active_promo se disponível (índice parcial ultra-rápido)
+        const useOptimizedPromoFilter = await checkHasActivePromoColumn();
         let whereClauses = [
-            `a.promocoes_json IS NOT NULL AND a.promocoes_json::text != '[]' AND a.promocoes_json::text != 'null' AND a.promocoes_json::text != '' AND EXISTS (SELECT 1 FROM jsonb_array_elements(a.promocoes_json) elem WHERE (elem->>'price') IS NOT NULL AND (elem->>'price')::numeric > 0)`
+            useOptimizedPromoFilter
+                ? `a.has_active_promo = TRUE`
+                : `a.promocoes_json IS NOT NULL AND a.promocoes_json::text != '[]' AND a.promocoes_json::text != 'null' AND a.promocoes_json::text != '' AND EXISTS (SELECT 1 FROM jsonb_array_elements(a.promocoes_json) elem WHERE (elem->>'price') IS NOT NULL AND (elem->>'price')::numeric > 0)`
         ];
         const queryParams = [];
         let paramIndex = 1;
 
         if (search) {
             const searchTerm = `%${search}%`;
-            whereClauses.push(`(a.sku ILIKE $${paramIndex} OR a.descricao ILIKE $${paramIndex} OR a.id_anuncio ILIKE $${paramIndex} OR a.promocoes_json::text ILIKE $${paramIndex})`);
+            const searchField = String(req.query.searchField || req.query.campo || 'id_anuncio').toLowerCase();
+
+            let targetCondition = `a.id_anuncio ILIKE $${paramIndex}`;
+            let subqueryCondition = `id_anuncio ILIKE $${paramIndex}`;
+
+            if (searchField === 'sku') {
+                targetCondition = `a.sku ILIKE $${paramIndex}`;
+                subqueryCondition = `sku ILIKE $${paramIndex}`;
+            } else if (searchField === 'descricao') {
+                targetCondition = `a.descricao ILIKE $${paramIndex}`;
+                subqueryCondition = `descricao ILIKE $${paramIndex}`;
+            } else if (searchField === 'geral' || searchField === 'all') {
+                targetCondition = `(a.sku ILIKE $${paramIndex} OR a.descricao ILIKE $${paramIndex} OR a.id_anuncio ILIKE $${paramIndex} OR a.promocoes_json::text ILIKE $${paramIndex})`;
+                subqueryCondition = `(sku ILIKE $${paramIndex} OR descricao ILIKE $${paramIndex} OR id_anuncio ILIKE $${paramIndex} OR promocoes_json::text ILIKE $${paramIndex})`;
+            }
+
+            whereClauses.push(`(
+                ${targetCondition}
+                OR (
+                    a.catalog_product_id IS NOT NULL 
+                    AND a.catalog_product_id != '' 
+                    AND a.catalog_product_id IN (
+                        SELECT catalog_product_id 
+                        FROM anuncios_ml 
+                        WHERE ${subqueryCondition}
+                          AND catalog_product_id IS NOT NULL 
+                          AND catalog_product_id != ''
+                    )
+                )
+            )`);
             queryParams.push(searchTerm);
             paramIndex++;
         }
@@ -1476,6 +1704,7 @@ exports.exportarPromocoesExcel = async (req, res) => {
 
         let sqlOrderBy = `a.${safeOrderBy}`;
 
+        const estoqueJoin = await getEstoqueJoinSQL();
         const query = `
             SELECT 
                 a.id_anuncio,
@@ -1499,18 +1728,7 @@ exports.exportarPromocoesExcel = async (req, res) => {
                 a.last_updated_at,
                 cp.estoque_plataforma
             FROM anuncios_ml a
-            LEFT JOIN (
-                SELECT DISTINCT ON (sku) sku, estoque_plataforma
-                FROM cached_products
-                WHERE sku IS NOT NULL AND sku != ''
-                ORDER BY sku, 
-                    CASE 
-                        WHEN bling_account = 'lucas' THEN 1 
-                        WHEN bling_account = 'eliane' THEN 2 
-                        ELSE 3 
-                    END,
-                    last_updated_at DESC
-            ) cp ON cp.sku = a.sku
+            ${estoqueJoin}
             ${whereCondition}
             ORDER BY ${sqlOrderBy} ${safeOrderDir} NULLS LAST;
         `;
@@ -1780,3 +1998,540 @@ exports.salvarReembolsoMaximo = async (req, res) => {
         res.status(500).json({ error: 'Erro ao salvar reembolso máximo.' });
     }
 };
+
+// =============================================
+// === CONFIGURAÇÃO DE PRAZOS DE DISPONIBILIDADE ===
+// =============================================
+
+/**
+ * Renderiza a página de configuração de prazos de disponibilidade.
+ */
+exports.renderConfigurarPrazosPage = (req, res) => {
+    try {
+        res.render('produtos/configurar-prazos', {
+            title: 'Configurar Prazos de Disponibilidade',
+            layout: 'main'
+        });
+    } catch (error) {
+        console.error('Erro ao renderizar a página de configurar prazos:', error);
+        req.flash('error_msg', 'Não foi possível carregar a página de configuração de prazos.');
+        res.redirect('/anuncios');
+    }
+};
+
+/**
+ * API para buscar a listagem de Fornecedores e seus prazos configurados.
+ */
+exports.getConfigPrazosFornecedoresApi = async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                f.bling_id AS fornecedor_id,
+                f.nome AS fornecedor_nome,
+                COALESCE(cpf.prazo_dias, 0) AS prazo_dias,
+                COUNT(DISTINCT cp.sku)::int AS total_skus
+            FROM fornecedor f
+            LEFT JOIN configuracao_prazos_fornecedor cpf 
+                ON (cpf.fornecedor_id = f.bling_id OR (cpf.fornecedor_id IS NULL AND cpf.fornecedor_nome = f.nome))
+            LEFT JOIN cached_structures cs 
+                ON cs.fornecedor_bling_id = f.bling_id
+            LEFT JOIN cached_products cp 
+                ON cp.bling_id = cs.parent_product_bling_id AND cp.sku IS NOT NULL AND cp.sku != ''
+            WHERE f.nome IS NOT NULL 
+              AND TRIM(f.nome) != ''
+              AND LOWER(TRIM(f.nome)) NOT IN ('não definido', 'nao definido', 'sem fornecedor')
+            GROUP BY f.bling_id, f.nome, cpf.prazo_dias
+            ORDER BY f.nome ASC;
+        `;
+
+        const result = await pool.query(query);
+        res.status(200).json({ data: result.rows });
+
+    } catch (error) {
+        console.error('[Config Prazos] Erro ao buscar fornecedores:', error);
+        res.status(500).json({ message: 'Erro ao buscar dados dos fornecedores.' });
+    }
+};
+
+/**
+ * API para salvar/atualizar o prazo de um Fornecedor.
+ */
+exports.salvarPrazoFornecedorApi = async (req, res) => {
+    try {
+        const { fornecedor_id, fornecedor_nome, prazo_dias } = req.body;
+
+        if (!fornecedor_nome && !fornecedor_id) {
+            return res.status(400).json({ error: 'Fornecedor é obrigatório.' });
+        }
+
+        const dias = Number(prazo_dias);
+        if (isNaN(dias) || dias < 0 || dias > 45) {
+            return res.status(400).json({ error: 'O prazo deve ser um número entre 0 e 45 dias.' });
+        }
+
+        await pool.query(`
+            INSERT INTO configuracao_prazos_fornecedor (fornecedor_id, fornecedor_nome, prazo_dias, updated_at)
+            VALUES ($1, $2, $3, NOW())
+            ON CONFLICT (fornecedor_id) DO UPDATE SET
+                fornecedor_nome = EXCLUDED.fornecedor_nome,
+                prazo_dias = EXCLUDED.prazo_dias,
+                updated_at = NOW()
+        `, [fornecedor_id ? Number(fornecedor_id) : null, fornecedor_nome || '', dias]);
+
+        console.log(`[Config Prazos] Prazo de fornecedor salvo para "${fornecedor_nome}": ${dias} dias`);
+        res.status(200).json({ success: true, fornecedor_id, fornecedor_nome, prazo_dias: dias });
+
+    } catch (error) {
+        console.error('[Config Prazos] Erro ao salvar prazo do fornecedor:', error);
+        res.status(500).json({ error: 'Erro ao salvar prazo do fornecedor.' });
+    }
+};
+
+/**
+ * API para buscar a listagem de Produtos (SKUs dos anúncios) com seus fornecedores e prazos.
+ */
+exports.getConfigPrazosProdutosApi = async (req, res) => {
+    try {
+        const query = `
+            WITH skus_anuncios AS (
+                SELECT 
+                    sku,
+                    MAX(descricao) AS descricao,
+                    COUNT(DISTINCT id_anuncio)::int AS total_anuncios
+                FROM anuncios_ml
+                WHERE sku IS NOT NULL AND TRIM(sku) != ''
+                GROUP BY sku
+            ),
+            produtos_bling AS (
+                SELECT DISTINCT ON (sku)
+                    sku,
+                    bling_id,
+                    nome,
+                    estoque_plataforma
+                FROM cached_products
+                WHERE sku IS NOT NULL AND TRIM(sku) != ''
+                ORDER BY sku, (bling_account = 'lucas') DESC, last_updated_at DESC
+            ),
+            estruturas_fornecedor AS (
+                SELECT DISTINCT ON (cs.parent_product_bling_id)
+                    cs.parent_product_bling_id,
+                    f.bling_id AS fornecedor_id,
+                    f.nome AS fornecedor_nome
+                FROM cached_structures cs
+                JOIN fornecedor f ON f.bling_id = cs.fornecedor_bling_id
+                WHERE cs.fornecedor_bling_id IS NOT NULL
+                  AND f.nome IS NOT NULL 
+                  AND TRIM(f.nome) != ''
+                  AND LOWER(TRIM(f.nome)) NOT IN ('não definido', 'nao definido', 'sem fornecedor')
+                ORDER BY cs.parent_product_bling_id, cs.component_sku ASC
+            )
+            SELECT 
+                sa.sku,
+                COALESCE(sa.descricao, pb.nome, '') AS descricao,
+                COALESCE(pb.estoque_plataforma, 0) AS estoque_plataforma,
+                ef.fornecedor_id,
+                COALESCE(ef.fornecedor_nome, 'Não definido') AS fornecedor_nome,
+                COALESCE(cpf.prazo_dias, 0) AS prazo_fornecedor,
+                COALESCE(cpp.prazo_dias, 0) AS prazo_personalizado,
+                CASE 
+                    WHEN COALESCE(cpp.prazo_dias, 0) > 0 THEN cpp.prazo_dias
+                    WHEN COALESCE(cpf.prazo_dias, 0) > 0 THEN cpf.prazo_dias
+                    ELSE 0
+                END AS prazo_efetivo,
+                sa.total_anuncios
+            FROM skus_anuncios sa
+            LEFT JOIN produtos_bling pb ON pb.sku = sa.sku
+            LEFT JOIN estruturas_fornecedor ef ON ef.parent_product_bling_id = pb.bling_id
+            LEFT JOIN configuracao_prazos_fornecedor cpf 
+                ON (cpf.fornecedor_id = ef.fornecedor_id OR (cpf.fornecedor_id IS NULL AND cpf.fornecedor_nome = ef.fornecedor_nome))
+            LEFT JOIN configuracao_prazos_produto cpp 
+                ON UPPER(TRIM(cpp.sku)) = UPPER(TRIM(sa.sku))
+            ORDER BY sa.sku ASC;
+        `;
+
+        const result = await pool.query(query);
+        res.status(200).json({ data: result.rows });
+
+    } catch (error) {
+        console.error('[Config Prazos] Erro ao buscar produtos:', error);
+        res.status(500).json({ message: 'Erro ao buscar produtos para configuração de prazos.' });
+    }
+};
+
+/**
+ * API para salvar/atualizar o prazo personalizado de um Produto (SKU).
+ */
+exports.salvarPrazoProdutoApi = async (req, res) => {
+    try {
+        const { sku, prazo_dias } = req.body;
+
+        if (!sku) {
+            return res.status(400).json({ error: 'SKU é obrigatório.' });
+        }
+
+        const cleanSku = String(sku).trim();
+        const dias = Number(prazo_dias);
+        if (isNaN(dias) || dias < 0 || dias > 45) {
+            return res.status(400).json({ error: 'O prazo deve ser um número entre 0 e 45 dias.' });
+        }
+
+        await pool.query(`
+            INSERT INTO configuracao_prazos_produto (sku, prazo_dias, updated_at)
+            VALUES ($1, $2, NOW())
+            ON CONFLICT (sku) DO UPDATE SET
+                prazo_dias = EXCLUDED.prazo_dias,
+                updated_at = NOW()
+        `, [cleanSku, dias]);
+
+        console.log(`[Config Prazos] Prazo de produto salvo para SKU "${cleanSku}": ${dias} dias`);
+        res.status(200).json({ success: true, sku: cleanSku, prazo_dias: dias });
+
+    } catch (error) {
+        console.error('[Config Prazos] Erro ao salvar prazo do produto:', error);
+        res.status(500).json({ error: 'Erro ao salvar prazo do produto.' });
+    }
+};
+
+/**
+ * Processamento automático e central de aplicação/remoção de prazos nos anúncios do Mercado Livre.
+ * Regras:
+ * - Se estoque_plataforma <= 5 E prazo_efetivo > 0: aplica prazo no ML se já não estiver aplicado.
+ * - Se estoque_plataforma >= 15 E anúncio tem prazo no ML: remove prazo no ML.
+ */
+async function processarPrazosAutomaticosInterno() {
+    console.log('[Prazos ML] Iniciando verificação e aplicação de prazos...');
+
+    try {
+        const query = `
+            WITH produtos_bling AS (
+                SELECT DISTINCT ON (sku)
+                    sku,
+                    bling_id,
+                    estoque_plataforma
+                FROM cached_products
+                WHERE sku IS NOT NULL AND TRIM(sku) != ''
+                ORDER BY sku, (bling_account = 'lucas') DESC, last_updated_at DESC
+            ),
+            estruturas_fornecedor AS (
+                SELECT DISTINCT ON (cs.parent_product_bling_id)
+                    cs.parent_product_bling_id,
+                    f.bling_id AS fornecedor_id,
+                    f.nome AS fornecedor_nome
+                FROM cached_structures cs
+                JOIN fornecedor f ON f.bling_id = cs.fornecedor_bling_id
+                WHERE cs.fornecedor_bling_id IS NOT NULL
+                  AND f.nome IS NOT NULL 
+                  AND TRIM(f.nome) != ''
+                  AND LOWER(TRIM(f.nome)) NOT IN ('não definido', 'nao definido', 'sem fornecedor')
+                ORDER BY cs.parent_product_bling_id, cs.component_sku ASC
+            )
+            SELECT 
+                a.id_anuncio,
+                a.sku,
+                a.descricao,
+                a.status,
+                a.prazo_disponibilidade,
+                COALESCE(pb.estoque_plataforma, 0) AS estoque_plataforma,
+                ef.fornecedor_nome,
+                COALESCE(cpp.prazo_dias, 0) AS prazo_sku,
+                COALESCE(cpf.prazo_dias, 0) AS prazo_fornecedor,
+                CASE 
+                    WHEN COALESCE(cpp.prazo_dias, 0) > 0 THEN cpp.prazo_dias
+                    WHEN COALESCE(cpf.prazo_dias, 0) > 0 THEN cpf.prazo_dias
+                    ELSE 0
+                END AS prazo_efetivo
+            FROM anuncios_ml a
+            LEFT JOIN produtos_bling pb ON pb.sku = a.sku
+            LEFT JOIN estruturas_fornecedor ef ON ef.parent_product_bling_id = pb.bling_id
+            LEFT JOIN configuracao_prazos_fornecedor cpf 
+                ON (cpf.fornecedor_id = ef.fornecedor_id OR (cpf.fornecedor_id IS NULL AND cpf.fornecedor_nome = ef.fornecedor_nome))
+            LEFT JOIN configuracao_prazos_produto cpp 
+                ON UPPER(TRIM(cpp.sku)) = UPPER(TRIM(a.sku))
+            WHERE a.status = 'active';
+        `;
+
+        const result = await pool.query(query);
+        const anuncios = result.rows;
+
+        function extrairDiasPrazo(prazo) {
+            if (prazo === null || prazo === undefined) return 0;
+            const str = String(prazo).trim().toLowerCase();
+            if (str === '' || str === 'null' || str === 'undefined' || str === '0' || str === '0 dias' || str.includes('pronta') || str === '-') {
+                return 0;
+            }
+            const digits = str.replace(/\D/g, '');
+            return digits ? parseInt(digits, 10) : 0;
+        }
+
+        const gruposAplicar = {}; // { '5': [anuncioObj1, anuncioObj2] }
+        const itensRemover = []; // [anuncioObj1, ...]
+
+        for (const a of anuncios) {
+            const estoque = Number(a.estoque_plataforma) || 0;
+            const prazoEfetivo = Number(a.prazo_efetivo) || 0;
+            const diasAtuais = extrairDiasPrazo(a.prazo_disponibilidade);
+
+            // REGRA 1: Estoque <= 5 e tem prazo configurado > 0
+            if (estoque <= 5 && prazoEfetivo > 0) {
+                if (diasAtuais !== prazoEfetivo) {
+                    if (!gruposAplicar[prazoEfetivo]) {
+                        gruposAplicar[prazoEfetivo] = [];
+                    }
+                    gruposAplicar[prazoEfetivo].push(a);
+                }
+            }
+            // REGRA 2: Estoque >= 15 e anúncio possui prazo de disponibilidade atualmente no ML
+            else if (estoque >= 15 && diasAtuais > 0) {
+                itensRemover.push(a);
+            }
+        }
+
+        const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+        let totalAplicados = 0;
+        let totalRemovidos = 0;
+
+        // 1. Executa aplicação por grupos de dias
+        for (const [dias, itens] of Object.entries(gruposAplicar)) {
+            const numDias = Number(dias);
+            console.log(`[Prazos ML] Processando aplicação de ${numDias} dias para ${itens.length} anúncio(s)...`);
+
+            for (const an of itens) {
+                const itemId = an.id_anuncio;
+                const prazoAnteriorStr = an.prazo_disponibilidade || '0 dias (Pronta Entrega)';
+                const motivo = `Estoque Bling <= 5 (Estoque atual: ${an.estoque_plataforma})`;
+
+                console.log(`[Prazos ML] [APLICANDO] Anúncio: ${itemId} | SKU: ${an.sku} | Fornecedor: ${an.fornecedor_nome || 'N/A'} | Estoque: ${an.estoque_plataforma} | Novo Prazo: ${numDias} dias | Prazo Anterior: ${prazoAnteriorStr}`);
+
+                let isSucesso = false;
+                let msgErro = null;
+
+                try {
+                    const conta = await hubProdutosService.resolverContaPorItem(itemId);
+                    if (!conta) {
+                        msgErro = 'Conta do Hub não encontrada';
+                        console.warn(`[Prazos ML] Conta do Hub não encontrada para o anúncio ${itemId}`);
+                    } else {
+                        const accessToken = await hubTokenService.getValidAccessToken(conta);
+
+                        try {
+                            await hubProdutosService.setPrazoDisponibilidade(itemId, numDias, accessToken);
+                            isSucesso = true;
+                        } catch (errFirst) {
+                            if (errFirst.response?.status === 409 || errFirst.response?.status === 429) {
+                                await sleep(800);
+                                await hubProdutosService.setPrazoDisponibilidade(itemId, numDias, accessToken);
+                                isSucesso = true;
+                            } else {
+                                throw errFirst;
+                            }
+                        }
+                    }
+
+                    if (isSucesso) {
+                        totalAplicados++;
+                        await pool.query(
+                            `UPDATE anuncios_ml SET prazo_disponibilidade = $1, last_updated_at = NOW() WHERE id_anuncio = $2`,
+                            [`${numDias} dias`, itemId]
+                        );
+                    }
+                } catch (errItem) {
+                    msgErro = errItem.response?.data?.message || errItem.message;
+                    console.error(`[Prazos ML] Erro ao aplicar prazo de ${numDias} dias no anúncio ${itemId}:`, errItem.response?.data || errItem.message);
+                }
+
+                // Salva no histórico
+                try {
+                    await pool.query(`
+                        INSERT INTO historico_prazos_anuncios 
+                        (id_anuncio, sku, descricao, fornecedor_nome, estoque_bling, acao, prazo_anterior, prazo_novo, motivo, sucesso, mensagem_erro, executado_por)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                    `, [
+                        itemId,
+                        an.sku,
+                        an.descricao,
+                        an.fornecedor_nome,
+                        an.estoque_plataforma,
+                        'APLICADO',
+                        prazoAnteriorStr,
+                        `${numDias} dias`,
+                        motivo,
+                        isSucesso,
+                        msgErro,
+                        'Manual (Aplicar Prazos)'
+                    ]);
+                } catch (histErr) {
+                    console.error('[Prazos ML] Erro ao gravar histórico de aplicação:', histErr.message);
+                }
+
+                await sleep(150);
+            }
+        }
+
+        // 2. Executa remoção de prazos
+        if (itensRemover.length > 0) {
+            console.log(`[Prazos ML] Processando remoção de prazo para ${itensRemover.length} anúncio(s)...`);
+
+            for (const an of itensRemover) {
+                const itemId = an.id_anuncio;
+                const prazoAnteriorStr = an.prazo_disponibilidade || 'Com Prazo';
+                const motivo = `Estoque Bling >= 15 (Estoque atual: ${an.estoque_plataforma})`;
+
+                console.log(`[Prazos ML] [REMOVENDO] Anúncio: ${itemId} | SKU: ${an.sku} | Fornecedor: ${an.fornecedor_nome || 'N/A'} | Estoque: ${an.estoque_plataforma} | Prazo Anterior: ${prazoAnteriorStr}`);
+
+                let isSucesso = false;
+                let msgErro = null;
+
+                try {
+                    const conta = await hubProdutosService.resolverContaPorItem(itemId);
+                    if (!conta) {
+                        msgErro = 'Conta do Hub não encontrada';
+                        console.warn(`[Prazos ML] Conta do Hub não encontrada para o anúncio ${itemId}`);
+                    } else {
+                        const accessToken = await hubTokenService.getValidAccessToken(conta);
+
+                        try {
+                            await hubProdutosService.removerPrazoDisponibilidade(itemId, accessToken);
+                            isSucesso = true;
+                        } catch (errFirst) {
+                            if (errFirst.response?.status === 409 || errFirst.response?.status === 429) {
+                                await sleep(800);
+                                await hubProdutosService.removerPrazoDisponibilidade(itemId, accessToken);
+                                isSucesso = true;
+                            } else {
+                                throw errFirst;
+                            }
+                        }
+                    }
+
+                    if (isSucesso) {
+                        totalRemovidos++;
+                        await pool.query(
+                            `UPDATE anuncios_ml SET prazo_disponibilidade = NULL, last_updated_at = NOW() WHERE id_anuncio = $1`,
+                            [itemId]
+                        );
+                    }
+                } catch (errItem) {
+                    msgErro = errItem.response?.data?.message || errItem.message;
+                    console.error(`[Prazos ML] Erro ao remover prazo do anúncio ${itemId}:`, errItem.response?.data || errItem.message);
+                }
+
+                // Salva no histórico
+                try {
+                    await pool.query(`
+                        INSERT INTO historico_prazos_anuncios 
+                        (id_anuncio, sku, descricao, fornecedor_nome, estoque_bling, acao, prazo_anterior, prazo_novo, motivo, sucesso, mensagem_erro, executado_por)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                    `, [
+                        itemId,
+                        an.sku,
+                        an.descricao,
+                        an.fornecedor_nome,
+                        an.estoque_plataforma,
+                        'REMOVIDO',
+                        prazoAnteriorStr,
+                        '0 dias (Pronta Entrega)',
+                        motivo,
+                        isSucesso,
+                        msgErro,
+                        'Manual (Aplicar Prazos)'
+                    ]);
+                } catch (histErr) {
+                    console.error('[Prazos ML] Erro ao gravar histórico de remoção:', histErr.message);
+                }
+
+                await sleep(150);
+            }
+        }
+
+        const totalInalterados = anuncios.length - totalAplicados - totalRemovidos;
+        console.log(`[Prazos ML] Processamento finalizado. Total: ${anuncios.length}, Aplicados: ${totalAplicados}, Removidos: ${totalRemovidos}, Inalterados: ${totalInalterados}.`);
+
+        return {
+            total: anuncios.length,
+            aplicados: totalAplicados,
+            removidos: totalRemovidos,
+            inalterados: totalInalterados
+        };
+
+    } catch (error) {
+        console.error('[Prazos ML] Erro geral durante o processamento:', error);
+        return { total: 0, aplicados: 0, removidos: 0, inalterados: 0, erro: error.message };
+    }
+}
+
+// Exporta o método interno para o blingSyncService usar
+exports.processarPrazosAutomaticosInterno = processarPrazosAutomaticosInterno;
+
+/**
+ * Endpoint manual acionado pelo botão "Aplicar Prazos Agora"
+ */
+exports.aplicarPrazosManualApi = async (req, res) => {
+    try {
+        const resultado = await processarPrazosAutomaticosInterno();
+        res.status(200).json({
+            success: true,
+            ...resultado
+        });
+    } catch (error) {
+        console.error('[Prazos ML] Erro na rota manual de aplicação:', error);
+        res.status(500).json({ error: 'Erro ao processar aplicação de prazos de disponibilidade.' });
+    }
+};
+
+/**
+ * API para buscar o Histórico de alterações de prazos.
+ */
+exports.getHistoricoPrazosApi = async (req, res) => {
+    try {
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS historico_prazos_anuncios (
+                id SERIAL PRIMARY KEY,
+                id_anuncio VARCHAR(50) NOT NULL,
+                sku VARCHAR(100),
+                descricao TEXT,
+                fornecedor_nome VARCHAR(255),
+                estoque_bling INT,
+                acao VARCHAR(50) NOT NULL,
+                prazo_anterior VARCHAR(50),
+                prazo_novo VARCHAR(50),
+                motivo TEXT,
+                sucesso BOOLEAN DEFAULT true,
+                mensagem_erro TEXT,
+                executado_por VARCHAR(100) DEFAULT 'Manual',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+
+        const query = `
+            SELECT 
+                id,
+                id_anuncio,
+                sku,
+                descricao,
+                fornecedor_nome,
+                estoque_bling,
+                acao,
+                prazo_anterior,
+                prazo_novo,
+                motivo,
+                sucesso,
+                mensagem_erro,
+                executado_por,
+                TO_CHAR(created_at, 'DD/MM/YYYY HH24:MI:SS') AS data_formatada,
+                created_at
+            FROM historico_prazos_anuncios
+            ORDER BY created_at DESC
+            LIMIT 500;
+        `;
+
+        const result = await pool.query(query);
+        res.status(200).json({ data: result.rows });
+
+    } catch (error) {
+        console.error('[Config Prazos] Erro ao buscar histórico de prazos:', error);
+        res.status(500).json({ message: 'Erro ao buscar dados do histórico.' });
+    }
+};
+
+

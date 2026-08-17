@@ -79,3 +79,233 @@
     text-decoration: none;
 }
 
+.standalone-ml-link {
+    color: #ffd54f !important;
+    background: rgba(255, 213, 79, 0.12);
+    border: 1px solid rgba(255, 213, 79, 0.3);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.68rem;
+    text-decoration: none !important;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.2s ease;
+    width: fit-content;
+    margin-top: 3px;
+}
+
+.standalone-ml-link:hover {
+    background: rgba(255, 213, 79, 0.28);
+    border-color: rgba(255, 213, 79, 0.65);
+    color: #ffe082 !important;
+    box-shadow: 0 0 8px rgba(255, 213, 79, 0.3);
+}
+
+/* Sombra / Fantasma Futurista dos Anúncios Irmãos do Catálogo */
+.sibling-shadow-container {
+    margin-top: 4px;
+    padding: 2px 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.72rem;
+    color: rgba(255, 255, 255, 0.55);
+    opacity: 0.7;
+    transition: opacity 0.2s ease, background-color 0.2s ease;
+}
+
+td.text-center .sibling-shadow-container {
+    justify-content: center;
+    text-align: center;
+}
+
+td:not(.text-center) .sibling-shadow-container {
+    justify-content: flex-start;
+    text-align: left;
+}
+
+.sibling-shadow-container:hover {
+    opacity: 1;
+}
+
+.sibling-shadow-badge {
+    font-size: 0.68rem !important;
+    padding: 1.5px 6px !important;
+    min-width: auto !important;
+    font-weight: 500 !important;
+    border-radius: 4px !important;
+    box-shadow: none !important;
+    letter-spacing: 0.2px;
+}
+
+.sibling-shadow-text {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.72rem;
+}
+
+/* === REDIMENSIONAMENTO E RESPONSIVIDADE DE COLUNAS ESTILO EXCEL === */
+#tabela-estoque {
+    table-layout: fixed !important;
+    width: max-content !important;
+    min-width: 100% !important;
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+}
+
+#tabela-estoque thead th {
+    position: relative !important;
+    user-select: none !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    padding: 10px 8px !important;
+    padding-right: 12px !important;
+    vertical-align: middle !important;
+}
+
+#tabela-estoque tbody td {
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    vertical-align: middle !important;
+    padding: 6px 8px !important;
+    line-height: 1.35 !important;
+}
+
+#tabela-estoque tbody td > div,
+#tabela-estoque tbody td > span,
+#tabela-estoque tbody td > a {
+    max-width: 100% !important;
+}
+
+/* Exceção para a linha de grupo do catálogo */
+#tabela-estoque tbody tr.catalog-group-header-row td {
+    white-space: normal !important;
+    overflow: visible !important;
+    width: auto !important;
+    max-width: none !important;
+    padding: 8px 12px !important;
+}
+
+/* Coluna Oculta / Colapsada (Estilo Excel) */
+#tabela-estoque thead th.is-col-collapsed,
+#tabela-estoque tbody td.is-col-collapsed {
+    width: 6px !important;
+    min-width: 6px !important;
+    max-width: 6px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    font-size: 0 !important;
+    overflow: hidden !important;
+    background: rgba(240, 124, 0, 0.08) !important;
+    border-right: 2px dashed rgba(240, 124, 0, 0.6) !important;
+    cursor: col-resize !important;
+}
+
+#tabela-estoque thead th.is-col-collapsed > *:not(.col-resizer) {
+    display: none !important;
+}
+
+#tabela-estoque tbody td.is-col-collapsed * {
+    display: none !important;
+}
+
+#tabela-estoque thead th.is-col-collapsed .col-resizer {
+    width: 100% !important;
+    right: 0 !important;
+    cursor: col-resize !important;
+}
+
+#tabela-estoque thead th.is-col-collapsed:hover {
+    background: rgba(240, 124, 0, 0.25) !important;
+}
+
+/* Alça de Redimensionamento na Borda Direita do Cabeçalho */
+.col-resizer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 8px;
+    height: 100%;
+    cursor: col-resize;
+    user-select: none;
+    z-index: 25;
+}
+
+.col-resizer::after {
+    content: '';
+    position: absolute;
+    right: 1px;
+    top: 10%;
+    bottom: 10%;
+    width: 2px;
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 1px;
+    transition: background-color 0.15s, width 0.15s;
+}
+
+.col-resizer:hover::after,
+.col-resizer.is-resizing::after {
+    background-color: var(--accent-orange, #f07c00);
+    width: 3.5px;
+    right: 1px;
+}
+
+body.is-column-resizing,
+body.is-column-resizing * {
+    cursor: col-resize !important;
+    user-select: none !important;
+}
+
+/* === MANIPULAÇÃO DE COLUNAS (DRAG & DROP) === */
+#tabela-estoque th.column-dragging {
+    cursor: grabbing !important;
+    opacity: 0.85;
+    background-color: var(--accent-orange, #f07c00) !important;
+    color: #fff !important;
+    transform: scale(1.03);
+    box-shadow: 0 10px 30px rgba(240, 124, 0, 0.5) !important;
+    z-index: 100 !important;
+    border: 2px dashed #ffffff !important;
+}
+
+#tabela-estoque th.column-drag-over {
+    border-left: 3px solid var(--accent-orange, #f07c00) !important;
+    background-color: rgba(240, 124, 0, 0.2) !important;
+}
+
+.column-reorder-toast {
+    position: fixed;
+    bottom: 25px;
+    right: 25px;
+    background: #f07c00;
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    animation: toastFadeIn 0.3s ease-out;
+}
+
+@keyframes toastFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(15px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+

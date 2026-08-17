@@ -4,6 +4,7 @@ const { JWT_SECRET } = require('../middleware/auth');
 const { poolHub, poolProdutos } = require('../config/database');
 const hubMercadoLivreService = require('../services/hubMercadoLivreService');
 const hubProdutosService = require('../services/hubProdutosService');
+const hubTokenService = require('../services/hubTokenService');
 
 exports.login = async (req, res) => {
     const { email, password } = req.body;
@@ -519,4 +520,176 @@ exports.sincronizarProdutosManuais = async (req, res) => {
         seller_ids: sellerIdsLimpos,
         aviso: 'O processo está rodando em segundo plano. Novas chamadas serão bloqueadas até a conclusão.'
     });
+};
+
+// =====================================================
+// PRAZO DE DISPONIBILIDADE (MANUFACTURING_TIME)
+// =====================================================
+
+/**
+ * PUT /api/anuncios/prazo-disponibilidade
+ * Define o prazo de disponibilidade (MANUFACTURING_TIME) em um ou mais anúncios.
+ * 
+ * Body esperado:
+ * {
+ *   "itens": ["MLB1234567890", "MLB0987654321"],
+ *   "dias": 5
+ * }
+ */
+exports.setPrazoDisponibilidade = async (req, res) => {
+    const clienteId = req.user.id;
+    const { itens, dias } = req.body;
+
+    // Validação de entrada
+    if (!itens || !Array.isArray(itens) || itens.length === 0) {
+        return res.status(400).json({
+            error: 'O campo "itens" é obrigatório e deve ser um array com pelo menos um ID de anúncio.',
+            exemplo: { itens: ["MLB1234567890"], dias: 5 }
+        });
+    }
+
+    if (!dias || isNaN(dias) || dias < 1 || dias > 45) {
+        return res.status(400).json({
+            error: 'O campo "dias" é obrigatório e deve ser um número entre 1 e 45.',
+            exemplo: { itens: ["MLB1234567890"], dias: 5 }
+        });
+    }
+
+    const itensLimpos = itens.map(id => String(id).trim().toUpperCase()).filter(id => id);
+
+    try {
+        const resultados = [];
+
+        for (const itemId of itensLimpos) {
+            try {
+                // 1. Descobre qual conta ML é dona deste anúncio
+                const conta = await hubProdutosService.resolverContaPorItem(itemId, clienteId);
+
+                if (!conta) {
+                    resultados.push({
+                        item_id: itemId,
+                        sucesso: false,
+                        erro: 'Anúncio não encontrado ou não pertence a nenhuma conta vinculada a este cliente.'
+                    });
+                    continue;
+                }
+
+                // 2. Pega o token válido (renova se necessário)
+                const accessToken = await hubTokenService.getValidAccessToken(conta);
+
+                // 3. Chama a API do ML para definir o prazo
+                await hubProdutosService.setPrazoDisponibilidade(itemId, dias, accessToken);
+
+                resultados.push({
+                    item_id: itemId,
+                    sucesso: true,
+                    dias_aplicados: dias,
+                    conta: conta.nickname
+                });
+
+            } catch (errItem) {
+                resultados.push({
+                    item_id: itemId,
+                    sucesso: false,
+                    erro: errItem.response?.data?.message || errItem.response?.data?.error || errItem.message
+                });
+            }
+        }
+
+        const sucessos = resultados.filter(r => r.sucesso).length;
+        const falhas = resultados.filter(r => !r.sucesso).length;
+
+        res.json({
+            resumo: {
+                total: itensLimpos.length,
+                sucessos,
+                falhas
+            },
+            resultados
+        });
+
+    } catch (error) {
+        console.error('Erro ao definir prazo de disponibilidade:', error);
+        res.status(500).json({ error: 'Erro interno ao definir prazo de disponibilidade.' });
+    }
+};
+
+/**
+ * DELETE /api/anuncios/prazo-disponibilidade
+ * Remove o prazo de disponibilidade (MANUFACTURING_TIME) de um ou mais anúncios.
+ * 
+ * Body esperado:
+ * {
+ *   "itens": ["MLB1234567890", "MLB0987654321"]
+ * }
+ */
+exports.removerPrazoDisponibilidade = async (req, res) => {
+    const clienteId = req.user.id;
+    const { itens } = req.body;
+
+    // Validação de entrada
+    if (!itens || !Array.isArray(itens) || itens.length === 0) {
+        return res.status(400).json({
+            error: 'O campo "itens" é obrigatório e deve ser um array com pelo menos um ID de anúncio.',
+            exemplo: { itens: ["MLB1234567890"] }
+        });
+    }
+
+    const itensLimpos = itens.map(id => String(id).trim().toUpperCase()).filter(id => id);
+
+    try {
+        const resultados = [];
+
+        for (const itemId of itensLimpos) {
+            try {
+                // 1. Descobre qual conta ML é dona deste anúncio
+                const conta = await hubProdutosService.resolverContaPorItem(itemId, clienteId);
+
+                if (!conta) {
+                    resultados.push({
+                        item_id: itemId,
+                        sucesso: false,
+                        erro: 'Anúncio não encontrado ou não pertence a nenhuma conta vinculada a este cliente.'
+                    });
+                    continue;
+                }
+
+                // 2. Pega o token válido (renova se necessário)
+                const accessToken = await hubTokenService.getValidAccessToken(conta);
+
+                // 3. Chama a API do ML para remover o prazo
+                await hubProdutosService.removerPrazoDisponibilidade(itemId, accessToken);
+
+                resultados.push({
+                    item_id: itemId,
+                    sucesso: true,
+                    prazo_removido: true,
+                    conta: conta.nickname
+                });
+
+            } catch (errItem) {
+                resultados.push({
+                    item_id: itemId,
+                    sucesso: false,
+                    erro: errItem.response?.data?.message || errItem.response?.data?.error || errItem.message
+                });
+            }
+        }
+
+        const sucessos = resultados.filter(r => r.sucesso).length;
+        const falhas = resultados.filter(r => !r.sucesso).length;
+
+        res.json({
+            resumo: {
+                total: itensLimpos.length,
+                sucessos,
+                falhas
+            },
+            resultados
+        });
+
+    } catch (error) {
+        console.error('Erro ao remover prazo de disponibilidade:', error);
+        res.status(500).json({ error: 'Erro interno ao remover prazo de disponibilidade.' });
+    }
 };

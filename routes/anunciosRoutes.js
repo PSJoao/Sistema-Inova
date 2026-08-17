@@ -34,9 +34,13 @@ router.post('/api/anuncios/sync', anunciosController.sincronizarAnuncios);
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Rotas para salvar/buscar ordem personalizada de colunas
+// Rotas para salvar/buscar preferências (ordem e larguras) de colunas
 router.get('/api/anuncios/column-order', authController.requireAuth, anunciosController.getColumnOrder);
 router.post('/api/anuncios/column-order', authController.requireAuth, anunciosController.saveColumnOrder);
+router.get('/api/anuncios/column-preferences', authController.requireAuth, anunciosController.getColumnPreferences);
+router.post('/api/anuncios/column-preferences', authController.requireAuth, anunciosController.saveColumnPreferences);
+router.get('/api/anuncios/promocoes/column-preferences', authController.requireAuth, anunciosController.getColumnPreferences);
+router.post('/api/anuncios/promocoes/column-preferences', authController.requireAuth, anunciosController.saveColumnPreferences);
 
 // Rota para importar planilha de custos e impostos por SKU
 router.post('/api/anuncios/importar-custos', authController.requireAuth, upload.single('planilha'), anunciosController.importarCustosEImpostos);
@@ -50,4 +54,15 @@ router.get('/anuncios/central-promocoes', anunciosController.renderCentralPromoc
 router.get('/api/anuncios/central-promocoes/listagem', authController.requireAuth, anunciosController.getCentralPromocoesApi);
 router.post('/api/anuncios/central-promocoes/reembolso', authController.requireAuth, anunciosController.salvarReembolsoMaximo);
 
+// --- Configuração de Prazos de Disponibilidade ---
+router.get('/anuncios/configurar-prazos', anunciosController.renderConfigurarPrazosPage);
+router.get('/api/anuncios/configurar-prazos/fornecedores', authController.requireAuth, anunciosController.getConfigPrazosFornecedoresApi);
+router.post('/api/anuncios/configurar-prazos/fornecedores', authController.requireAuth, anunciosController.salvarPrazoFornecedorApi);
+router.get('/api/anuncios/configurar-prazos/produtos', authController.requireAuth, anunciosController.getConfigPrazosProdutosApi);
+router.post('/api/anuncios/configurar-prazos/produtos', authController.requireAuth, anunciosController.salvarPrazoProdutoApi);
+router.post('/api/anuncios/configurar-prazos/aplicar', authController.requireAuth, anunciosController.aplicarPrazosManualApi);
+router.get('/api/anuncios/configurar-prazos/historico', authController.requireAuth, anunciosController.getHistoricoPrazosApi);
+
 module.exports = router;
+
+

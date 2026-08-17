@@ -38,4 +38,8 @@ router.post('/api/produtos/sync-manual', verifyHubToken, hubApiController.sincro
 // Rota para busca específica (aceita ID do Anúncio MLB... ou o SKU)
 router.get('/api/produtos/:identificador', verifyHubToken, hubApiController.getProdutoPorId);
 
+// Rotas de Prazo de Disponibilidade (MANUFACTURING_TIME)
+router.put('/api/anuncios/prazo-disponibilidade', verifyHubToken, hubApiController.setPrazoDisponibilidade);
+router.delete('/api/anuncios/prazo-disponibilidade', verifyHubToken, hubApiController.removerPrazoDisponibilidade);
+
 module.exports = router;
