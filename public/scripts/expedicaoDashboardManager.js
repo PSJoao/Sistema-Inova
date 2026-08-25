@@ -354,8 +354,93 @@ function formatarLinhaTabela(item) {
         embarcadoBadge: embarcadoBadge,
         paleteColeta: paleteColetaStr,
         dataEmbarque: dataEmbarqueFmt,
-        acoes: acoes
+        acoes: acoes,
+        _rawItem: item
     };
+}
+
+// Filtro Customizado de Cliente para DataTables (Executa Instantaneamente na Memória)
+if (!window._dtExpedicaoFilterRegistered) {
+    $.fn.dataTable.ext.search.push(function (settings, data, dataIndex, rowData) {
+        if (settings.nTable.id !== 'tabela-pendencias') return true;
+
+        const statusInterno = $('#filtro-status-tabela').val();
+        const statusMl = $('#filtro-status-ml-tabela').val();
+        const statusFoto = $('#filtro-status-foto-tabela').val();
+
+        const raw = rowData._rawItem || {};
+
+        if (statusInterno) {
+            const st = raw.status || '';
+            const sit = raw.situacao || '';
+            if (statusInterno === 'Pendente' && st !== 'pendente') return false;
+            if (statusInterno === 'Hub' && st !== 'hub') return false;
+            if (statusInterno === 'Checado' && st !== 'checado') return false;
+            if (statusInterno === 'Sem Estoque' && st !== 'sem_estoque') return false;
+            if (statusInterno === 'Cancelado' && st !== 'cancelamento') return false;
+            if (statusInterno === 'Cancelado Efetivado' && st !== 'cancelado') return false;
+            if (statusInterno === 'Expedido' && st !== 'impresso') return false;
+            if (statusInterno === 'Etiq. Impressa' && !(sit === 'impresso' && st !== 'impresso')) return false;
+            if (statusInterno === 'Pego, Sem Etiquetar' && !(st === 'sem_nota' || st === 'bip_sem_etiq')) return false;
+            if (statusInterno === 'Conferência Envio' && st !== 'conf_envio') return false;
+        }
+
+        if (statusMl) {
+            const stMl = (raw.status_ml || '').toLowerCase();
+            if (!stMl.includes(statusMl.toLowerCase())) return false;
+        }
+
+        if (statusFoto) {
+            const validacao = raw.foto_validacao;
+            const temFoto = Boolean(raw.tem_foto);
+            if (statusFoto === 'Foto: Validado' && validacao !== 'validado') return false;
+            if (statusFoto === 'Foto: Erro' && validacao !== 'erro') return false;
+            if (statusFoto === 'Foto: Pendente' && !(temFoto && !validacao)) return false;
+        }
+
+        return true;
+    });
+    window._dtExpedicaoFilterRegistered = true;
+}
+
+/**
+ * Busca os dados da Fila de Expedição e carrega na tabela em memória
+ */
+async function carregarTabelaPendencias(preservePage = false) {
+    try {
+        const dataInicioEl = document.getElementById('filtro-data-inicio');
+        const dataFimEl = document.getElementById('filtro-data-fim');
+        const params = new URLSearchParams({
+            dataInicio: dataInicioEl ? dataInicioEl.value : '',
+            dataFim: dataFimEl ? dataFimEl.value : '',
+            all: 'true',
+            _: Date.now()
+        });
+
+        const response = await fetch(`/api/expedicao/dashboard-tabela?${params.toString()}`);
+        if (!response.ok) throw new Error('Erro ao buscar dados da tabela.');
+
+        const json = await response.json();
+        const dados = (json && json.data) ? json.data.map(formatarLinhaTabela) : [];
+
+        let currentPage = 0;
+        if (preservePage && tabelaPendencias) {
+            currentPage = tabelaPendencias.page();
+        }
+
+        if (tabelaPendencias) {
+            tabelaPendencias.clear().rows.add(dados).draw(false);
+
+            if (preservePage) {
+                const maxPages = tabelaPendencias.page.info().pages;
+                if (currentPage < maxPages) {
+                    tabelaPendencias.page(currentPage).draw('page');
+                }
+            }
+        }
+    } catch (error) {
+        console.error('[Dashboard Expedição] Erro ao carregar tabela:', error);
+    }
 }
 
 /**
@@ -404,7 +489,6 @@ function initTabelas() {
             {
                 data: 'name',
                 render: function (data) {
-                    // Exibe nome mais curto (sem extensão)
                     const shortName = data.replace('.pdf', '').replace('Bipagem-Finalizada-', 'Bip-');
                     return `<span title="${data}" style="font-size: 0.85rem; font-weight: 500;">${shortName}</span>`;
                 }
@@ -431,7 +515,7 @@ function initTabelas() {
         language: dataTablesLangBR,
         pageLength: 10,
         ordering: true,
-        order: [[3, "desc"]], // Ordenar por data
+        order: [[3, "desc"]],
         columns: [
             { data: 'nfe' },
             { data: 'pedido' },
@@ -444,42 +528,22 @@ function initTabelas() {
         ]
     });
 
-    // Tabela de Pendências
+    // Tabela de Pendências — Modo Client-Side de Alta Performance
     tabelaPendencias = $('#tabela-pendencias').DataTable({
         language: dataTablesLangBR,
-        pageLength: 10,
+        pageLength: 25,
+        lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todos"]],
         scrollY: 'calc(100vh - 280px)',
         scrollCollapse: true,
         scrollX: true,
-        serverSide: true,
+        serverSide: false,
         processing: false,
-        ajax: {
-            url: '/api/expedicao/dashboard-tabela',
-            type: 'GET',
-            data: function (d) {
-                d._ = Date.now();
-                const dataInicioEl = document.getElementById('filtro-data-inicio');
-                const dataFimEl = document.getElementById('filtro-data-fim');
-                d.dataInicio = dataInicioEl ? dataInicioEl.value : '';
-                d.dataFim = dataFimEl ? dataFimEl.value : '';
-                d.statusInterno = $('#filtro-status-tabela').val();
-                d.statusMl = $('#filtro-status-ml-tabela').val();
-                d.statusFoto = $('#filtro-status-foto-tabela').val();
-                d.statusEmbarcado = $('#filtro-status-embarcado-tabela').val();
-            },
-            dataSrc: function (json) {
-                if (!json || !json.data) {
-                    console.error("Erro no carregamento da tabela ou sem dados:", json);
-                    return [];
-                }
-                return json.data.map(formatarLinhaTabela);
-            }
-        },
-        ordering: true,
+        data: [],
+        order: [[1, 'desc']],
         columns: [
             {
                 data: null,
-                visible: false, // escondido por padrão
+                visible: false,
                 orderable: false,
                 className: 'col-massa-check text-center',
                 render: function (data, type, row) {
@@ -506,9 +570,6 @@ function initTabelas() {
             { data: 'localizacao', className: 'col-localizacao' },
             { data: 'statusMlBadge', className: 'col-status-ml' },
             { data: 'statusBadge', className: 'col-status-interno' },
-            /* { data: 'embarcadoBadge', className: 'col-embarcado text-center' },
-            { data: 'paleteColeta', className: 'col-palete-coleta' },
-            { data: 'dataEmbarque', className: 'col-data-embarque' }, */
             { data: 'acoes', className: 'col-acoes', orderable: false }
         ]
     });
@@ -533,7 +594,6 @@ function initTabelas() {
     // Filtro de Data Global (Próximo à Busca Global)
     const searchWrapper = $('#tabela-pendencias_filter');
     if (searchWrapper.length) {
-        // Aplica flexbox no wrapper do DataTables para garantir alinhamento perfeito na mesma linha
         searchWrapper.css({
             'display': 'flex',
             'align-items': 'center',
@@ -541,16 +601,14 @@ function initTabelas() {
             'gap': '15px'
         });
 
-        // Remove a margem inferior padrão da label de busca do DataTables (Bootstrap as vezes adiciona)
         searchWrapper.find('label').css('margin-bottom', '0');
 
-        // Estado Padrão do Filtro: Últimos 30 dias contados a partir da data atual
         const hoje = new Date();
         const trintaDiasAtras = new Date();
         trintaDiasAtras.setDate(hoje.getDate() - 30);
 
         const formatData = (d) => {
-            const tzOffset = d.getTimezoneOffset() * 60000; // offset in milliseconds
+            const tzOffset = d.getTimezoneOffset() * 60000;
             const localISOTime = (new Date(d.getTime() - tzOffset)).toISOString().slice(0, 10);
             return localISOTime;
         };
@@ -569,7 +627,7 @@ function initTabelas() {
         $('#filtro-data-inicio, #filtro-data-fim').on('change', function () {
             resetaSelecao();
             carregarDadosDashboard();
-            tabelaPendencias.ajax.reload(null, true); // Reset page on date change
+            carregarTabelaPendencias(false);
             carregarGestaoConferencia();
         });
 
@@ -583,6 +641,9 @@ function initTabelas() {
         });
     }
 
+    // Carrega os dados iniciais da tabela
+    carregarTabelaPendencias(false);
+
     // Listener para o clique na checkbox da linha (DELEGAÇÃO DE EVENTO)
     $('#tabela-pendencias tbody').on('change', '.chk-massa-row', function () {
         const val = $(this).val();
@@ -590,19 +651,14 @@ function initTabelas() {
             selectedNFs.add(val);
         } else {
             selectedNFs.delete(val);
-        }
-        
-        // Se desmarcou uma linha, o master checkbox e o "Seleção Total" devem desmarcar
-        if (!this.checked) {
             $('#chk-master-massa').prop('checked', false);
             const chkTotal = document.getElementById('chk-massa-selecao-total');
             if (chkTotal) chkTotal.checked = false;
         }
-        
         updateMassaPanelCount();
     });
 
-    // Listener Master Checkbox (DELEGAÇÃO DO CABEÇALHO)
+    // Listener Master Checkbox (Página Atual)
     $(document).on('change', '#chk-master-massa', function () {
         const isChecked = this.checked;
         const dadosPaginaAtual = tabelaPendencias.rows({ page: 'current' }).data().toArray();
@@ -610,16 +666,14 @@ function initTabelas() {
         dadosPaginaAtual.forEach(row => {
             const nfBase = String(row.nf_numero);
             if (isChecked) {
-                selectedNFs.add(nfBase);
+                if (nfBase && nfBase !== '-') selectedNFs.add(nfBase);
             } else {
                 selectedNFs.delete(nfBase);
             }
         });
 
-        // Atualiza as caixas das instâncias DOM da página atual
         $('input.chk-massa-row', tabelaPendencias.rows({ page: 'current' }).nodes()).prop('checked', isChecked);
 
-        // Se desmarcou o master, desmarca também o Seleção Total
         if (!isChecked) {
             const chkTotal = document.getElementById('chk-massa-selecao-total');
             if (chkTotal) chkTotal.checked = false;
@@ -628,15 +682,14 @@ function initTabelas() {
         updateMassaPanelCount();
     });
 
-    // Evento de Filtro via Combobox
+    // Evento de Filtro via Combobox (Filtro instantâneo em memória)
     $('#filtro-status-tabela, #filtro-status-ml-tabela, #filtro-status-foto-tabela').on('change', function () {
         resetaSelecao();
-        tabelaPendencias.ajax.reload();
+        if (tabelaPendencias) tabelaPendencias.draw();
     });
 
     // Evento de redesenho da tabela para sincronizar checkboxes e master checkbox
     tabelaPendencias.on('draw', function () {
-        // Sincronizar checkboxes individuais na DOM
         const pageNodes = tabelaPendencias.rows({ page: 'current' }).nodes().toArray();
         pageNodes.forEach(node => {
             const chk = $(node).find('.chk-massa-row');
@@ -646,41 +699,30 @@ function initTabelas() {
             }
         });
 
-        // Sincronizar master checkbox do cabeçalho
         const rowsData = tabelaPendencias.rows({ page: 'current' }).data().toArray();
         if (rowsData.length === 0) {
             $('#chk-master-massa').prop('checked', false);
             return;
         }
 
-        let allChecked = true;
-        rowsData.forEach(row => {
-            const nfBase = String(row.nf_numero);
-            if (!selectedNFs.has(nfBase)) {
-                allChecked = false;
-            }
-        });
-
+        const allChecked = rowsData.every(row => selectedNFs.has(String(row.nf_numero)));
         $('#chk-master-massa').prop('checked', allChecked);
     });
 
-    // Evento de Clique nos Cards de Balanço do Dia (Filtro Rápido)
+    // Evento de Clique nos Cards de Balanço do Dia (Filtro Rápido Instantâneo)
     $('.stat-card-clickable').on('click', function () {
         const filterValue = $(this).attr('data-filter-status') || '';
 
-        // Atualiza visualmente o card ativo
         $('.stat-card-clickable').removeClass('stat-card-active');
         if (filterValue !== "") {
             $(this).addClass('stat-card-active');
         }
 
-        // Atualiza o select do filtro interno e dispara o change para o DataTables
-        $('#filtro-status-tabela').val(filterValue).trigger('change');
+        $('#filtro-status-tabela').val(filterValue);
+        $('#filtro-status-ml-tabela').val('');
+        resetaSelecao();
+        if (tabelaPendencias) tabelaPendencias.draw();
 
-        // Reseta o filtro ML para não conflitar com o clique rápido (opcional)
-        $('#filtro-status-ml-tabela').val('').trigger('change');
-
-        // Rola a tela suavemente até a tabela
         $('html, body').animate({
             scrollTop: $('.table-toolbar').offset().top - 20
         }, 500);
@@ -696,110 +738,54 @@ function setupMassaModeListeners() {
     const btnClear = document.getElementById('btn-massa-clear');
     const btnApply = document.getElementById('btn-massa-aplicar');
 
-    // Liga/Desliga o modo
     btnToggle.addEventListener('click', () => {
         isMassaMode = !isMassaMode;
         if (isMassaMode) {
             btnToggle.classList.replace('outline', 'solid');
             btnToggle.innerHTML = '<i class="fas fa-times"></i> Fechar Seleção';
             panel.style.display = 'flex';
-            tabelaPendencias.column(0).visible(true); // Mostra checkboxes
+            tabelaPendencias.column(0).visible(true);
             $('#th-massa').show();
         } else {
             btnToggle.classList.replace('solid', 'outline');
             btnToggle.innerHTML = '<i class="fas fa-check-square"></i> Seleção em Massa';
             panel.style.display = 'none';
-            tabelaPendencias.column(0).visible(false); // Esconde
+            tabelaPendencias.column(0).visible(false);
             $('#th-massa').hide();
         }
     });
 
-    // Limpar tudo
     btnClear.addEventListener('click', () => {
         resetaSelecao();
     });
 
-    // Lógica para Seleção Total Dinâmica
+    // Lógica para Seleção Total Instantânea em Memória
     const chkSelecaoTotal = document.getElementById('chk-massa-selecao-total');
     if (chkSelecaoTotal) {
-        chkSelecaoTotal.addEventListener('change', async function () {
+        chkSelecaoTotal.addEventListener('change', function () {
             const isChecked = this.checked;
 
             if (isChecked) {
-                // Bloqueia a interface e mostra loading
-                ModalSystem.showLoading('Buscando todas as notas filtradas...');
-                try {
-                    // Pega os parâmetros atuais do filtro
-                    const dataInicio = document.getElementById('filtro-data-inicio') ? document.getElementById('filtro-data-inicio').value : '';
-                    const dataFim = document.getElementById('filtro-data-fim') ? document.getElementById('filtro-data-fim').value : '';
-                    const statusInterno = $('#filtro-status-tabela').val();
-                    const statusMl = $('#filtro-status-ml-tabela').val();
-                    const statusFoto = $('#filtro-status-foto-tabela').val();
-                    const statusEmbarcado = $('#filtro-status-embarcado-tabela').val();
-                    const searchWrapper = $('#tabela-pendencias_filter input');
-                    const searchValue = searchWrapper.length ? searchWrapper.val() : '';
-
-                    // Monta a query string com length=-1 para trazer TODOS os registros
-                    const queryParams = new URLSearchParams({
-                        dataInicio: dataInicio,
-                        dataFim: dataFim,
-                        statusInterno: statusInterno || '',
-                        statusMl: statusMl || '',
-                        statusFoto: statusFoto || '',
-                        statusEmbarcado: statusEmbarcado || '',
-                        draw: 1,
-                        start: 0,
-                        length: -1,
-                        _: Date.now() // Cache buster
-                    });
-
-                    if (searchValue) {
-                        queryParams.append('search[value]', searchValue);
+                const filteredRows = tabelaPendencias.rows({ search: 'applied' }).data().toArray();
+                selectedNFs.clear();
+                filteredRows.forEach(row => {
+                    const num = row.nf_numero;
+                    if (num && String(num) !== 'null' && String(num) !== '-') {
+                        selectedNFs.add(String(num));
                     }
+                });
 
-                    const response = await fetch(`/api/expedicao/dashboard-tabela?${queryParams.toString()}`);
-                    if (!response.ok) throw new Error('Erro ao buscar dados totais.');
+                const pageNodes = tabelaPendencias.rows({ page: 'current' }).nodes().toArray();
+                pageNodes.forEach(node => {
+                    const chk = $(node).find('.chk-massa-row');
+                    if (chk.length) chk.prop('checked', true);
+                });
 
-                    const result = await response.json();
-
-                    if (result && result.data) {
-                        selectedNFs.clear();
-                        let foundCount = 0;
-                        result.data.forEach(item => {
-                            const num = item.nfe_numero || item.nf_numero || item.nf || item.pedido_numero;
-                            if (num && String(num) !== 'null' && String(num) !== '-') {
-                                selectedNFs.add(String(num));
-                                foundCount++;
-                            }
-                        });
-
-                        if (foundCount === 0) {
-                            ModalSystem.alert('A busca retornou zero registros aplicáveis.', 'Aviso');
-                        }
-
-                        // Atualiza os checkboxes da página atual de forma segura
-                        const pageNodes = tabelaPendencias.rows({ page: 'current' }).nodes().toArray();
-                        pageNodes.forEach(node => {
-                            const chk = $(node).find('.chk-massa-row');
-                            if (chk.length) {
-                                chk.prop('checked', true);
-                            }
-                        });
-
-                        $('#chk-master-massa').prop('checked', true);
-                        updateMassaPanelCount();
-                    }
-
-                    ModalSystem.hideLoading();
-                } catch (e) {
-                    ModalSystem.hideLoading();
-                    ModalSystem.alert('Falha ao buscar seleção total: ' + e.message, 'Erro');
-                    this.checked = false;
-                }
+                $('#chk-master-massa').prop('checked', true);
             } else {
-                // Se desmarcar, limpa tudo
                 resetaSelecao();
             }
+            updateMassaPanelCount();
         });
     }
 
@@ -829,10 +815,9 @@ function setupMassaModeListeners() {
 
                 if (!data.success) throw new Error(data.message);
 
-                // Sucesso: Limpa e recarrega
                 resetaSelecao();
                 carregarDadosDashboard();
-                tabelaPendencias.ajax.reload(null, false);
+                carregarTabelaPendencias(true);
 
                 ModalSystem.alert(data.message, 'Operação Concluída');
 
@@ -849,6 +834,7 @@ function resetaSelecao() {
     $('#chk-master-massa').prop('checked', false);
     const chkTotal = document.getElementById('chk-massa-selecao-total');
     if (chkTotal) chkTotal.checked = false;
+    $('input.chk-massa-row', tabelaPendencias ? tabelaPendencias.rows({ page: 'current' }).nodes() : null).prop('checked', false);
     updateMassaPanelCount();
 }
 
@@ -876,10 +862,10 @@ function initDashboardRealTime() {
     carregarGestaoConferencia();
     setInterval(() => {
         carregarDadosDashboard();
-        if (tabelaPendencias) tabelaPendencias.ajax.reload(null, false);
+        carregarTabelaPendencias(true); // Atualiza suavemente em background
         carregarGestaoConferencia();
         carregarPedidosComFoto();
-    }, 30000); // Atualiza a cada 30 segundos
+    }, 30000);
 }
 
 /**
@@ -1096,6 +1082,28 @@ function initGestaoConferenciaListeners() {
         });
     }
 
+    // --- Botão e Modal Gerar Relatório de Conferência ---
+    const btnRelatorio = document.getElementById('btn-relatorio-gestao-conferencia');
+    if (btnRelatorio) {
+        btnRelatorio.addEventListener('click', abrirModalRelatorioConferencia);
+    }
+    const btnCloseRelatorioX = document.getElementById('btnFecharModalRelatorioX');
+    if (btnCloseRelatorioX) {
+        btnCloseRelatorioX.addEventListener('click', fecharModalRelatorioConferencia);
+    }
+    const btnCancelRelatorio = document.getElementById('btnCancelarModalRelatorio');
+    if (btnCancelRelatorio) {
+        btnCancelRelatorio.addEventListener('click', fecharModalRelatorioConferencia);
+    }
+    const overlayRelatorio = document.getElementById('modalRelatorioConferenciaOverlay');
+    if (overlayRelatorio) {
+        overlayRelatorio.addEventListener('click', fecharModalRelatorioConferencia);
+    }
+    const btnConfirmarRelatorio = document.getElementById('btnConfirmarGerarRelatorio');
+    if (btnConfirmarRelatorio) {
+        btnConfirmarRelatorio.addEventListener('click', confirmarDownloadRelatorioConferencia);
+    }
+
     // --- Botão Ver Status do Envio ---
     const btnVerProgresso = document.getElementById('btn-ver-progresso-lote');
     if (btnVerProgresso) {
@@ -1127,7 +1135,91 @@ function initGestaoConferenciaListeners() {
 }
 
 // ==========================================
-// ENVIO EM LOTE INTELIGENTE — Modal de Progresso
+// MODAL DE RELATÓRIO DE CONFERÊNCIA
+// ==========================================
+
+function abrirModalRelatorioConferencia() {
+    const modal = document.getElementById('modalRelatorioConferencia');
+    const overlay = document.getElementById('modalRelatorioConferenciaOverlay');
+    const inputInicio = document.getElementById('relatorio-conferencia-data-inicio');
+    const inputFim = document.getElementById('relatorio-conferencia-data-fim');
+
+    if (!modal || !overlay) return;
+
+    // Se já houver datas no filtro do dashboard, aproveita, senão coloca o dia de hoje
+    const filtroInicio = document.getElementById('filtro-data-inicio');
+    const filtroFim = document.getElementById('filtro-data-fim');
+    const hoje = new Date().toISOString().split('T')[0];
+
+    if (inputInicio) {
+        inputInicio.value = (filtroInicio && filtroInicio.value) ? filtroInicio.value : hoje;
+    }
+    if (inputFim) {
+        inputFim.value = (filtroFim && filtroFim.value) ? filtroFim.value : hoje;
+    }
+
+    overlay.classList.add('visible');
+    modal.classList.add('visible');
+}
+
+function fecharModalRelatorioConferencia() {
+    const modal = document.getElementById('modalRelatorioConferencia');
+    const overlay = document.getElementById('modalRelatorioConferenciaOverlay');
+    if (modal) modal.classList.remove('visible');
+    if (overlay) overlay.classList.remove('visible');
+}
+
+async function confirmarDownloadRelatorioConferencia() {
+    const inputInicio = document.getElementById('relatorio-conferencia-data-inicio');
+    const inputFim = document.getElementById('relatorio-conferencia-data-fim');
+
+    const dataInicio = inputInicio ? inputInicio.value : '';
+    const dataFim = inputFim ? inputFim.value : '';
+
+    if (!dataInicio || !dataFim) {
+        ToastSystem.warning('Por favor, informe a Data Início e a Data Fim.');
+        return;
+    }
+
+    if (dataInicio > dataFim) {
+        ToastSystem.warning('A Data Início não pode ser maior que a Data Fim.');
+        return;
+    }
+
+    fecharModalRelatorioConferencia();
+    ModalSystem.showLoading('Gerando relatório Excel da conferência...', 'Aguarde');
+
+    try {
+        const url = `/api/expedicao/conferencia-gestao/relatorio?dataInicio=${encodeURIComponent(dataInicio)}&dataFim=${encodeURIComponent(dataFim)}`;
+        const response = await fetch(url);
+
+        if (!response.ok) {
+            let errorMsg = 'Falha ao gerar relatório.';
+            try {
+                const errJson = await response.json();
+                if (errJson && errJson.message) errorMsg = errJson.message;
+            } catch (_) {}
+            throw new Error(errorMsg);
+        }
+
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = downloadUrl;
+        a.download = `Relatorio_Conferencia_${dataInicio}_a_${dataFim}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(downloadUrl);
+        document.body.removeChild(a);
+
+        ModalSystem.hideLoading();
+    } catch (error) {
+        console.error('[Relatório Conferência] Erro ao baixar relatório:', error);
+        ModalSystem.hideLoading();
+        ModalSystem.alert(`Erro ao gerar relatório: ${error.message}`, 'Erro no Download');
+    }
+}
 // ==========================================
 let _lotePollingInterval = null;
 
@@ -1368,8 +1460,8 @@ async function alterarStatusEtiqueta(id, novoStatus) {
 
         if (response.ok) {
             carregarDadosDashboard();
-            tabelaPendencias.ajax.reload(null, false); // Recarrega a tabela DataTables sem perder a página atual
-            carregarPedidosComFoto(); // Atualiza também a tabela de fotos
+            carregarTabelaPendencias(true);
+            carregarPedidosComFoto();
         } else {
             throw new Error('Falha na resposta da API.');
         }
@@ -1507,48 +1599,9 @@ function initExportButtons() {
 async function solicitarPlanilhaDinamica(type) {
     if (!tabelaPendencias) return;
 
-    ModalSystem.showLoading('Buscando todos os registros filtrados do servidor...', 'Aguarde');
-
-    let jsonResponse;
-    try {
-        const dataInicioEl = document.getElementById('filtro-data-inicio');
-        const dataFimEl = document.getElementById('filtro-data-fim');
-
-        let orderCol = 1;
-        let orderDir = 'desc';
-        if (tabelaPendencias.order().length > 0) {
-            orderCol = tabelaPendencias.order()[0][0];
-            orderDir = tabelaPendencias.order()[0][1];
-        }
-
-        const params = new URLSearchParams({
-            dataInicio: dataInicioEl ? dataInicioEl.value : '',
-            dataFim: dataFimEl ? dataFimEl.value : '',
-            statusInterno: $('#filtro-status-tabela').val() || '',
-            statusMl: $('#filtro-status-ml-tabela').val() || '',
-            statusEmbarcado: $('#filtro-status-embarcado-tabela').val() || '',
-            start: 0,
-            length: -1, // Retorna TODOS os registros
-            'search[value]': tabelaPendencias.search() || '',
-            'order[0][column]': orderCol,
-            'order[0][dir]': orderDir
-        });
-
-        const fetchRes = await fetch(`/api/expedicao/dashboard-tabela?${params.toString()}`);
-        jsonResponse = await fetchRes.json();
-    } catch (e) {
-        ModalSystem.hideLoading();
-        return ModalSystem.alert('Erro ao buscar todos os dados filtrados.', 'Erro de Rede');
-    }
-
-    if (!jsonResponse || !jsonResponse.data) {
-        throw new Error('Retorno vazio do servidor.');
-    }
-
-    const dadosBuscados = jsonResponse.data.map(formatarLinhaTabela);
+    const dadosBuscados = tabelaPendencias.rows({ search: 'applied' }).data().toArray();
 
     if (dadosBuscados.length === 0) {
-        ModalSystem.hideLoading();
         return ModalSystem.alert('A tabela atual não possui dados com os filtros aplicados para poder exportar.', 'Tabela Vazia');
     }
 
@@ -1672,54 +1725,18 @@ async function solicitarPlanilhaDinamica(type) {
     } catch (err) {
         console.error(err);
         ModalSystem.hideLoading();
-        ModalSystem.alert('Não foi possível realizar o download.', 'Erro na Geração Excel');
+        ModalSystem.alert(err.message, 'Erro na Geração Excel');
     }
 }
 
 async function imprimirPendenciasLote() {
     if (!tabelaPendencias) return;
 
-    ModalSystem.showLoading('Buscando registros filtrados do servidor...', 'Aguarde');
+    const dadosVisiveis = tabelaPendencias.rows({ search: 'applied' }).data().toArray();
 
-    let jsonResponse;
-    try {
-        const dataInicioEl = document.getElementById('filtro-data-inicio');
-        const dataFimEl = document.getElementById('filtro-data-fim');
-
-        let orderCol = 1;
-        let orderDir = 'desc';
-        if (tabelaPendencias.order().length > 0) {
-            orderCol = tabelaPendencias.order()[0][0];
-            orderDir = tabelaPendencias.order()[0][1];
-        }
-
-        const params = new URLSearchParams({
-            dataInicio: dataInicioEl ? dataInicioEl.value : '',
-            dataFim: dataFimEl ? dataFimEl.value : '',
-            statusInterno: $('#filtro-status-tabela').val() || '',
-            statusMl: $('#filtro-status-ml-tabela').val() || '',
-            statusEmbarcado: $('#filtro-status-embarcado-tabela').val() || '',
-            start: 0,
-            length: -1, // Retorna TODOS os registros
-            'search[value]': tabelaPendencias.search() || '',
-            'order[0][column]': orderCol,
-            'order[0][dir]': orderDir
-        });
-
-        const fetchRes = await fetch(`/api/expedicao/dashboard-tabela?${params.toString()}`);
-        jsonResponse = await fetchRes.json();
-    } catch (e) {
-        ModalSystem.hideLoading();
-        return ModalSystem.alert('Erro ao buscar todos os dados filtrados.', 'Erro de Rede');
-    }
-
-    if (!jsonResponse || !jsonResponse.data || jsonResponse.data.length === 0) {
-        ModalSystem.hideLoading();
+    if (!dadosVisiveis || dadosVisiveis.length === 0) {
         return ModalSystem.alert('A tabela atual não possui dados aplicáveis para impressão.', 'Tabela Vazia');
     }
-
-    const dadosVisiveis = jsonResponse.data.map(formatarLinhaTabela);
-
 
     const htmlStripper = /(<([^>]+)>)/gi;
     const nfsExtraidas = [];
@@ -1731,8 +1748,7 @@ async function imprimirPendenciasLote() {
     });
 
     if (nfsExtraidas.length === 0) {
-        ModalSystem.alert('Não foram encontrados NFs processáveis nos dados atuais.', 'Sem Dados');
-        return;
+        return ModalSystem.alert('Não foram encontrados NFs processáveis nos dados atuais.', 'Sem Dados');
     }
 
     try {
@@ -1887,7 +1903,7 @@ async function executarValidacaoFoto(nfeNumero, acao) {
         if (result.success) {
             ToastSystem.success(result.message);
             carregarPedidosComFoto();
-            tabelaPendencias.ajax.reload(null, false);
+            carregarTabelaPendencias(true);
             fecharLightboxFoto(); // Fecha se estiver aberto
         } else {
             ToastSystem.error(result.message);
@@ -1913,7 +1929,7 @@ window.corrigirFlagFotoPedido = function(nfeNumero) {
             if (result.success) {
                 ToastSystem.success(result.message);
                 carregarPedidosComFoto();
-                tabelaPendencias.ajax.reload(null, false);
+                carregarTabelaPendencias(true);
             } else {
                 ToastSystem.error(result.message);
             }

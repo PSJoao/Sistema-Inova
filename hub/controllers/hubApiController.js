@@ -74,6 +74,15 @@ exports.getPedidos = async (req, res) => {
         const result = await poolHub.query(query, params);
         const rows = result.rows;
 
+        // Se o cliente (Sistema Inova) pedir os dados crus (sem agrupar por envio)
+        if (req.query.raw === 'true') {
+            return res.json({
+                total_retornado: rows.length,
+                pagina_atual: { limit: limiteReal, offset: offsetReal },
+                dados: rows
+            });
+        }
+
         // --- LÓGICA DE AGRUPAMENTO (Consolidação de Pacotes) ---
         // Aqui transformamos a lista crua de pedidos em uma lista inteligente de pacotes
         const pacotesMap = new Map();
@@ -693,3 +702,308 @@ exports.removerPrazoDisponibilidade = async (req, res) => {
         res.status(500).json({ error: 'Erro interno ao remover prazo de disponibilidade.' });
     }
 };
+
+// =====================================================
+// GESTÃO DE PROMOÇÕES (OPT-IN E OPT-OUT VIA API)
+// =====================================================
+
+/**
+ * POST /api/promocoes/opt-in
+ * Adiciona um anúncio a uma promoção no Mercado Livre.
+ * 
+ * Body esperado:
+ * {
+ *   "item_id": "MLB1234567890",
+ *   "promotion_id": "P-MLB123",
+ *   "promotion_type": "DEAL",
+ *   "deal_price": 749.00,
+ *   "options": { "ref_id": "..." }
+ * }
+ */
+exports.aderirPromocao = async (req, res) => {
+    const clienteId = req.user?.id || null;
+    const { item_id, promotion_id, promotion_type, deal_price, options } = req.body;
+
+    if (!item_id) {
+        return res.status(400).json({ error: 'O campo "item_id" é obrigatório.' });
+    }
+
+    try {
+        const resultado = await hubProdutosService.aderirPromocaoItem(
+            item_id,
+            promotion_id,
+            promotion_type,
+            deal_price,
+            options || {},
+            clienteId
+        );
+
+        res.status(200).json({
+            success: true,
+            message: `Anúncio ${item_id} adicionado à promoção com sucesso!`,
+            ...resultado
+        });
+    } catch (error) {
+        console.error(`[HUB API] Erro no opt-in de promoção para ${item_id}:`, error.message);
+        res.status(400).json({
+            success: false,
+            error: error.message || 'Erro ao participar da promoção no Mercado Livre.'
+        });
+    }
+};
+
+/**
+ * POST /api/promocoes/opt-out
+ * Remove um anúncio de uma promoção no Mercado Livre.
+ * 
+ * Body esperado:
+ * {
+ *   "item_id": "MLB1234567890",
+ *   "promotion_id": "P-MLB123",
+ *   "promotion_type": "DEAL"
+ * }
+ */
+exports.removerPromocao = async (req, res) => {
+    const clienteId = req.user?.id || null;
+    const body = req.body || {};
+    const query = req.query || {};
+    const item_id = body.item_id || query.item_id;
+    const promotion_id = body.promotion_id || query.promotion_id;
+    const promotion_type = body.promotion_type || query.promotion_type;
+    const options = body.options || query.options || {
+        offer_id: body.offer_id || query.offer_id,
+        ref_id: body.ref_id || query.ref_id
+    };
+
+    if (!item_id) {
+        return res.status(400).json({ error: 'O campo "item_id" é obrigatório.' });
+    }
+
+    try {
+        const resultado = await hubProdutosService.removerPromocaoItem(
+            item_id,
+            promotion_id,
+            promotion_type,
+            options,
+            clienteId
+        );
+
+
+        res.status(200).json({
+            success: true,
+            message: `Anúncio ${item_id} removido da promoção com sucesso!`,
+            ...resultado
+        });
+    } catch (error) {
+        console.error(`[HUB API] Erro no opt-out de promoção para ${item_id}:`, error.message);
+        res.status(400).json({
+            success: false,
+            error: error.message || 'Erro ao sair da promoção no Mercado Livre.'
+        });
+    }
+};
+
+// =========================================================================
+// ROTINAS ON-DEMAND DE SINCRONIZAÇÃO DE PEDIDOS (DISPARADAS POR GATILHO/HTTP)
+// =========================================================================
+
+/**
+ * POST /api/pedidos/sincronizar/novos
+ * Dispara sob demanda a captura paginada de novos pedidos recentes.
+ * NÃO chama /shipment_labels para não marcar etiquetas como impressas prematuramente.
+ */
+exports.sincronizarNovosPedidos = async (req, res) => {
+    const clienteId = req.user.id;
+    const { conta_id, seller_id, dias, limit } = req.body || {};
+
+    try {
+        const resultado = await hubMercadoLivreService.capturarNovosPedidosCliente(clienteId, {
+            conta_id,
+            seller_id,
+            dias,
+            limit
+        });
+
+        res.status(200).json(resultado);
+    } catch (error) {
+        console.error('[HUB API] Erro na captura de novos pedidos sob demanda:', error.message);
+        res.status(error.message.includes('não encontrada') ? 403 : 500).json({
+            sucesso: false,
+            error: error.message || 'Erro interno ao sincronizar novos pedidos.'
+        });
+    }
+};
+
+/**
+ * POST /api/pedidos/sincronizar/diferentes
+ * Dispara sob demanda o monitoramento de pedidos pagos sem envio/status no banco.
+ * NÃO chama /shipment_labels.
+ */
+exports.sincronizarPedidosDiferentes = async (req, res) => {
+    const clienteId = req.user.id;
+    const { conta_id, seller_id } = req.body || {};
+
+    try {
+        const resultado = await hubMercadoLivreService.monitorarPedidosDiferentesCliente(clienteId, {
+            conta_id,
+            seller_id
+        });
+
+        res.status(200).json(resultado);
+    } catch (error) {
+        console.error('[HUB API] Erro no monitoramento de pedidos diferentes sob demanda:', error.message);
+        res.status(error.message.includes('não encontrada') ? 403 : 500).json({
+            sucesso: false,
+            error: error.message || 'Erro interno ao monitorar pedidos diferentes.'
+        });
+    }
+};
+
+/**
+ * POST /api/pedidos/sincronizar/existentes
+ * Dispara sob demanda a atualização completa de pedidos abertos/ativos.
+ * NÃO chama /shipment_labels.
+ */
+exports.sincronizarPedidosExistentes = async (req, res) => {
+    const clienteId = req.user.id;
+    const { conta_id, seller_id, dias } = req.body || {};
+
+    try {
+        const resultado = await hubMercadoLivreService.monitorarPedidosExistentesCliente(clienteId, {
+            conta_id,
+            seller_id,
+            dias
+        });
+
+        res.status(200).json(resultado);
+    } catch (error) {
+        console.error('[HUB API] Erro no monitoramento de pedidos existentes sob demanda:', error.message);
+        res.status(error.message.includes('não encontrada') ? 403 : 500).json({
+            sucesso: false,
+            error: error.message || 'Erro interno ao monitorar pedidos existentes.'
+        });
+    }
+};
+
+/**
+ * POST /api/pedidos/sincronizar/devolucoes
+ * Dispara sob demanda o monitoramento de devoluções, mediações e logística reversa.
+ */
+exports.sincronizarDevolucoes = async (req, res) => {
+    const clienteId = req.user.id;
+    const { conta_id, seller_id, dias } = req.body || {};
+
+    try {
+        const resultado = await hubMercadoLivreService.monitorarDevolucoesCliente(clienteId, {
+            conta_id,
+            seller_id,
+            dias
+        });
+
+        res.status(200).json(resultado);
+    } catch (error) {
+        console.error('[HUB API] Erro no monitoramento de devoluções sob demanda:', error.message);
+        res.status(error.message.includes('não encontrada') ? 403 : 500).json({
+            sucesso: false,
+            error: error.message || 'Erro interno ao monitorar devoluções.'
+        });
+    }
+};
+
+// =========================================================================
+// ENDPOINT ISOLADO E DEDICADO PARA GESTÃO/DOWNLOAD REAL DE ETIQUETAS
+// =========================================================================
+
+/**
+ * POST /api/pedidos/etiquetas/obter
+ * Busca e baixa etiquetas de envio no ML APENAS no momento da impressão real para os pedidos selecionados pelo usuário.
+ * 
+ * Body esperado:
+ * {
+ *   "pedidos": ["2000001234567", "2000009876543"], // lista de IDs de pedidos selecionados no controle
+ *   "formato": "zpl2", // "zpl2" (padrão para térmicas) ou "pdf"
+ *   "consolidar": true // retorna zpl_consolidado com todos os ZPLs concatenados para envio direto à impressora
+ * }
+ */
+exports.obterEtiquetasEnvio = async (req, res) => {
+    const clienteId = req.user.id;
+    const body = req.body || {};
+    const query = req.query || {};
+
+    const pedidos = body.pedidos || body.pedido_ids || body.ids || query.pedidos || query.pedido_ids;
+    const shipment_ids = body.shipment_ids || body.envios || body.ids_envio || query.shipment_ids || query.envios;
+    const pack_ids = body.pack_ids || body.packs || query.pack_ids;
+    const formato = body.formato || query.formato || 'zpl2';
+    const consolidar = body.consolidar !== undefined ? body.consolidar : (query.consolidar !== undefined ? query.consolidar === 'true' : true);
+    const salvar_banco = body.salvar_banco !== undefined ? body.salvar_banco : (query.salvar_banco !== undefined ? query.salvar_banco !== 'false' : true);
+
+    try {
+        const resultado = await hubMercadoLivreService.obterEtiquetasEnvio(clienteId, {
+            pedidos,
+            pedido_ids: body.pedido_ids,
+            shipment_ids,
+            pack_ids,
+            formato,
+            consolidar,
+            salvar_banco
+        });
+
+        // Se o cliente pediu resposta em texto cru (ex: raw=true e formato=zpl2 com zpl_consolidado)
+        if ((req.query.raw === 'true' || req.body.raw === true) && resultado.zpl_consolidado) {
+            res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+            return res.send(resultado.zpl_consolidado);
+        }
+
+        res.status(resultado.sucesso ? 200 : 404).json(resultado);
+    } catch (error) {
+        console.error('[HUB API] Erro ao obter etiquetas de envio:', error.message);
+        res.status(400).json({
+            sucesso: false,
+            error: error.message || 'Erro ao processar etiquetas de envio.'
+        });
+    }
+};
+
+/**
+ * GET /api/pedidos/etiquetas/:id_envio
+ * Rota conveniente para baixar/visualizar etiqueta de envio individual.
+ */
+exports.baixarEtiquetaPorEnvio = async (req, res) => {
+    const clienteId = req.user.id;
+    const { id_envio } = req.params;
+    const formato = req.query.formato || 'zpl2';
+
+    try {
+        const resultado = await hubMercadoLivreService.obterEtiquetasEnvio(clienteId, {
+            shipment_ids: [id_envio],
+            formato
+        });
+
+        if (!resultado.sucesso || resultado.etiquetas.length === 0 || !resultado.etiquetas[0].sucesso) {
+            return res.status(404).json({
+                sucesso: false,
+                error: resultado.etiquetas?.[0]?.erro || 'Etiqueta não encontrada ou não gerada para este envio.'
+            });
+        }
+
+        const etiqueta = resultado.etiquetas[0];
+
+        // Se o cliente pediu ZPL puro via header ou query
+        if (req.query.raw === 'true') {
+            res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+            return res.send(etiqueta.conteudo);
+        }
+
+        res.status(200).json({
+            sucesso: true,
+            ...etiqueta
+        });
+    } catch (error) {
+        console.error(`[HUB API] Erro ao buscar etiqueta do envio ${id_envio}:`, error.message);
+        res.status(500).json({
+            sucesso: false,
+            error: error.message || 'Erro interno ao obter etiqueta.'
+        });
+    }
+};
+

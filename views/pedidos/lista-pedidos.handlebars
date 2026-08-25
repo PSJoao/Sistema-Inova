@@ -1,0 +1,409 @@
+{{!--
+views/pedidos/lista-pedidos.handlebars
+Listagem e Controle de Pedidos do Mercado Livre (pedidos_ml)
+Visual idêntico à listagem de anúncios e promoções: tabela fixed-layout, redimensionamento, drag & drop e filtros Excel.
+--}}
+<link rel="stylesheet" href="/public/styles/estoque.css">
+<link rel="stylesheet" href="/public/styles/catalog-group.css">
+<link rel="stylesheet" href="/public/styles/pedidos-ml.css">
+
+<div class="content-card">
+    {{!-- Cabeçalho da Página --}}
+    <div class="page-header-actions">
+        <h1 class="page-title">{{title}}</h1>
+        <div style="display: flex; justify-content: end; gap: 10px; flex-wrap: wrap;">
+            <button id="btnImprimirSelecionados" class="btn btn-outline-accent">
+                <i class="fas fa-print me-2"></i>Imprimir Etiquetas
+            </button>
+            <button id="btnCancelarImpressao" class="btn btn-outline-danger" style="display: none;">
+                Cancelar
+            </button>
+            <button id="btnExportarPedidos" class="btn btn-outline-accent">
+                <i class="fas fa-file-excel me-2"></i>Exportar Relatório
+            </button>
+            <button id="btnSincronizarPedidos" class="btn btn-accent">
+                <i class="fas fa-sync me-2"></i>Sincronizar Pedidos
+            </button>
+        </div>
+    </div>
+
+    {{!-- Cards de Resumo Operacional (KPIs no Topo) --}}
+    <div class="pedidos-kpi-grid">
+        <div class="kpi-card kpi-total" data-filter-prazo="" data-filter-op=""
+            title="Visualizar todos os pedidos do período">
+            <div class="kpi-icon-wrap"><i class="fas fa-boxes"></i></div>
+            <div class="kpi-info">
+                <span class="kpi-label">Total no Período</span>
+                <span class="kpi-value" id="kpi-total-pedidos">0</span>
+                <span class="kpi-subtext" id="kpi-valor-total">R$ 0,00</span>
+            </div>
+        </div>
+
+        <div class="kpi-card kpi-atrasado" data-filter-prazo="atrasado"
+            title="Coletas ou envios atrasados no Mercado Livre">
+            <div class="kpi-icon-wrap"><i class="fas fa-exclamation-triangle"></i></div>
+            <div class="kpi-info">
+                <span class="kpi-label">Envios Atrasados</span>
+                <span class="kpi-value text-danger" id="kpi-atrasados">0</span>
+                <span class="kpi-subtext">Urgente</span>
+            </div>
+        </div>
+
+        <div class="kpi-card kpi-hoje" data-filter-prazo="para_hoje" title="Coletas agendadas para despacho hoje">
+            <div class="kpi-icon-wrap"><i class="fas fa-calendar-day"></i></div>
+            <div class="kpi-info">
+                <span class="kpi-label">Coleta / Envio Hoje</span>
+                <span class="kpi-value text-warning" id="kpi-para-hoje">0</span>
+                <span class="kpi-subtext">Despacho Hoje</span>
+            </div>
+        </div>
+
+        <div class="kpi-card kpi-futuro" data-filter-prazo="futuro_agendado" title="Coletas com data limite futura">
+            <div class="kpi-icon-wrap"><i class="fas fa-calendar-alt"></i></div>
+            <div class="kpi-info">
+                <span class="kpi-label">Envios Futuros</span>
+                <span class="kpi-value text-success" id="kpi-futuros">0</span>
+                <span class="kpi-subtext">Agendados</span>
+            </div>
+        </div>
+
+        <div class="kpi-card kpi-sem-nf" data-filter-op="nf_a_gerenciar" title="Pedidos sem nota fiscal emitida">
+            <div class="kpi-icon-wrap"><i class="fas fa-file-invoice"></i></div>
+            <div class="kpi-info">
+                <span class="kpi-label">NF a Gerenciar</span>
+                <span class="kpi-value text-orange" id="kpi-sem-nf">0</span>
+                <span class="kpi-subtext">Pendente NF</span>
+            </div>
+        </div>
+
+        <div class="kpi-card kpi-etiquetas" data-filter-op="etiquetas_para_imprimir"
+            title="Pedidos prontos para impressão de etiquetas">
+            <div class="kpi-icon-wrap"><i class="fas fa-print"></i></div>
+            <div class="kpi-info">
+                <span class="kpi-label">Pronto p/ Imprimir</span>
+                <span class="kpi-value text-cyan" id="kpi-pronto-imprimir">0</span>
+                <span class="kpi-subtext">Etiquetas Prontas</span>
+            </div>
+        </div>
+
+        <div class="kpi-card kpi-transito" data-filter-op="a_caminho" title="Pedidos em trânsito / despachados">
+            <div class="kpi-icon-wrap"><i class="fas fa-truck"></i></div>
+            <div class="kpi-info">
+                <span class="kpi-label">Em Trânsito</span>
+                <span class="kpi-value text-purple" id="kpi-em-transito">0</span>
+                <span class="kpi-subtext">Despachados</span>
+            </div>
+        </div>
+
+        <div class="kpi-card kpi-pos-venda" data-filter-pos="sim" title="Pedidos com devolução ou mediação ativa">
+            <div class="kpi-icon-wrap"><i class="fas fa-undo-alt"></i></div>
+            <div class="kpi-info">
+                <span class="kpi-label">Pós-Venda / Dev.</span>
+                <span class="kpi-value text-pink" id="kpi-pos-venda">0</span>
+                <span class="kpi-subtext">Ocorrências</span>
+            </div>
+        </div>
+    </div>
+
+    {{!-- Barra de Filtros e Busca --}}
+    <div class="estoque-filters-bar">
+        {{!-- Filtro de Período Rápido --}}
+        <div class="estoque-filter-group">
+            <label for="filtroPeriodo">Período da Venda</label>
+            <select id="filtroPeriodo" class="form-control" style="min-width: 140px;">
+                <option value="hoje">Hoje</option>
+                <option value="ontem">Ontem</option>
+                <option value="7dias">Últimos 7 dias</option>
+                <option value="15dias">Últimos 15 dias</option>
+                <option value="30dias" selected>Últimos 30 dias</option>
+                <option value="mes_atual">Mês Atual</option>
+                <option value="todos">Todos os Pedidos</option>
+                <option value="personalizado">Personalizado...</option>
+            </select>
+        </div>
+
+        {{!-- Inputs de Data Personalizada (inicialmente ocultos) --}}
+        <div id="customDateRange" class="estoque-filter-group custom-date-range-container" style="display: none;">
+            <label>De / Até</label>
+            <div class="custom-date-inputs">
+                <input type="date" id="dataInicio" class="form-control" title="Data Inicial">
+                <span class="date-separator">até</span>
+                <input type="date" id="dataFim" class="form-control" title="Data Final">
+            </div>
+        </div>
+
+        {{!-- Campo de Busca Rápida com Selector de Alvo --}}
+        <div class="estoque-filter-group" style="flex-grow: 1; min-width: 320px;">
+            <label for="buscaGeral">Busca Rápida</label>
+            <div class="search-input-group">
+                <select id="campoBusca" class="search-target-select" title="Selecione o campo de busca">
+                    <option value="geral" selected>Geral (Tudo)</option>
+                    <option value="id_pedido_ml">ID do Pedido</option>
+                    <option value="id_envio_ml">ID de Envio</option>
+                    <option value="sku">SKU do Produto</option>
+                    <option value="comprador">Comprador</option>
+                    <option value="nfe">Número NF-e</option>
+                </select>
+                <input type="text" id="buscaGeral" class="form-control search-input-with-target"
+                    placeholder="Pesquisar por ID, SKU, Comprador ou NF...">
+            </div>
+        </div>
+
+        {{!-- Filtro Empresa / Loja --}}
+        <div class="estoque-filter-group">
+            <label for="filtroEmpresa">Empresa / Loja</label>
+            <select id="filtroEmpresa" class="form-control" style="min-width: 140px;">
+                <option value="">Todas</option>
+            </select>
+        </div>
+
+        {{!-- Filtro Situação do Prazo --}}
+        <div class="estoque-filter-group">
+            <label for="filtroSituacaoPrazo">Prazo de Coleta</label>
+            <select id="filtroSituacaoPrazo" class="form-control" style="min-width: 145px;">
+                <option value="">Todos</option>
+                <option value="atrasado">Atrasados</option>
+                <option value="para_hoje">Para Hoje</option>
+                <option value="futuro_agendado">Futuro / Agendado</option>
+                <option value="despachado">Despachados</option>
+                <option value="entregue">Entregues</option>
+                <option value="cancelado">Cancelados</option>
+            </select>
+        </div>
+
+        {{!-- Filtro Situação Operacional --}}
+        <div class="estoque-filter-group">
+            <label for="filtroSituacaoOperacional">Situação Operacional</label>
+            <select id="filtroSituacaoOperacional" class="form-control" style="min-width: 160px;">
+                <option value="">Todas</option>
+                <option value="nf_a_gerenciar">NF a Gerenciar</option>
+                <option value="com_nota_sem_etiqueta">Com NF sem Etiqueta</option>
+                <option value="etiquetas_para_imprimir">Etiquetas p/ Imprimir</option>
+                <option value="pronto_para_envio">Pronto p/ Despacho</option>
+                <option value="a_caminho">Em Trânsito</option>
+                <option value="entregue">Entregue</option>
+                <option value="devolucao">Em Devolução</option>
+                <option value="reclamacao">Em Mediação</option>
+                <option value="cancelado">Cancelado</option>
+            </select>
+        </div>
+
+        {{!-- Filtro Tipo de Envio --}}
+        <div class="estoque-filter-group">
+            <label for="filtroTipoEnvio">Tipo Logística</label>
+            <select id="filtroTipoEnvio" class="form-control" style="min-width: 120px;">
+                <option value="">Todos</option>
+                <option value="cross_docking">Cross Docking</option>
+                <option value="fulfillment">Full</option>
+                <option value="self_service">Flex</option>
+                <option value="drop_off">Drop Off</option>
+                <option value="xd_drop_off">XD Drop Off</option>
+                <option value="me2">ME2</option>
+            </select>
+        </div>
+
+        {{!-- Quantidade por Página --}}
+        <div class="estoque-filter-group">
+            <label for="filtroLimite">Mostrar</label>
+            <select id="filtroLimite" class="form-control" style="min-width: 80px;">
+                <option value="20">20</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+                <option value="500">500</option>
+            </select>
+        </div>
+    </div>
+
+    <style>
+        /* === MODO DE IMPRESSÃO (HIDE CHECKBOX) === */
+        #tabela-estoque:not(.print-mode-active) th[data-column="checkbox"],
+        #tabela-estoque:not(.print-mode-active) td[data-col="checkbox"] {
+            display: none !important;
+        }
+    </style>
+
+    {{!-- Container da Tabela (Idêntico ao de Anúncios) --}}
+    <div class="table-responsive mt-3" style="max-height: calc(100vh - 180px); overflow: auto;">
+        <table class="table" id="tabela-estoque" style="width: max-content; min-width: 100%; table-layout: fixed;">
+            <thead style="position: sticky; top: 0; z-index: 10; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
+                <tr id="pedidosTableHeadRow">
+                    <th style="width: 45px; text-align: center;" data-column="checkbox">
+                        <input type="checkbox" id="selectAllCheckbox" class="select-all-pedidos-cb"
+                            title="Selecionar todos os pedidos">
+                    </th>
+                    <th class="sortable" data-column="empresa">Empresa / Loja</th>
+                    <th class="sortable" data-column="id_pedido_ml">ID Pedido</th>
+                    <th class="sortable" data-column="id_envio_ml">ID Envio</th>
+                    <th class="sortable" data-column="data_pedido">Data Venda</th>
+                    <th class="sortable text-center" data-column="situacao_prazo">Prazo Coleta</th>
+                    <th class="sortable text-center" data-column="situacao_operacional">Situação Operacional</th>
+                    <th class="sortable text-center" data-column="status_pedido">Status Pedido</th>
+                    <th class="sortable text-center" data-column="status_envio">Status Envio</th>
+                    <th class="sortable text-center" data-column="tipo_envio">Tipo Logística</th>
+                    <th class="sortable" data-column="comprador_nickname">Comprador</th>
+                    <th class="sortable" data-column="skus_resumo">Produtos / SKUs</th>
+                    <th class="sortable text-center" data-column="quantidade_total_itens">Qtd</th>
+                    <th class="sortable text-center" data-column="valor_total">Valor Total</th>
+                    <th class="sortable text-center" data-column="frete_envio">Frete</th>
+                    <th class="sortable text-center" data-column="nfe_numero">NF-e</th>
+                    <th class="sortable text-center" data-column="status_dev">Devolução</th>
+                    <th class="sortable text-center" data-column="status_med">Mediação</th>
+                    <th class="sortable text-center" data-column="data_limite_envio">Limite Coleta</th>
+                    <th class="sortable text-center" data-column="data_envio_agendado">Agendado</th>
+                    <th class="sortable text-center" data-column="data_previsao_entrega">Previsão Entrega</th>
+                </tr>
+            </thead>
+            <tbody id="table-body">
+                <tr>
+                    <td colspan="21" class="text-center py-5">
+                        <div class="loading-spinner-container">
+                            <i class="fas fa-spinner fa-spin fa-2x text-accent mb-2"></i>
+                            <div class="text-muted">Carregando pedidos...</div>
+                        </div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    {{!-- Paginação --}}
+    <div id="pagination-container" class="estoque-pagination"></div>
+</div>
+
+{{!-- ======================================================= --}}
+{{!-- === MODAL DE DETALHES COMPLETOS DO PEDIDO === --}}
+{{!-- ======================================================= --}}
+<div id="modalDetalhesOverlay" class="modal-overlay" style="display: none;"></div>
+<div id="modalDetalhesPedido" class="custom-modal modal-lg" style="display: none; max-width: 850px; z-index: 10000;">
+    <div class="custom-modal-header">
+        <div class="modal-header-left">
+            <h3 class="custom-modal-title-text" id="modalDetalhesTitulo">Detalhes do Pedido</h3>
+            <span id="modalDetalhesSubtitulo" class="badge-loja ms-2">-</span>
+        </div>
+        <button type="button" class="btn-close-modal" id="btnCloseDetalhesModal">&times;</button>
+    </div>
+
+    <div class="custom-modal-body">
+        {{!-- Linha de Status e Prazos --}}
+        <div class="pedido-modal-status-bar mb-3">
+            <div class="status-bar-item">
+                <span class="status-bar-label">Status ML</span>
+                <span id="modalStatusMl" class="status-bar-val">-</span>
+            </div>
+            <div class="status-bar-item">
+                <span class="status-bar-label">Status Envio</span>
+                <span id="modalStatusEnvio" class="status-bar-val">-</span>
+            </div>
+            <div class="status-bar-item">
+                <span class="status-bar-label">Prazo Coleta</span>
+                <span id="modalPrazoColeta" class="status-bar-val">-</span>
+            </div>
+            <div class="status-bar-item">
+                <span class="status-bar-label">Situação Operacional</span>
+                <span id="modalSituacaoOperacional" class="status-bar-val">-</span>
+            </div>
+        </div>
+
+        {{!-- Grid de Informações Chave --}}
+        <div class="pedido-details-grid mb-3">
+            <div class="detail-card">
+                <h6><i class="fas fa-user me-2 text-accent"></i>Comprador</h6>
+                <div class="detail-row"><span class="detail-label">Nickname:</span> <strong
+                        id="modalCompradorNick">-</strong></div>
+                <div class="detail-row"><span class="detail-label">Nome:</span> <span id="modalCompradorNome">-</span>
+                </div>
+            </div>
+
+            <div class="detail-card">
+                <h6><i class="fas fa-file-invoice me-2 text-accent"></i>Dados Fiscais & Logística</h6>
+                <div class="detail-row"><span class="detail-label">Número NF-e:</span> <strong
+                        id="modalNfeNumero">-</strong></div>
+                <div class="detail-row"><span class="detail-label">Chave de Acesso:</span> <span id="modalChaveAcesso"
+                        class="font-monospace small text-muted text-break">-</span></div>
+                <div class="detail-row"><span class="detail-label">ID Envio ML:</span> <strong
+                        id="modalIdEnvio">-</strong></div>
+            </div>
+
+            <div class="detail-card">
+                <h6><i class="fas fa-dollar-sign me-2 text-accent"></i>Valores & Frete</h6>
+                <div class="detail-row"><span class="detail-label">Valor Total:</span> <strong id="modalValorTotal"
+                        class="text-success">R$ 0,00</strong></div>
+                <div class="detail-row"><span class="detail-label">Frete Envio:</span> <span id="modalFreteValor">R$
+                        0,00</span></div>
+                <div class="detail-row"><span class="detail-label">Tipo de Logística:</span> <span
+                        id="modalTipoEnvio">-</span></div>
+            </div>
+        </div>
+
+        {{!-- Lista de Produtos do Pedido --}}
+        <div class="pedido-items-section mb-3">
+            <h6 class="section-title"><i class="fas fa-box-open me-2 text-accent"></i>Itens do Pedido (<span
+                    id="modalQtdItensTotal">0</span>)</h6>
+            <div class="table-responsive">
+                <table class="table table-sm custom-table mb-0">
+                    <thead>
+                        <tr>
+                            <th style="width: 50px;">Item</th>
+                            <th>SKU / Código</th>
+                            <th>Título do Anúncio</th>
+                            <th class="text-center" style="width: 70px;">Qtd</th>
+                            <th class="text-end" style="width: 110px;">Preço Unit.</th>
+                            <th class="text-end" style="width: 110px;">Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody id="modalItensTableBody">
+                        <tr>
+                            <td colspan="6" class="text-center py-3 text-muted">Nenhum item</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        {{!-- Seção de Pós-Venda / Ocorrências (se houver) --}}
+        <div id="modalPosVendaSection" class="pedido-posvenda-alert" style="display: none;">
+            <div class="posvenda-header"><i class="fas fa-exclamation-circle me-2"></i>Ocorrência no Pedido</div>
+            <div id="modalPosVendaContent" class="posvenda-body"></div>
+        </div>
+    </div>
+
+    <div class="custom-modal-footer">
+        <button type="button" class="btn btn-outline-accent" id="btnFecharDetalhesModal">Fechar</button>
+        <button type="button" class="btn btn-accent" id="btnModalImprimirZpl" style="display: none;">
+            <i class="fas fa-print me-2"></i>Imprimir Etiqueta
+        </button>
+    </div>
+</div>
+
+{{!-- ======================================================= --}}
+{{!-- === MODAL DE VISUALIZAÇÃO DE ETIQUETA ZPL === --}}
+{{!-- ======================================================= --}}
+<div id="modalZplOverlay" class="modal-overlay" style="display: none;"></div>
+<div id="modalEtiquetaZpl" class="custom-modal" style="display: none; max-width: 650px; z-index: 10000;">
+    <div class="custom-modal-header">
+        <h3 class="custom-modal-title-text"><i class="fas fa-barcode me-2 text-accent"></i>Etiqueta de Envio ZPL</h3>
+        <button type="button" class="btn-close-modal" id="btnCloseZplModal">&times;</button>
+    </div>
+    <div class="custom-modal-body">
+        <p class="text-muted small mb-2">Código ZPL gerado para impressoras térmicas (Zebra, Elgin, Argox):</p>
+        <textarea id="modalZplContent" class="form-control zpl-textarea" rows="10" readonly></textarea>
+    </div>
+    <div class="custom-modal-footer">
+        <button type="button" class="btn btn-outline-accent" id="btnCopiarZpl">
+            <i class="fas fa-copy me-2"></i>Copiar ZPL
+        </button>
+        <button type="button" class="btn btn-accent" id="btnFecharZplModal">Fechar</button>
+    </div>
+</div>
+
+{{!-- Estado vazio --}}
+<div id="empty-state" class="estoque-empty-state" style="display: none;">
+    <i class="fas fa-boxes"></i>
+    <p>Nenhum pedido encontrado no período selecionado.</p>
+    <p style="font-size: 0.85rem;">Clique em "Sincronizar Pedidos" para puxar pedidos recentes do Mercado Livre.</p>
+</div>
+
+{{#section "scripts"}}
+<script src="/public/scripts/pedidosMlListaManager.js?v=4"></script>
+{{/section}}

@@ -47,6 +47,9 @@ router.post('/api/anuncios/importar-custos', authController.requireAuth, upload.
 
 // Rotas de API para Gerenciar Promoções
 router.get('/api/anuncios/promocoes/listagem', authController.requireAuth, anunciosController.getPromocoesApi);
+router.post('/api/anuncios/promocoes/sync', authController.requireAuth, anunciosController.sincronizarPromocoes);
+router.post('/api/anuncios/promocoes/opt-in', authController.requireAuth, authController.requireModule('produtos_gerenciar'), anunciosController.aderirPromocaoApi);
+router.post('/api/anuncios/promocoes/opt-out', authController.requireAuth, authController.requireModule('produtos_gerenciar'), anunciosController.removerPromocaoApi);
 router.get('/api/anuncios/promocoes/exportar', authController.requireAuth, authController.requireModule('produtos_gerenciar'), anunciosController.exportarPromocoesExcel);
 
 // --- Central de Promoções (Listagem Única) ---
@@ -58,11 +61,18 @@ router.post('/api/anuncios/central-promocoes/reembolso', authController.requireA
 router.get('/anuncios/configurar-prazos', anunciosController.renderConfigurarPrazosPage);
 router.get('/api/anuncios/configurar-prazos/fornecedores', authController.requireAuth, anunciosController.getConfigPrazosFornecedoresApi);
 router.post('/api/anuncios/configurar-prazos/fornecedores', authController.requireAuth, anunciosController.salvarPrazoFornecedorApi);
+router.post('/api/anuncios/configurar-prazos/fornecedores/lote', authController.requireAuth, anunciosController.salvarPrazoFornecedoresLoteApi);
 router.get('/api/anuncios/configurar-prazos/produtos', authController.requireAuth, anunciosController.getConfigPrazosProdutosApi);
 router.post('/api/anuncios/configurar-prazos/produtos', authController.requireAuth, anunciosController.salvarPrazoProdutoApi);
+router.post('/api/anuncios/configurar-prazos/produtos/lote', authController.requireAuth, anunciosController.salvarPrazoProdutosLoteApi);
+router.post('/api/anuncios/configurar-prazos/produtos/temporizador', authController.requireAuth, anunciosController.salvarTemporizadorProdutoApi);
+router.post('/api/anuncios/configurar-prazos/produtos/temporizador/lote', authController.requireAuth, anunciosController.salvarTemporizadorProdutosLoteApi);
+router.post('/api/anuncios/configurar-prazos/produtos/indeterminado', authController.requireAuth, anunciosController.salvarIndeterminadoProdutoApi);
+router.post('/api/anuncios/configurar-prazos/produtos/indeterminado/lote', authController.requireAuth, anunciosController.salvarIndeterminadoProdutosLoteApi);
 router.post('/api/anuncios/configurar-prazos/aplicar', authController.requireAuth, anunciosController.aplicarPrazosManualApi);
 router.get('/api/anuncios/configurar-prazos/historico', authController.requireAuth, anunciosController.getHistoricoPrazosApi);
 
 module.exports = router;
+
 
 

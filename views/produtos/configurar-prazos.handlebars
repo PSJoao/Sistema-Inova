@@ -69,6 +69,24 @@ Configuração de Prazos de Disponibilidade Automáticos para Anúncios do Merca
                 <div class="prazos-summary-label">Produtos com Prazo Ativo</div>
             </div>
         </div>
+        <div class="prazos-summary-item">
+            <div class="prazos-summary-icon icon-timer" style="background: rgba(0, 210, 106, 0.15); color: #00d26a;">
+                <i class="fas fa-stopwatch"></i>
+            </div>
+            <div>
+                <div class="prazos-summary-value" id="summary-produtos-timer-ativo" style="color: #00d26a;">0</div>
+                <div class="prazos-summary-label">Liberação 48h Ativa</div>
+            </div>
+        </div>
+        <div class="prazos-summary-item">
+            <div class="prazos-summary-icon icon-indeterminado" style="background: rgba(0, 188, 212, 0.15); color: #00bcd4;">
+                <i class="fas fa-infinity"></i>
+            </div>
+            <div>
+                <div class="prazos-summary-value" id="summary-produtos-indeterminado-ativo" style="color: #00bcd4;">0</div>
+                <div class="prazos-summary-label">Liberação Indeterminada</div>
+            </div>
+        </div>
     </div>
 
     {{!-- Abas de Navegação --}}
@@ -105,6 +123,12 @@ Configuração de Prazos de Disponibilidade Automáticos para Anúncios do Merca
                     <option value="sem_prazo">Sem Prazo (0)</option>
                 </select>
             </div>
+            <div class="estoque-filter-group">
+                <label>&nbsp;</label>
+                <button type="button" class="btn btn-outline-warning btn-modo-lote" id="btnToggleBatchForn">
+                    Editar em Lote
+                </button>
+            </div>
         </div>
 
         {{!-- Tabela de Fornecedores --}}
@@ -112,6 +136,9 @@ Configuração de Prazos de Disponibilidade Automáticos para Anúncios do Merca
             <table class="table" id="tabela-fornecedores" style="width: 100%; white-space: nowrap; table-layout: auto;">
                 <thead style="position: sticky; top: 0; z-index: 10; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
                     <tr>
+                        <th class="col-checkbox th-checkbox" style="width: 44px; text-align: center; display: none;">
+                            <input type="checkbox" class="form-check-input select-all-checkbox" id="checkAllFornecedores" title="Selecionar todos os visíveis" />
+                        </th>
                         <th class="sortable" data-column="fornecedor_nome">Nome do Fornecedor</th>
                         <th class="sortable text-center" data-column="total_skus" style="width: 160px;">Produtos
                             Vinculados</th>
@@ -124,6 +151,32 @@ Configuração de Prazos de Disponibilidade Automáticos para Anúncios do Merca
                     {{!-- Populado dinamicamente via JS --}}
                 </tbody>
             </table>
+        </div>
+
+        {{!-- Barra Flutuante de Ação em Lote - Fornecedores --}}
+        <div id="batch-bar-fornecedores" class="floating-batch-bar" style="display: none;">
+            <div class="batch-bar-section batch-bar-count-section">
+                <span class="batch-bar-count" id="batchCountFornSelected">0</span>
+                <span class="batch-bar-count-label">selecionados</span>
+            </div>
+            <div class="batch-bar-divider"></div>
+            <div class="batch-bar-section batch-bar-presets">
+                <button type="button" class="btn-preset-dias" data-target="forn" data-dias="0">0</button>
+                <button type="button" class="btn-preset-dias" data-target="forn" data-dias="5">5</button>
+                <button type="button" class="btn-preset-dias" data-target="forn" data-dias="10">10</button>
+                <button type="button" class="btn-preset-dias" data-target="forn" data-dias="15">15</button>
+                <button type="button" class="btn-preset-dias" data-target="forn" data-dias="20">20</button>
+                <button type="button" class="btn-preset-dias" data-target="forn" data-dias="30">30</button>
+                <div class="batch-bar-input-group">
+                    <input type="number" id="batchDiasFornInput" class="form-control batch-dias-input" min="0" max="45" value="10" placeholder="N">
+                    <span class="batch-input-suffix">d</span>
+                </div>
+            </div>
+            <div class="batch-bar-divider"></div>
+            <div class="batch-bar-section batch-bar-actions">
+                <button type="button" class="btn-batch-apply" id="btnApplyBatchForn">Aplicar</button>
+                <button type="button" class="btn-batch-close" id="btnCancelBatchForn" title="Fechar">&times;</button>
+            </div>
         </div>
 
         {{!-- Loading Fornecedores --}}
@@ -145,20 +198,22 @@ Configuração de Prazos de Disponibilidade Automáticos para Anúncios do Merca
     <div id="secao-produtos" class="prazos-tab-content" style="display: none;">
         {{!-- Filtros da Tabela de Produtos --}}
         <div class="estoque-filters-bar">
-            <div class="estoque-filter-group" style="flex-grow: 1; min-width: 280px;">
+            <div class="estoque-filter-group" style="flex-grow: 1; min-width: 260px;">
                 <label for="buscaProduto">Buscar Produto</label>
                 <input type="text" id="buscaProduto" class="form-control" placeholder="SKU, descrição ou fornecedor...">
             </div>
             <div class="estoque-filter-group">
                 <label for="filtroFornecedorProd">Fornecedor</label>
-                <select id="filtroFornecedorProd" class="form-control" style="min-width: 180px;">
+                <select id="filtroFornecedorProd" class="form-control" style="min-width: 170px;">
                     <option value="">Todos os Fornecedores</option>
                 </select>
             </div>
             <div class="estoque-filter-group">
                 <label for="filtroTipoPrazoProd">Tipo de Prazo</label>
-                <select id="filtroTipoPrazoProd" class="form-control" style="min-width: 180px;">
+                <select id="filtroTipoPrazoProd" class="form-control" style="min-width: 170px;">
                     <option value="">Todos</option>
+                    <option value="indeterminado_ativo">Com Liberação Indeterminada Ativa</option>
+                    <option value="temporizador_ativo">Com Temporizador 48h Ativo</option>
                     <option value="personalizado">Com Prazo Personalizado</option>
                     <option value="herdado">Herdado do Fornecedor</option>
                     <option value="com_prazo_efetivo">Qualquer Prazo Ativo (&gt; 0)</option>
@@ -174,6 +229,12 @@ Configuração de Prazos de Disponibilidade Automáticos para Anúncios do Merca
                     <option value="200">200</option>
                 </select>
             </div>
+            <div class="estoque-filter-group">
+                <label>&nbsp;</label>
+                <button type="button" class="btn btn-outline-warning btn-modo-lote" id="btnToggleBatchProd">
+                    Editar em Lote
+                </button>
+            </div>
         </div>
 
         {{!-- Tabela de Produtos --}}
@@ -181,15 +242,20 @@ Configuração de Prazos de Disponibilidade Automáticos para Anúncios do Merca
             <table class="table" id="tabela-produtos" style="width: 100%; white-space: nowrap; table-layout: auto;">
                 <thead style="position: sticky; top: 0; z-index: 10; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
                     <tr>
+                        <th class="col-checkbox th-checkbox" style="width: 44px; text-align: center; display: none;">
+                            <input type="checkbox" class="form-check-input select-all-checkbox" id="checkAllProdutos" title="Selecionar todos os visíveis da página" />
+                        </th>
                         <th class="sortable" data-column="sku" style="width: 140px;">SKU</th>
-                        <th class="sortable" data-column="descricao" style="min-width: 340px;">Descrição</th>
+                        <th class="sortable" data-column="descricao" style="min-width: 320px;">Descrição</th>
                         <th class="sortable" data-column="fornecedor_nome" style="min-width: 180px;">Fornecedor</th>
                         <th class="sortable text-center" data-column="estoque_plataforma" style="width: 130px;">Estoque
                             Bling</th>
                         <th class="sortable text-center" data-column="prazo_fornecedor" style="width: 160px;">Prazo
                             Fornecedor</th>
-                        <th class="sortable text-center" data-column="prazo_personalizado" style="width: 220px;">Prazo
+                        <th class="sortable text-center" data-column="prazo_personalizado" style="width: 210px;">Prazo
                             Personalizado (Dias)</th>
+                        <th class="text-center" data-column="temporizador_48h" style="width: 160px;">Temporizador 48h</th>
+                        <th class="text-center" data-column="liberar_indeterminado" style="width: 175px;">Liberar Indeterminado</th>
                         <th class="sortable text-center" data-column="prazo_efetivo" style="width: 180px;">Prazo Efetivo
                         </th>
                     </tr>
@@ -200,6 +266,46 @@ Configuração de Prazos de Disponibilidade Automáticos para Anúncios do Merca
             </table>
         </div>
 
+        {{!-- Barra Flutuante de Ação em Lote - Produtos --}}
+        <div id="batch-bar-produtos" class="floating-batch-bar" style="display: none;">
+            <div class="batch-bar-section batch-bar-count-section">
+                <span class="batch-bar-count" id="batchCountProdSelected">0</span>
+                <span class="batch-bar-count-label">selecionados</span>
+            </div>
+            <div class="batch-bar-divider"></div>
+            <div class="batch-bar-section batch-bar-presets">
+                <button type="button" class="btn-preset-dias" data-target="prod" data-dias="0">0</button>
+                <button type="button" class="btn-preset-dias" data-target="prod" data-dias="5">5</button>
+                <button type="button" class="btn-preset-dias" data-target="prod" data-dias="10">10</button>
+                <button type="button" class="btn-preset-dias" data-target="prod" data-dias="15">15</button>
+                <button type="button" class="btn-preset-dias" data-target="prod" data-dias="20">20</button>
+                <button type="button" class="btn-preset-dias" data-target="prod" data-dias="30">30</button>
+                <div class="batch-bar-input-group">
+                    <input type="number" id="batchDiasProdInput" class="form-control batch-dias-input" min="0" max="45" value="10" placeholder="N">
+                    <span class="batch-input-suffix">d</span>
+                </div>
+            </div>
+            <div class="batch-bar-divider"></div>
+            <div class="batch-bar-section batch-bar-actions">
+                <button type="button" class="btn-batch-apply" id="btnApplyBatchProd">Aplicar Prazo</button>
+            </div>
+            <div class="batch-bar-divider"></div>
+            <div class="batch-bar-section batch-bar-timer-actions">
+                <button type="button" class="btn-batch-timer-on" id="btnBatchTimerOn" title="Liberar 48h de pronta entrega para os selecionados (ignora prazos)">
+                    <i class="fas fa-stopwatch"></i> Liberar 48h
+                </button>
+                <button type="button" class="btn-batch-timer-off" id="btnBatchTimerOff" title="Cancelar liberação de 48h para os selecionados">
+                    <i class="fas fa-times-circle"></i> Cancelar 48h
+                </button>
+                <button type="button" class="btn-batch-indeterminado-on" id="btnBatchIndeterminadoOn" title="Liberar pronta entrega por tempo indeterminado para os selecionados (ignora prazos até ser desligado ou estoque zerar)">
+                    <i class="fas fa-infinity"></i> Liberar Indeterminado
+                </button>
+                <button type="button" class="btn-batch-indeterminado-off" id="btnBatchIndeterminadoOff" title="Cancelar liberação indeterminada para os selecionados">
+                    <i class="fas fa-times-circle"></i> Cancelar Indeterminado
+                </button>
+                <button type="button" class="btn-batch-close ms-2" id="btnCancelBatchProd" title="Fechar">&times;</button>
+            </div>
+        </div>
 
         {{!-- Paginação de Produtos --}}
         <div id="pagination-produtos" class="estoque-pagination"></div>
@@ -218,6 +324,7 @@ Configuração de Prazos de Disponibilidade Automáticos para Anúncios do Merca
             <p>Nenhum produto encontrado.</p>
         </div>
     </div>
+
 
     {{!-- SEÇÃO 3: TABELA DE HISTÓRICO --}}
     <div id="secao-historico" class="prazos-tab-content" style="display: none;">

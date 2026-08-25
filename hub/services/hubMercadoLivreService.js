@@ -1,6 +1,7 @@
 const axios = require('axios');
 const { poolHub } = require('../config/database');
 const AdmZip = require('adm-zip');
+const { PDFDocument } = require('pdf-lib');
 const hubTokenService = require('./hubTokenService');
 // Constantes
 const ML_API_URL = 'https://api.mercadolibre.com';
@@ -1996,6 +1997,1069 @@ class HubMercadoLivreService {
             } else {
                 console.error(`[HUB Webhook] Erro ao processar webhook resource ${resource}:`, error.message);
             }
+        } finally {
+            client.release();
+        }
+    }
+
+    // =========================================================================
+    // NOVOS MÉTODOS SOB DEMANDA (ON-DEMAND VIA HTTP API) COM MULTI-TENANCY
+    // =========================================================================
+
+    /**
+     * Resolve e valida as contas ML pertencentes ao cliente autenticado.
+     * Suporta filtro opcional por conta_id ou seller_id.
+     */
+    async resolverContasCliente(clienteId, options = {}) {
+        if (!clienteId) throw new Error('Cliente não identificado.');
+
+        let query = 'SELECT * FROM hub_ml_contas WHERE cliente_id = $1 AND ativo = TRUE';
+        const params = [clienteId];
+
+        if (options.conta_id) {
+            query += ' AND id = $2';
+            params.push(Number(options.conta_id));
+        } else if (options.seller_id) {
+            query += ' AND seller_id = $2';
+            params.push(String(options.seller_id));
+        }
+
+        const res = await poolHub.query(query, params);
+        if (res.rows.length === 0) {
+            if (options.conta_id || options.seller_id) {
+                throw new Error('A conta especificada não foi encontrada, está inativa ou não pertence ao seu usuário.');
+            }
+            return [];
+        }
+        return res.rows;
+    }
+
+    /**
+     * Helper modular que busca dados de envio, frete e SLA SEM chamar /shipment_labels.
+     * Evita qualquer alteração indevida no status da etiqueta no Mercado Livre.
+     */
+    async extrairDadosEnvioSemEtiqueta(shipmentId, accessToken) {
+        if (!shipmentId) return null;
+
+        const resultado = {
+            id_envio_ml: String(shipmentId),
+            status_envio: null,
+            tipo_envio: null,
+            data_limite_envio: null,
+            data_envio_agendado: null,
+            data_envio_disponivel: null,
+            data_previsao_entrega: null,
+            frete_envio: null
+        };
+
+        try {
+            await delay(100);
+            const envioUrl = `${ML_API_URL}/shipments/${shipmentId}`;
+            const envioRes = await axios.get(envioUrl, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+            const envioData = envioRes.data;
+
+            if (envioData) {
+                resultado.status_envio = this.resolverStatusEnvio(envioData);
+                resultado.tipo_envio = envioData.logistic_type || null;
+
+                // 1. Custos de Frete
+                try {
+                    const freteUrl = `${ML_API_URL}/shipments/${shipmentId}/costs`;
+                    const freteRes = await axios.get(freteUrl, {
+                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                    });
+                    resultado.frete_envio = freteRes.data?.senders?.[0]?.cost || 0;
+                } catch (e) {
+                    // Silencioso se custos não estiverem disponíveis
+                }
+
+                // 2. SLA / Data Limite de Envio
+                try {
+                    const slaUrl = `${ML_API_URL}/shipments/${shipmentId}/sla`;
+                    const slaRes = await axios.get(slaUrl, {
+                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                    });
+                    const slaData = Array.isArray(slaRes.data) ? slaRes.data[0] : slaRes.data;
+                    if (slaData?.expected_date) {
+                        resultado.data_limite_envio = slaData.expected_date;
+                    }
+                } catch (e) {
+                    // Silencioso se SLA não estiver disponível
+                }
+
+                const shippingOption = envioData.shipping_option || {};
+                const statusHistory = envioData.status_history || {};
+
+                // 3. Data Envio Agendado (buffering futuro)
+                if (shippingOption.buffering?.date) {
+                    const dataBuffering = new Date(shippingOption.buffering.date);
+                    const hoje = new Date();
+                    hoje.setHours(0, 0, 0, 0);
+                    dataBuffering.setHours(0, 0, 0, 0);
+                    resultado.data_envio_agendado = dataBuffering > hoje ? shippingOption.buffering.date : null;
+                }
+
+                // 4. Data Envio Disponível
+                if (statusHistory.date_handling || envioData.date_created || statusHistory.date_ready_to_ship) {
+                    resultado.data_envio_disponivel = statusHistory.date_handling || envioData.date_created || statusHistory.date_ready_to_ship;
+                }
+
+                // 5. Previsão de Entrega
+                if (shippingOption.estimated_delivery_time?.date) {
+                    resultado.data_previsao_entrega = shippingOption.estimated_delivery_time.date;
+                }
+            }
+        } catch (err) {
+            // Se o envio não existir ou retornar 404, prossegue sem dados logísticos
+        }
+
+        return resultado;
+    }
+
+    /**
+     * 1. ROTINA ON-DEMAND: Captura de Novos Pedidos por Cliente
+     * Busca pedidos recentes paginados no ML, enriquece dados cadastrais, fiscais e logísticos
+     * SEM chamar a API de etiquetas do ML.
+     */
+    async capturarNovosPedidosCliente(clienteId, options = {}) {
+        const inicio = Date.now();
+        const contas = await this.resolverContasCliente(clienteId, options);
+
+        if (contas.length === 0) {
+            return {
+                sucesso: true,
+                mensagem: 'Nenhuma conta ativa encontrada para este cliente.',
+                metricas: { total_processados: 0, novos_inseridos: 0, existentes_ignorados: 0, erros: 0, tempo_ms: 0 },
+                contas: []
+            };
+        }
+
+        const diasLimite = options.dias ? Math.min(parseInt(options.dias, 10), 150) : 30;
+        const dataLimite = new Date();
+        dataLimite.setDate(dataLimite.getDate() - diasLimite);
+
+        const metricasGerais = {
+            total_processados: 0,
+            novos_inseridos: 0,
+            existentes_ignorados: 0,
+            erros: 0
+        };
+        const contasProcessadas = [];
+
+        for (const conta of contas) {
+            console.log(`[HUB ML On-Demand] Capturando novos pedidos da conta ${conta.nickname} (Seller: ${conta.seller_id})...`);
+            let accessToken;
+            try {
+                accessToken = await hubTokenService.getValidAccessToken(conta);
+            } catch (errToken) {
+                console.error(`[HUB ML On-Demand] Token inválido para ${conta.nickname}:`, errToken.message);
+                metricasGerais.erros++;
+                contasProcessadas.push({ conta_id: conta.id, nickname: conta.nickname, status: 'erro_token', mensagem: errToken.message });
+                continue;
+            }
+
+            let offset = 0;
+            const limit = options.limit ? Math.min(parseInt(options.limit, 10), 50) : 50;
+            let continuarBuscando = true;
+            let totalContaNovos = 0;
+            let totalContaAnalisados = 0;
+
+            try {
+                while (continuarBuscando) {
+                    const searchUrl = `${ML_API_URL}/orders/search?seller=${conta.seller_id}&sort=date_desc&limit=${limit}&offset=${offset}`;
+                    const response = await axios.get(searchUrl, {
+                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                    });
+
+                    const pedidos = response.data.results || [];
+                    if (pedidos.length === 0) {
+                        continuarBuscando = false;
+                        break;
+                    }
+
+                    const pedidosParaProcessar = [];
+                    for (const p of pedidos) {
+                        const dt = new Date(p.date_created);
+                        if (dt < dataLimite) {
+                            continuarBuscando = false;
+                            break;
+                        }
+                        pedidosParaProcessar.push(p);
+                    }
+
+                    totalContaAnalisados += pedidosParaProcessar.length;
+                    metricasGerais.total_processados += pedidosParaProcessar.length;
+
+                    // Processamento em lotes concorrentes de 20 pedidos
+                    const chunkSize = 20;
+                    for (let i = 0; i < pedidosParaProcessar.length; i += chunkSize) {
+                        const chunk = pedidosParaProcessar.slice(i, i + chunkSize);
+                        await Promise.all(chunk.map(async (pedidoData) => {
+                            try {
+                                const exists = await this.verificarSePedidoExiste(pedidoData.id);
+                                if (exists) {
+                                    metricasGerais.existentes_ignorados++;
+                                    return;
+                                }
+
+                                const itensMapeados = (pedidoData.order_items || []).map(itemWrapper => {
+                                    const item = itemWrapper.item;
+                                    return {
+                                        id_item: item.id,
+                                        sku: item.seller_sku || null,
+                                        titulo: item.title,
+                                        quantidade: itemWrapper.quantity,
+                                        preco_unitario: itemWrapper.unit_price,
+                                        taxa_venda: itemWrapper.sale_fee
+                                    };
+                                });
+
+                                const novoPedido = {
+                                    conta_id: conta.id,
+                                    id_pedido_ml: pedidoData.id,
+                                    date_created: pedidoData.date_created,
+                                    status_pedido: pedidoData.status,
+                                    data_limite_envio: pedidoData.shipping_option?.estimated_handling_limit?.date || null,
+                                    id_envio_ml: pedidoData.shipping?.id ? String(pedidoData.shipping.id) : null,
+                                    status_envio: null,
+                                    tipo_envio: null,
+                                    etiqueta_zpl: null, // NÃO BUSCA ETIQUETA AQUI
+                                    itens_pedido: JSON.stringify(itensMapeados),
+                                    comprador_nickname: pedidoData.buyer?.nickname || null,
+                                    tem_dev: false,
+                                    tem_med: false,
+                                    status_dev: null,
+                                    status_med: null,
+                                    id_envio_dev: null,
+                                    status_envio_dev: null,
+                                    frete_envio: null,
+                                    nfe_numero: null,
+                                    chave_acesso: null,
+                                    pack_id: pedidoData.pack_id ? String(pedidoData.pack_id) : null
+                                };
+
+                                // Se tiver envio, busca dados adicionais (custo, sla, status) SEM gerar/baixar etiqueta
+                                if (pedidoData.shipping?.id) {
+                                    const dadosEnvio = await this.extrairDadosEnvioSemEtiqueta(pedidoData.shipping.id, accessToken);
+                                    if (dadosEnvio) {
+                                        novoPedido.status_envio = dadosEnvio.status_envio;
+                                        novoPedido.tipo_envio = dadosEnvio.tipo_envio;
+                                        novoPedido.frete_envio = dadosEnvio.frete_envio;
+                                        if (dadosEnvio.data_limite_envio) novoPedido.data_limite_envio = dadosEnvio.data_limite_envio;
+                                        novoPedido.data_envio_agendado = dadosEnvio.data_envio_agendado;
+                                        novoPedido.data_envio_disponivel = dadosEnvio.data_envio_disponivel;
+                                        novoPedido.data_previsao_entrega = dadosEnvio.data_previsao_entrega;
+                                    }
+                                }
+
+                                // Claims e Reclamações
+                                const detalhesReclamacao = await this.buscarDetalhesReclamacao(novoPedido.id_pedido_ml, accessToken);
+                                Object.assign(novoPedido, detalhesReclamacao);
+
+                                // Nota Fiscal
+                                const nfData = await this.buscarNotaFiscal(novoPedido.id_pedido_ml, conta.seller_id, accessToken);
+                                if (nfData) {
+                                    novoPedido.nfe_numero = nfData.invoiceNumber;
+                                    novoPedido.chave_acesso = nfData.invoiceKey;
+                                    if (!novoPedido.tipo_envio && nfData.logisticType) {
+                                        novoPedido.tipo_envio = nfData.logisticType;
+                                    }
+                                }
+
+                                await this.salvarPedidoNoBanco(novoPedido);
+                                metricasGerais.novos_inseridos++;
+                                totalContaNovos++;
+                            } catch (errPedido) {
+                                console.error(`[HUB ML On-Demand] Erro ao processar pedido ${pedidoData.id}:`, errPedido.message);
+                                metricasGerais.erros++;
+                            }
+                        }));
+                    }
+
+                    if (pedidos.length < limit) {
+                        continuarBuscando = false;
+                    } else {
+                        offset += limit;
+                    }
+
+                    if (offset > 1000) {
+                        continuarBuscando = false;
+                    }
+                    await delay(300);
+                }
+
+                contasProcessadas.push({
+                    conta_id: conta.id,
+                    nickname: conta.nickname,
+                    status: 'sucesso',
+                    pedidos_analisados: totalContaAnalisados,
+                    novos_inseridos: totalContaNovos
+                });
+
+            } catch (errConta) {
+                console.error(`[HUB ML On-Demand] Erro na busca de pedidos da conta ${conta.nickname}:`, errConta.message);
+                metricasGerais.erros++;
+                contasProcessadas.push({ conta_id: conta.id, nickname: conta.nickname, status: 'erro', mensagem: errConta.message });
+            }
+        }
+
+        return {
+            sucesso: true,
+            rotina: 'captura_novos_pedidos',
+            tempo_ms: Date.now() - inicio,
+            metricas: metricasGerais,
+            contas: contasProcessadas
+        };
+    }
+
+    /**
+     * 2. ROTINA ON-DEMAND: Monitoramento de Pedidos Diferentes por Cliente
+     * Atualiza pedidos com status_envio IS NULL e status_pedido = 'paid' SEM chamar /shipment_labels.
+     */
+    async monitorarPedidosDiferentesCliente(clienteId, options = {}) {
+        const inicio = Date.now();
+        const contas = await this.resolverContasCliente(clienteId, options);
+        if (contas.length === 0) {
+            return { sucesso: true, mensagem: 'Nenhuma conta ativa encontrada.', metricas: { total_encontrados: 0, total_atualizados: 0, erros: 0, tempo_ms: 0 } };
+        }
+
+        const contaIds = contas.map(c => c.id);
+        const client = await poolHub.connect();
+        const metricas = { total_encontrados: 0, total_atualizados: 0, erros: 0 };
+
+        try {
+            const query = `
+                SELECT p.*, c.access_token, c.refresh_token, c.token_expiration, c.id as conta_id_real, c.seller_id, c.nickname
+                FROM pedidos_mercado_livre p
+                JOIN hub_ml_contas c ON p.conta_id = c.id
+                WHERE p.status_envio IS NULL AND p.status_pedido = 'paid'
+                AND p.conta_id = ANY($1)
+            `;
+            const result = await client.query(query, [contaIds]);
+            const pedidosParaChecar = result.rows;
+            metricas.total_encontrados = pedidosParaChecar.length;
+
+            console.log(`[HUB ML On-Demand] Monitorando ${pedidosParaChecar.length} pedidos diferentes do cliente ${clienteId}...`);
+
+            const chunkSize = 20;
+            for (let i = 0; i < pedidosParaChecar.length; i += chunkSize) {
+                const chunk = pedidosParaChecar.slice(i, i + chunkSize);
+                await Promise.all(chunk.map(async (pedido) => {
+                    const contaMock = {
+                        id: pedido.conta_id_real,
+                        nickname: pedido.nickname,
+                        refresh_token: pedido.refresh_token,
+                        token_expiration: pedido.token_expiration,
+                        access_token: pedido.access_token
+                    };
+
+                    let accessToken;
+                    try {
+                        accessToken = await hubTokenService.getValidAccessToken(contaMock);
+                    } catch (e) {
+                        metricas.erros++;
+                        return;
+                    }
+
+                    try {
+                        await delay(100);
+                        let dadosAtualizados = null;
+
+                        try {
+                            const orderRes = await axios.get(`${ML_API_URL}/orders/${pedido.id_pedido_ml}`, {
+                                headers: { 'Authorization': `Bearer ${accessToken}` }
+                            });
+                            dadosAtualizados = orderRes.data;
+                        } catch (errOrder) {
+                            if (errOrder.response && (errOrder.response.status === 404 || errOrder.response.status === 403)) {
+                                try {
+                                    const searchRes = await axios.get(`${ML_API_URL}/orders/search?seller=${pedido.seller_id}&q=${pedido.id_pedido_ml}`, {
+                                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                                    });
+                                    if (searchRes.data.results && searchRes.data.results.length > 0) {
+                                        dadosAtualizados = searchRes.data.results[0];
+                                    }
+                                } catch (e) {}
+                            }
+                        }
+
+                        if (!dadosAtualizados) return;
+
+                        const itensMapeados = (dadosAtualizados.order_items || []).map(itemWrapper => {
+                            const item = itemWrapper.item;
+                            return {
+                                id_item: item.id,
+                                sku: item.seller_sku || null,
+                                titulo: item.title,
+                                quantidade: itemWrapper.quantity,
+                                preco_unitario: itemWrapper.unit_price,
+                                taxa_venda: itemWrapper.sale_fee
+                            };
+                        });
+
+                        const pedidoAtualizado = {
+                            conta_id: pedido.conta_id_real,
+                            id_pedido_ml: dadosAtualizados.id,
+                            date_created: dadosAtualizados.date_created,
+                            status_pedido: dadosAtualizados.status,
+                            data_limite_envio: null,
+                            id_envio_ml: dadosAtualizados.shipping?.id ? String(dadosAtualizados.shipping.id) : null,
+                            status_envio: null,
+                            tipo_envio: pedido.tipo_envio || null,
+                            etiqueta_zpl: pedido.etiqueta_zpl, // PRESERVA ETIQUETA EXISTENTE SEM CHAMAR API DE LABELS
+                            comprador_nickname: dadosAtualizados.buyer?.nickname || null,
+                            frete_envio: null,
+                            tem_dev: pedido.tem_dev || false,
+                            tem_med: pedido.tem_med || false,
+                            status_dev: pedido.status_dev || null,
+                            status_med: pedido.status_med || null,
+                            id_envio_dev: pedido.id_envio_dev || null,
+                            status_envio_dev: pedido.status_envio_dev || null,
+                            pack_id: dadosAtualizados.pack_id ? String(dadosAtualizados.pack_id) : (pedido.pack_id ? String(pedido.pack_id) : null),
+                            itens_pedido: JSON.stringify(itensMapeados),
+                            nfe_numero: pedido.nfe_numero,
+                            chave_acesso: pedido.chave_acesso
+                        };
+
+                        if (dadosAtualizados.shipping?.id) {
+                            const dadosEnvio = await this.extrairDadosEnvioSemEtiqueta(dadosAtualizados.shipping.id, accessToken);
+                            if (dadosEnvio) {
+                                pedidoAtualizado.status_envio = dadosEnvio.status_envio;
+                                pedidoAtualizado.tipo_envio = dadosEnvio.tipo_envio;
+                                pedidoAtualizado.frete_envio = dadosEnvio.frete_envio;
+                                pedidoAtualizado.data_limite_envio = dadosEnvio.data_limite_envio;
+                                pedidoAtualizado.data_envio_agendado = dadosEnvio.data_envio_agendado;
+                                pedidoAtualizado.data_envio_disponivel = dadosEnvio.data_envio_disponivel;
+                                pedidoAtualizado.data_previsao_entrega = dadosEnvio.data_previsao_entrega;
+                            }
+                        }
+
+                        if (!pedidoAtualizado.nfe_numero) {
+                            const nfData = await this.buscarNotaFiscal(pedidoAtualizado.id_pedido_ml, pedido.seller_id, accessToken);
+                            if (nfData) {
+                                pedidoAtualizado.nfe_numero = nfData.invoiceNumber;
+                                pedidoAtualizado.chave_acesso = nfData.invoiceKey;
+                                if (!pedidoAtualizado.tipo_envio && nfData.logisticType) {
+                                    pedidoAtualizado.tipo_envio = nfData.logisticType;
+                                }
+                            }
+                        }
+
+                        await this.salvarPedidoNoBanco(pedidoAtualizado);
+                        metricas.total_atualizados++;
+
+                    } catch (err) {
+                        console.error(`[HUB ML On-Demand] Erro ao monitorar pedido diferente ${pedido.id_pedido_ml}:`, err.message);
+                        metricas.erros++;
+                    }
+                }));
+            }
+        } catch (error) {
+            console.error('[HUB ML On-Demand] Erro no monitoramento de pedidos diferentes:', error);
+            throw error;
+        } finally {
+            client.release();
+        }
+
+        return {
+            sucesso: true,
+            rotina: 'monitoramento_pedidos_diferentes',
+            tempo_ms: Date.now() - inicio,
+            metricas
+        };
+    }
+
+    /**
+     * 3. ROTINA ON-DEMAND: Monitoramento de Pedidos Existentes por Cliente
+     * Atualiza dados de pedidos abertos (status, envio, frete, sla, nfe) SEM chamar /shipment_labels.
+     */
+    async monitorarPedidosExistentesCliente(clienteId, options = {}) {
+        const inicio = Date.now();
+        const contas = await this.resolverContasCliente(clienteId, options);
+        if (contas.length === 0) {
+            return { sucesso: true, mensagem: 'Nenhuma conta ativa encontrada.', metricas: { total_abertos_verificados: 0, total_atualizados: 0, erros: 0, tempo_ms: 0 } };
+        }
+
+        const contaIds = contas.map(c => c.id);
+        const client = await poolHub.connect();
+        const metricas = { total_abertos_verificados: 0, total_atualizados: 0, erros: 0 };
+        const dias = options.dias ? parseInt(options.dias, 10) : 60;
+
+        try {
+            const query = `
+                SELECT p.*, c.access_token, c.refresh_token, c.token_expiration, c.id as conta_id_real, c.seller_id, c.nickname
+                FROM pedidos_mercado_livre p
+                JOIN hub_ml_contas c ON p.conta_id = c.id
+                WHERE p.status_pedido NOT IN ('cancelled')
+                AND p.status_envio NOT IN ('cancelled', 'delivered')
+                AND p.date_created >= NOW() - INTERVAL '${dias} days'
+                AND p.conta_id = ANY($1)
+            `;
+            const result = await client.query(query, [contaIds]);
+            const pedidosParaChecar = result.rows;
+            metricas.total_abertos_verificados = pedidosParaChecar.length;
+
+            console.log(`[HUB ML On-Demand] Monitorando ${pedidosParaChecar.length} pedidos existentes/abertos do cliente ${clienteId}...`);
+
+            const chunkSize = 20;
+            for (let i = 0; i < pedidosParaChecar.length; i += chunkSize) {
+                const chunk = pedidosParaChecar.slice(i, i + chunkSize);
+                await Promise.all(chunk.map(async (pedido) => {
+                    const contaMock = {
+                        id: pedido.conta_id_real,
+                        nickname: pedido.nickname,
+                        refresh_token: pedido.refresh_token,
+                        token_expiration: pedido.token_expiration,
+                        access_token: pedido.access_token
+                    };
+
+                    let accessToken;
+                    try {
+                        accessToken = await hubTokenService.getValidAccessToken(contaMock);
+                    } catch (e) {
+                        metricas.erros++;
+                        return;
+                    }
+
+                    try {
+                        await delay(100);
+                        let dadosAtualizados = null;
+
+                        try {
+                            const orderRes = await axios.get(`${ML_API_URL}/orders/${pedido.id_pedido_ml}`, {
+                                headers: { 'Authorization': `Bearer ${accessToken}` }
+                            });
+                            dadosAtualizados = orderRes.data;
+                        } catch (errOrder) {
+                            if (errOrder.response && (errOrder.response.status === 404 || errOrder.response.status === 403)) {
+                                try {
+                                    const searchRes = await axios.get(`${ML_API_URL}/orders/search?seller=${pedido.seller_id}&q=${pedido.id_pedido_ml}`, {
+                                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                                    });
+                                    if (searchRes.data.results && searchRes.data.results.length > 0) {
+                                        dadosAtualizados = searchRes.data.results[0];
+                                    }
+                                } catch (e) {}
+                            }
+                        }
+
+                        if (!dadosAtualizados) return;
+
+                        const itensMapeados = (dadosAtualizados.order_items || []).map(itemWrapper => {
+                            const item = itemWrapper.item;
+                            return {
+                                id_item: item.id,
+                                sku: item.seller_sku || null,
+                                titulo: item.title,
+                                quantidade: itemWrapper.quantity,
+                                preco_unitario: itemWrapper.unit_price,
+                                taxa_venda: itemWrapper.sale_fee
+                            };
+                        });
+
+                        const pedidoAtualizado = {
+                            conta_id: pedido.conta_id_real,
+                            id_pedido_ml: dadosAtualizados.id,
+                            date_created: dadosAtualizados.date_created,
+                            status_pedido: dadosAtualizados.status,
+                            data_limite_envio: null,
+                            id_envio_ml: dadosAtualizados.shipping?.id ? String(dadosAtualizados.shipping.id) : null,
+                            status_envio: null,
+                            tipo_envio: pedido.tipo_envio || null,
+                            etiqueta_zpl: pedido.etiqueta_zpl, // PRESERVA ETIQUETA EXISTENTE SEM CHAMAR API DE LABELS
+                            comprador_nickname: dadosAtualizados.buyer?.nickname || null,
+                            frete_envio: null,
+                            tem_dev: pedido.tem_dev || false,
+                            tem_med: pedido.tem_med || false,
+                            status_dev: pedido.status_dev || null,
+                            status_med: pedido.status_med || null,
+                            id_envio_dev: pedido.id_envio_dev || null,
+                            status_envio_dev: pedido.status_envio_dev || null,
+                            pack_id: dadosAtualizados.pack_id ? String(dadosAtualizados.pack_id) : (pedido.pack_id ? String(pedido.pack_id) : null),
+                            itens_pedido: JSON.stringify(itensMapeados),
+                            nfe_numero: pedido.nfe_numero,
+                            chave_acesso: pedido.chave_acesso
+                        };
+
+                        if (dadosAtualizados.shipping?.id) {
+                            const dadosEnvio = await this.extrairDadosEnvioSemEtiqueta(dadosAtualizados.shipping.id, accessToken);
+                            if (dadosEnvio) {
+                                pedidoAtualizado.status_envio = dadosEnvio.status_envio;
+                                pedidoAtualizado.tipo_envio = dadosEnvio.tipo_envio;
+                                pedidoAtualizado.frete_envio = dadosEnvio.frete_envio;
+                                pedidoAtualizado.data_limite_envio = dadosEnvio.data_limite_envio;
+                                pedidoAtualizado.data_envio_agendado = dadosEnvio.data_envio_agendado;
+                                pedidoAtualizado.data_envio_disponivel = dadosEnvio.data_envio_disponivel;
+                                pedidoAtualizado.data_previsao_entrega = dadosEnvio.data_previsao_entrega;
+                            }
+                        }
+
+                        if (!pedidoAtualizado.nfe_numero) {
+                            const nfData = await this.buscarNotaFiscal(pedidoAtualizado.id_pedido_ml, pedido.seller_id, accessToken);
+                            if (nfData) {
+                                pedidoAtualizado.nfe_numero = nfData.invoiceNumber;
+                                pedidoAtualizado.chave_acesso = nfData.invoiceKey;
+                                if (!pedidoAtualizado.tipo_envio && nfData.logisticType) {
+                                    pedidoAtualizado.tipo_envio = nfData.logisticType;
+                                }
+                            }
+                        }
+
+                        await this.salvarPedidoNoBanco(pedidoAtualizado);
+                        metricas.total_atualizados++;
+
+                    } catch (err) {
+                        console.error(`[HUB ML On-Demand] Erro ao monitorar pedido existente ${pedido.id_pedido_ml}:`, err.message);
+                        metricas.erros++;
+                    }
+                }));
+            }
+        } catch (error) {
+            console.error('[HUB ML On-Demand] Erro no monitoramento de pedidos existentes:', error);
+            throw error;
+        } finally {
+            client.release();
+        }
+
+        return {
+            sucesso: true,
+            rotina: 'monitoramento_pedidos_existentes',
+            tempo_ms: Date.now() - inicio,
+            metricas
+        };
+    }
+
+    /**
+     * 4. ROTINA ON-DEMAND: Monitoramento de Devoluções e Mediações por Cliente
+     * Atualiza reclamações, mediações e devoluções ativas (claims/returns).
+     */
+    async monitorarDevolucoesCliente(clienteId, options = {}) {
+        const inicio = Date.now();
+        const contas = await this.resolverContasCliente(clienteId, options);
+        if (contas.length === 0) {
+            return { sucesso: true, mensagem: 'Nenhuma conta ativa encontrada.', metricas: { total_verificados: 0, devolucoes_ativas: 0, mediacoes_ativas: 0, erros: 0, tempo_ms: 0 } };
+        }
+
+        const contaIds = contas.map(c => c.id);
+        const client = await poolHub.connect();
+        const metricas = { total_verificados: 0, devolucoes_ativas: 0, mediacoes_ativas: 0, erros: 0 };
+        const dias = options.dias ? parseInt(options.dias, 10) : 120;
+
+        try {
+            const query = `
+                SELECT p.id_pedido_ml, p.conta_id, c.access_token, c.refresh_token, c.token_expiration, c.id as conta_id_real, c.nickname 
+                FROM pedidos_mercado_livre p
+                JOIN hub_ml_contas c ON p.conta_id = c.id
+                WHERE (p.date_created >= NOW() - INTERVAL '${dias} days' OR p.status_envio IS NULL OR p.status_pedido = 'paid')
+                AND p.conta_id = ANY($1)
+            `;
+            const result = await client.query(query, [contaIds]);
+            const pedidosParaChecar = result.rows;
+            metricas.total_verificados = pedidosParaChecar.length;
+
+            console.log(`[HUB ML On-Demand] Monitorando devoluções de ${pedidosParaChecar.length} pedidos do cliente ${clienteId}...`);
+
+            const chunkSize = 20;
+            for (let i = 0; i < pedidosParaChecar.length; i += chunkSize) {
+                const chunk = pedidosParaChecar.slice(i, i + chunkSize);
+                await Promise.all(chunk.map(async (pedido) => {
+                    const contaMock = {
+                        id: pedido.conta_id_real,
+                        nickname: pedido.nickname,
+                        refresh_token: pedido.refresh_token,
+                        token_expiration: pedido.token_expiration,
+                        access_token: pedido.access_token
+                    };
+
+                    let accessToken;
+                    try {
+                        accessToken = await hubTokenService.getValidAccessToken(contaMock);
+                    } catch (e) {
+                        metricas.erros++;
+                        return;
+                    }
+
+                    try {
+                        const detalhesReclamacao = await this.buscarDetalhesReclamacao(pedido.id_pedido_ml, accessToken);
+
+                        const updateQuery = `
+                            UPDATE pedidos_mercado_livre SET 
+                                tem_dev = $1, tem_med = $2, status_dev = $3, status_med = $4, 
+                                id_envio_dev = $5, status_envio_dev = $6, last_update = NOW()
+                            WHERE id_pedido_ml = $7
+                        `;
+                        await client.query(updateQuery, [
+                            detalhesReclamacao.tem_dev, detalhesReclamacao.tem_med,
+                            detalhesReclamacao.status_dev, detalhesReclamacao.status_med,
+                            detalhesReclamacao.id_envio_dev, detalhesReclamacao.status_envio_dev,
+                            String(pedido.id_pedido_ml)
+                        ]);
+
+                        if (detalhesReclamacao.tem_dev) metricas.devolucoes_ativas++;
+                        if (detalhesReclamacao.tem_med) metricas.mediacoes_ativas++;
+                    } catch (err) {
+                        console.error(`[HUB ML On-Demand] Erro ao buscar devolução do pedido ${pedido.id_pedido_ml}:`, err.message);
+                        metricas.erros++;
+                    }
+                }));
+            }
+        } catch (error) {
+            console.error('[HUB ML On-Demand] Erro no monitoramento de devoluções:', error);
+            throw error;
+        } finally {
+            client.release();
+        }
+
+        return {
+            sucesso: true,
+            rotina: 'monitoramento_devolucoes_mediacoes',
+            tempo_ms: Date.now() - inicio,
+            metricas
+        };
+    }
+
+    /**
+     * 5. ENDPOINT DEDICADO DE ETIQUETAS: Obtenção e Download Real de Etiquetas Personalizadas
+     * Executado ESTRITAMENTE quando o usuário seleciona os pedidos na listagem/controle e clica em Imprimir.
+     * Suporta passagem de arrays de pedidos (id_pedido_ml), shipment_ids, packs, objetos ou strings separadas por vírgula.
+     * Valida permissão do cliente, resolve envios no banco (ou na API do ML se pendente), chama /shipment_labels,
+     * salva no banco e retorna as etiquetas individuais + ZPL consolidado para impressão térmica direta.
+     */
+    async obterEtiquetasEnvio(clienteId, options = {}) {
+        const inicio = Date.now();
+        const {
+            pedidos = [],
+            pedido_ids = [],
+            shipment_ids = [],
+            envios = [],
+            ids_envio = [],
+            pack_ids = [],
+            packs = [],
+            formato = 'zpl2',
+            consolidar = true,
+            salvar_banco = true
+        } = options;
+
+        // Normalização flexível de entradas (strings, arrays, objetos { id_pedido_ml, id_envio_ml })
+        const extrairIds = (entrada) => {
+            if (!entrada) return [];
+            if (typeof entrada === 'string') {
+                return entrada.split(',').map(s => s.trim()).filter(Boolean);
+            }
+            if (Array.isArray(entrada)) {
+                return entrada.map(item => {
+                    if (typeof item === 'object' && item !== null) {
+                        return item.id_pedido_ml || item.id_pedido || item.id_envio_ml || item.id_envio || item.id || null;
+                    }
+                    return String(item).trim();
+                }).filter(Boolean);
+            }
+            return [String(entrada).trim()].filter(Boolean);
+        };
+
+        const pedidosSolicitados = [
+            ...extrairIds(pedidos),
+            ...extrairIds(pedido_ids)
+        ];
+        const enviosSolicitados = [
+            ...extrairIds(shipment_ids),
+            ...extrairIds(envios),
+            ...extrairIds(ids_envio)
+        ];
+        const packsSolicitados = [
+            ...extrairIds(pack_ids),
+            ...extrairIds(packs)
+        ];
+
+        // Se o usuário passou IDs genéricos no array pedidos que podem ser shipment ou pedido
+        const todosIds = Array.from(new Set([...pedidosSolicitados, ...enviosSolicitados, ...packsSolicitados]));
+
+        if (todosIds.length === 0) {
+            throw new Error('Nenhum pedido ou envio foi selecionado. Envie a lista de "pedidos" ou "shipment_ids" desejada para impressão.');
+        }
+
+        console.log(`[HUB ML Etiquetas] Processando solicitação de etiquetas para ${todosIds.length} itens do cliente ${clienteId}...`);
+
+        const client = await poolHub.connect();
+        try {
+            // 1. Busca os registros no banco para identificar quais contas ML pertencem aos pedidos selecionados
+            const query = `
+                SELECT p.id_pedido_ml, p.id_envio_ml, p.pack_id, p.conta_id, p.etiqueta_zpl, p.status_envio,
+                       c.id as conta_id_real, c.seller_id, c.nickname, c.access_token, c.refresh_token, c.token_expiration
+                FROM pedidos_mercado_livre p
+                JOIN hub_ml_contas c ON p.conta_id = c.id
+                WHERE c.cliente_id = $1 
+                AND (p.id_pedido_ml = ANY($2) OR p.id_envio_ml = ANY($2) OR p.pack_id = ANY($2))
+            `;
+            const res = await client.query(query, [clienteId, todosIds]);
+            let pedidosEncontrados = res.rows;
+
+            // Se algum ID de pedido não foi encontrado no banco, tenta buscar nas contas do cliente para não deixar na mão
+            const pedidosEncontradosSet = new Set(pedidosEncontrados.map(p => String(p.id_pedido_ml)));
+            const enviosEncontradosSet = new Set(pedidosEncontrados.map(p => String(p.id_envio_ml)).filter(Boolean));
+            const packsEncontradosSet = new Set(pedidosEncontrados.map(p => String(p.pack_id)).filter(Boolean));
+
+            const faltantes = todosIds.filter(id => 
+                !pedidosEncontradosSet.has(String(id)) && 
+                !enviosEncontradosSet.has(String(id)) && 
+                !packsEncontradosSet.has(String(id))
+            );
+
+            if (faltantes.length > 0) {
+                console.log(`[HUB ML Etiquetas] ${faltantes.length} itens não localizados previamente no banco. Buscando contas para resolução...`);
+                const contasCliente = await this.resolverContasCliente(clienteId);
+
+                for (const faltante of faltantes) {
+                    for (const conta of contasCliente) {
+                        try {
+                            const accessToken = await hubTokenService.getValidAccessToken(conta);
+                            // Tenta como Pedido
+                            try {
+                                const orderRes = await axios.get(`${ML_API_URL}/orders/${faltante}`, {
+                                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                                });
+                                if (orderRes.data && orderRes.data.id) {
+                                    const shippingId = orderRes.data.shipping?.id ? String(orderRes.data.shipping.id) : null;
+                                    pedidosEncontrados.push({
+                                        id_pedido_ml: orderRes.data.id,
+                                        id_envio_ml: shippingId,
+                                        pack_id: orderRes.data.pack_id ? String(orderRes.data.pack_id) : null,
+                                        conta_id_real: conta.id,
+                                        nickname: conta.nickname,
+                                        seller_id: conta.seller_id,
+                                        access_token: conta.access_token,
+                                        refresh_token: conta.refresh_token,
+                                        token_expiration: conta.token_expiration
+                                    });
+                                    break;
+                                }
+                            } catch (e) {}
+
+                            // Tenta como Envio
+                            try {
+                                const shipRes = await axios.get(`${ML_API_URL}/shipments/${faltante}`, {
+                                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                                });
+                                if (shipRes.data && shipRes.data.id) {
+                                    pedidosEncontrados.push({
+                                        id_pedido_ml: shipRes.data.order_id ? String(shipRes.data.order_id) : null,
+                                        id_envio_ml: String(shipRes.data.id),
+                                        pack_id: shipRes.data.pack_id ? String(shipRes.data.pack_id) : null,
+                                        conta_id_real: conta.id,
+                                        nickname: conta.nickname,
+                                        seller_id: conta.seller_id,
+                                        access_token: conta.access_token,
+                                        refresh_token: conta.refresh_token,
+                                        token_expiration: conta.token_expiration
+                                    });
+                                    break;
+                                }
+                            } catch (e) {}
+                        } catch (e) {}
+                    }
+                }
+            }
+
+            if (pedidosEncontrados.length === 0) {
+                return {
+                    sucesso: false,
+                    mensagem: 'Nenhum dos pedidos selecionados pertence às contas integradas deste usuário ou possui envio elegível.',
+                    total_solicitado: todosIds.length,
+                    total_gerado: 0,
+                    total_falhas: todosIds.length,
+                    etiquetas: [],
+                    zpl_consolidado: null
+                };
+            }
+
+            // Agrupa os envios por conta (pois a API /shipment_labels do ML exige o Bearer token da respectiva conta)
+            const gruposPorConta = new Map();
+            pedidosEncontrados.forEach(p => {
+                const idEnvio = p.id_envio_ml;
+                if (!idEnvio) {
+                    console.warn(`[HUB ML Etiquetas] Pedido ${p.id_pedido_ml} não possui id_envio_ml.`);
+                    return;
+                }
+
+                if (!gruposPorConta.has(p.conta_id_real)) {
+                    gruposPorConta.set(p.conta_id_real, {
+                        conta: {
+                            id: p.conta_id_real,
+                            nickname: p.nickname,
+                            refresh_token: p.refresh_token,
+                            token_expiration: p.token_expiration,
+                            access_token: p.access_token
+                        },
+                        envios: []
+                    });
+                }
+                const grupo = gruposPorConta.get(p.conta_id_real);
+                if (!grupo.envios.some(e => e.id_envio_ml === idEnvio)) {
+                    grupo.envios.push(p);
+                }
+            });
+
+            const resultadosEtiquetas = [];
+            const zplAcumulado = [];
+            const pdfBuffersAcumulados = [];
+
+            // Processa cada conta
+            for (const [contaId, grupo] of gruposPorConta.entries()) {
+                let accessToken;
+                try {
+                    accessToken = await hubTokenService.getValidAccessToken(grupo.conta);
+                } catch (e) {
+                    grupo.envios.forEach(e => {
+                        resultadosEtiquetas.push({
+                            id_pedido_ml: e.id_pedido_ml,
+                            id_envio_ml: e.id_envio_ml,
+                            pack_id: e.pack_id || null,
+                            conta: grupo.conta.nickname,
+                            sucesso: false,
+                            erro: `Falha na autenticação da conta ${grupo.conta.nickname}: ${e.message}`
+                        });
+                    });
+                    continue;
+                }
+
+                // Processa envios em lotes de até 50 (limite do Mercado Livre)
+                const shipmentIds = grupo.envios.map(e => e.id_envio_ml);
+                const chunkSize = 20;
+
+                for (let i = 0; i < shipmentIds.length; i += chunkSize) {
+                    const chunkShipmentIds = shipmentIds.slice(i, i + chunkSize);
+                    try {
+                        await delay(200);
+                        const responseTypeParam = formato === 'pdf' ? 'pdf' : 'zpl2';
+                        const zplUrl = `${ML_API_URL}/shipment_labels?shipment_ids=${chunkShipmentIds.join(',')}&response_type=${responseTypeParam}`;
+                        
+                        const zplResponse = await axios.get(zplUrl, {
+                            headers: { 'Authorization': `Bearer ${accessToken}` },
+                            responseType: 'arraybuffer'
+                        });
+
+                        const buffer = zplResponse.data;
+                        let conteudoExtraido = null;
+
+                        // Tratamento do retorno ZIP (padrão quando múltiplos envios ZPL/PDF são solicitados)
+                        if (buffer && buffer[0] === 0x50 && buffer[1] === 0x4B) {
+                            const zip = new AdmZip(buffer);
+                            const zipEntries = zip.getEntries();
+                            
+                            if (formato === 'pdf') {
+                                const pdfEntries = zipEntries.filter(entry => entry.entryName.toLowerCase().endsWith('.pdf'));
+                                if (pdfEntries.length > 0) {
+                                    for (const pEntry of pdfEntries) {
+                                        const pBuf = pEntry.getData();
+                                        pdfBuffersAcumulados.push(pBuf);
+                                        conteudoExtraido = Buffer.from(pBuf).toString('base64');
+                                    }
+                                } else {
+                                    pdfBuffersAcumulados.push(buffer);
+                                    conteudoExtraido = Buffer.from(buffer).toString('base64');
+                                }
+                            } else {
+                                const zplEntries = zipEntries.filter(entry => entry.entryName.toLowerCase().endsWith('.txt') || entry.entryName.toLowerCase().endsWith('.zpl'));
+                                if (zplEntries.length > 0) {
+                                    conteudoExtraido = zplEntries.map(entry => zip.readAsText(entry, 'utf8')).join('\n');
+                                } else {
+                                    conteudoExtraido = buffer.toString('utf8');
+                                }
+                            }
+                        } else if (formato === 'pdf') {
+                            pdfBuffersAcumulados.push(Buffer.from(buffer));
+                            conteudoExtraido = Buffer.from(buffer).toString('base64');
+                        } else {
+                            conteudoExtraido = Buffer.from(buffer).toString('utf8');
+                        }
+
+                        // Persiste no banco e estrutura o retorno
+                        for (const idEnvio of chunkShipmentIds) {
+                            if (salvar_banco && conteudoExtraido && formato !== 'pdf') {
+                                try {
+                                    await client.query(
+                                        `UPDATE pedidos_mercado_livre SET etiqueta_zpl = $1, last_update = NOW() WHERE id_envio_ml = $2`,
+                                        [conteudoExtraido.replace(/\u0000/g, ''), idEnvio]
+                                    );
+                                } catch (dbErr) {
+                                    console.warn(`[HUB ML Etiquetas] Falha ao persistir etiqueta do envio ${idEnvio} no banco:`, dbErr.message);
+                                }
+                            }
+
+                            const ped = grupo.envios.find(e => e.id_envio_ml === idEnvio);
+                            resultadosEtiquetas.push({
+                                id_pedido_ml: ped?.id_pedido_ml || null,
+                                id_envio_ml: idEnvio,
+                                pack_id: ped?.pack_id || null,
+                                conta: grupo.conta.nickname,
+                                formato: formato,
+                                sucesso: true,
+                                conteudo: conteudoExtraido
+                            });
+
+                            if (conteudoExtraido && formato !== 'pdf') {
+                                zplAcumulado.push(conteudoExtraido);
+                            }
+                        }
+
+                    } catch (errLabels) {
+                        const msgErro = errLabels.response?.data?.message || errLabels.response?.data?.error || errLabels.message;
+                        console.error(`[HUB ML Etiquetas] Erro ao obter etiquetas dos envios ${chunkShipmentIds.join(',')}:`, msgErro);
+                        
+                        chunkShipmentIds.forEach(idEnvio => {
+                            const ped = grupo.envios.find(e => e.id_envio_ml === idEnvio);
+                            resultadosEtiquetas.push({
+                                id_pedido_ml: ped?.id_pedido_ml || null,
+                                id_envio_ml: idEnvio,
+                                pack_id: ped?.pack_id || null,
+                                conta: grupo.conta.nickname,
+                                sucesso: false,
+                                erro: msgErro
+                            });
+                        });
+                    }
+                }
+            }
+
+            let pdfConsolidadoBase64 = null;
+            if (consolidar && formato === 'pdf' && pdfBuffersAcumulados.length > 0) {
+                try {
+                    const mergedPdf = await PDFDocument.create();
+                    for (const pdfBuf of pdfBuffersAcumulados) {
+                        try {
+                            const srcDoc = await PDFDocument.load(pdfBuf);
+                            const pageIndices = srcDoc.getPageIndices();
+                            const copiedPages = await mergedPdf.copyPages(srcDoc, pageIndices);
+                            copiedPages.forEach(page => mergedPdf.addPage(page));
+                        } catch (loadErr) {
+                            console.warn('[HUB ML Etiquetas PDF] Erro ao mesclar página de PDF:', loadErr.message);
+                        }
+                    }
+                    const mergedBytes = await mergedPdf.save();
+                    pdfConsolidadoBase64 = Buffer.from(mergedBytes).toString('base64');
+                } catch (mergeErr) {
+                    console.error('[HUB ML Etiquetas PDF] Erro ao consolidar PDFs:', mergeErr.message);
+                }
+            }
+
+            const totalGerado = resultadosEtiquetas.filter(r => r.sucesso).length;
+            const totalFalhas = resultadosEtiquetas.filter(r => !r.sucesso).length;
+
+            return {
+                sucesso: totalGerado > 0,
+                formato,
+                total_solicitado: todosIds.length,
+                total_identificado: pedidosEncontrados.length,
+                total_gerado: totalGerado,
+                total_falhas: totalFalhas,
+                tempo_ms: Date.now() - inicio,
+                zpl_consolidado: consolidar && formato !== 'pdf' ? zplAcumulado.join('\n') : null,
+                pdf_consolidado: pdfConsolidadoBase64,
+                etiquetas: resultadosEtiquetas
+            };
+
         } finally {
             client.release();
         }

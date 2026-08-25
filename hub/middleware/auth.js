@@ -3,6 +3,11 @@ const jwt = require('jsonwebtoken');
 const JWT_SECRET = process.env.HUB_JWT_SECRET;
 
 const verifyHubToken = (req, res, next) => {
+    // Permite acesso se o usuário já estiver autenticado via sessão web do painel (Passport)
+    if (req.isAuthenticated && req.isAuthenticated()) {
+        return next();
+    }
+
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1]; // Formato: Bearer
     if (!token) {

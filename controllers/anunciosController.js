@@ -56,37 +56,21 @@ function invalidateCatalogTotalsCache() {
     catalogTotalsCache = { data: null, expiresAt: 0 };
 }
 
-// Helper: Retorna o JOIN SQL para estoque_plataforma
-// Tenta usar a Materialized View mv_cached_estoque (pré-calculada, ultra-rápida)
-// Se não existir, faz fallback para a subquery DISTINCT ON original
-let useMaterializedView = null; // null = não testado, true/false = resultado do teste
-
+// Helper: Retorna o JOIN SQL para estoque_plataforma em tempo real a partir de cached_products
+// (Garante consistência instantânea com o Bling e com a Configuração de Prazos)
 async function getEstoqueJoinSQL() {
-    if (useMaterializedView === null) {
-        try {
-            await pool.query('SELECT 1 FROM mv_cached_estoque LIMIT 1');
-            useMaterializedView = true;
-            console.log('[Performance] Materialized View mv_cached_estoque detectada — usando JOIN otimizado.');
-        } catch (e) {
-            useMaterializedView = false;
-            console.log('[Performance] Materialized View mv_cached_estoque não encontrada — usando subquery fallback.');
-        }
-    }
-    if (useMaterializedView) {
-        return 'LEFT JOIN mv_cached_estoque cp ON cp.sku = a.sku';
-    }
     return `LEFT JOIN (
-                    SELECT DISTINCT ON (sku) sku, estoque_plataforma
+                    SELECT DISTINCT ON (UPPER(TRIM(sku))) UPPER(TRIM(sku)) AS clean_sku, sku, estoque_plataforma
                     FROM cached_products
                     WHERE sku IS NOT NULL AND sku != ''
-                    ORDER BY sku, 
+                    ORDER BY UPPER(TRIM(sku)), 
                         CASE 
                             WHEN bling_account = 'lucas' THEN 1 
                             WHEN bling_account = 'eliane' THEN 2 
                             ELSE 3 
                         END,
                         last_updated_at DESC
-                ) cp ON cp.sku = a.sku`;
+                ) cp ON cp.clean_sku = UPPER(TRIM(a.sku))`;
 }
 
 // Helper: Retorna se a coluna has_active_promo existe na tabela
@@ -118,18 +102,12 @@ function computeHasActivePromo(promocoesJson) {
     }
 }
 
-// Refresh da Materialized View e atualização de has_active_promo após sync
+// Atualização de artefatos após sync
 async function refreshPerformanceArtifacts() {
-    // Refresh Materialized View
-    try {
-        await pool.query('REFRESH MATERIALIZED VIEW CONCURRENTLY mv_cached_estoque');
-        console.log('[Performance] Materialized View mv_cached_estoque refreshed.');
-    } catch (e) {
-        // View pode não existir, ignorar
-    }
-    // Invalidar cache
+    // Invalidar cache de totais de catálogo
     invalidateCatalogTotalsCache();
 }
+
 
 // =============================================
 // === HELPERS DE CÁLCULO DE MARGEM ===
@@ -570,24 +548,13 @@ async function sincronizarAnunciosInterno(forcarSyncHub = false, options = {}) {
         throw new Error('Nenhuma credencial de conta do Hub configurada no .env');
     }
 
+    const specificIds = (Array.isArray(options.item_ids) && options.item_ids.length > 0)
+        ? options.item_ids.filter(id => id && String(id).toUpperCase().startsWith('MLB'))
+        : [];
+
     // 1. Condicionalmente dispara a sincronização no Hub/ML
     if (forcarSyncHub) {
         const hubProdutosService = require('../hub/services/hubProdutosService');
-
-        const hasActiveFilters = Boolean(options && (
-            (options.search && String(options.search).trim() !== '') ||
-            (options.status && String(options.status).trim() !== '') ||
-            (options.catalog && String(options.catalog).trim() !== '') ||
-            (options.tipo && String(options.tipo).trim() !== '') ||
-            (options.empresa && String(options.empresa).trim() !== '') ||
-            (options.margem_reemb && String(options.margem_reemb).trim() !== '')
-        ));
-
-        let specificIds = [];
-        if (hasActiveFilters && Array.isArray(options.item_ids) && options.item_ids.length > 0) {
-            // Usa os IDs de anúncio reais vindos do frontend (já são MLB IDs válidos)
-            specificIds = options.item_ids.filter(id => id && String(id).toUpperCase().startsWith('MLB'));
-        }
 
         if (specificIds.length > 0) {
             console.log(`[Anúncios] Sincronizando ${specificIds.length} item(ns) específico(s) diretamente da API do Mercado Livre...`);
@@ -627,54 +594,70 @@ async function sincronizarAnunciosInterno(forcarSyncHub = false, options = {}) {
     // 3. Busca todos os anúncios do Hub para CADA conta cadastrada e consolida
     let allAnuncios = [];
 
-    for (const acc of accounts) {
-        console.log(`[Anúncios] Buscando anúncios do Hub para a conta: ${acc.email}`);
-        const token = await getHubToken(acc.email, acc.password);
-        if (!token) {
-            console.warn(`[Anúncios] Pulando busca para a conta ${acc.email} devido a falha no token.`);
-            continue;
-        }
+    if (specificIds.length > 0) {
+        console.log(`[Anúncios] Buscando dados consolidados de ${specificIds.length} anúncio(s) no banco do Hub...`);
+        const { poolProdutos } = require('../hub/config/database');
+        const resHub = await poolProdutos.query(
+            'SELECT * FROM produtos_anuncios WHERE id_anuncio = ANY($1)',
+            [specificIds]
+        );
+        allAnuncios = resHub.rows || [];
+    } else {
+        for (const acc of accounts) {
+            console.log(`[Anúncios] Buscando anúncios do Hub para a conta: ${acc.email}`);
+            const token = await getHubToken(acc.email, acc.password);
+            if (!token) {
+                console.warn(`[Anúncios] Pulando busca para a conta ${acc.email} devido a falha no token.`);
+                continue;
+            }
 
-        let currentOffset = 0;
-        const fetchLimit = 1000;
-        let hasMore = true;
+            let currentOffset = 0;
+            const fetchLimit = 1000;
+            let hasMore = true;
 
-        while (hasMore) {
-            try {
-                const response = await axios.get(`${HUB_API_URL}/hub/api/produtos`, {
-                    params: { limit: fetchLimit, offset: currentOffset },
-                    headers: { Authorization: `Bearer ${token}` }
-                });
+            while (hasMore) {
+                try {
+                    const response = await axios.get(`${HUB_API_URL}/hub/api/produtos`, {
+                        params: { limit: fetchLimit, offset: currentOffset },
+                        headers: { Authorization: `Bearer ${token}` }
+                    });
 
-                const dados = response.data.dados || [];
-                allAnuncios = allAnuncios.concat(dados);
+                    const dados = response.data.dados || [];
+                    allAnuncios = allAnuncios.concat(dados);
 
-                if (dados.length < fetchLimit) {
+                    if (dados.length < fetchLimit) {
+                        hasMore = false;
+                    } else {
+                        currentOffset += fetchLimit;
+                    }
+                } catch (fetchErr) {
+                    console.error(`[Anúncios] Erro ao buscar anúncios para ${acc.email} no offset ${currentOffset}:`, fetchErr.message);
                     hasMore = false;
-                } else {
-                    currentOffset += fetchLimit;
                 }
-            } catch (fetchErr) {
-                console.error(`[Anúncios] Erro ao buscar anúncios para ${acc.email} no offset ${currentOffset}:`, fetchErr.message);
-                hasMore = false;
             }
         }
     }
 
     console.log(`[Anúncios] Total consolidado do Hub: ${allAnuncios.length} anúncios.`);
 
+
     const hasFilters = Boolean(options && (
         (options.search && String(options.search).trim() !== '') ||
         (options.status && String(options.status).trim() !== '') ||
         (options.catalog && String(options.catalog).trim() !== '') ||
-        (options.tipo && String(options.tipo).trim() !== '')
+        (options.tipo && String(options.tipo).trim() !== '') ||
+        (options.empresa && String(options.empresa).trim() !== '') ||
+        (options.margem_reemb && String(options.margem_reemb).trim() !== '') ||
+        (Array.isArray(options.item_ids) && options.item_ids.length > 0)
     ));
 
-    const anunciosToSync = hasFilters
+    const isPartialSync = specificIds.length > 0 || hasFilters;
+
+    const anunciosToSync = hasFilters && specificIds.length === 0
         ? allAnuncios.filter(a => matchesSyncFilters(a, options))
         : allAnuncios;
 
-    console.log(`[Anúncios] Total a processar no Inova: ${anunciosToSync.length} (Filtros ativos: ${hasFilters}).`);
+    console.log(`[Anúncios] Total a processar no Inova: ${anunciosToSync.length} (Sincronização parcial / Filtros ativos: ${isPartialSync}).`);
 
     if (anunciosToSync.length === 0) {
         return {
@@ -786,8 +769,8 @@ async function sincronizarAnunciosInterno(forcarSyncHub = false, options = {}) {
         }
 
         // Limpeza de anúncios órfãos: existem no Inova mas NÃO existem mais no Hub
-        // Só roda na sincronização completa (sem filtros) para evitar deletar itens que foram apenas filtrados
-        if (!hasFilters && allAnuncios.length > 0) {
+        // Só roda na sincronização COMPLETA GLOBAL (sem filtros, sem IDs específicos) e com quantidade consistente do Hub
+        if (!isPartialSync && allAnuncios.length > 500) {
             const idsDoHub = allAnuncios.map(a => a.id_anuncio).filter(Boolean);
             const idsDoHubSet = new Set(idsDoHub);
 
@@ -796,6 +779,7 @@ async function sincronizarAnunciosInterno(forcarSyncHub = false, options = {}) {
             const idsOrfaos = inovaResult.rows
                 .map(r => r.id_anuncio)
                 .filter(id => !idsDoHubSet.has(id));
+
 
             if (idsOrfaos.length > 0) {
                 console.log(`[Anúncios] Encontrados ${idsOrfaos.length} anúncio(s) órfão(s) no Inova (não existem mais no Hub). Removendo...`);
@@ -920,8 +904,349 @@ exports.sincronizarAnuncios = async (req, res) => {
     }
 };
 
+/**
+ * Endpoint dedicado para sincronizar APENAS promoções (muito mais rápido).
+ * Busca os IDs de anúncios afetados (via filtros ativos ou body.item_ids),
+ * chama a API de promoções do ML e atualiza promocoes_json + preco_promocional.
+ */
+exports.sincronizarPromocoes = async (req, res) => {
+    try {
+        const hubProdutosService = require('../hub/services/hubProdutosService');
+        const { search, searchField, status, catalog, tipo, empresa, item_ids } = { ...req.query, ...req.body };
+
+        let targetIds = [];
+
+        // Se o frontend enviou item_ids explícitos, usa direto
+        if (Array.isArray(item_ids) && item_ids.length > 0) {
+            targetIds = item_ids.filter(id => id && String(id).toUpperCase().startsWith('MLB'));
+        }
+
+        // Se não tem IDs explícitos, busca do banco com os filtros ativos
+        if (targetIds.length === 0) {
+            const useOptimizedPromoFilter = await checkHasActivePromoColumn();
+            let whereClauses = [
+                useOptimizedPromoFilter
+                    ? `a.has_active_promo = TRUE`
+                    : `a.promocoes_json IS NOT NULL AND a.promocoes_json::text != '[]' AND a.promocoes_json::text != 'null' AND a.promocoes_json::text != '' AND EXISTS (SELECT 1 FROM jsonb_array_elements(a.promocoes_json) elem WHERE (elem->>'price') IS NOT NULL AND (elem->>'price')::numeric > 0)`
+            ];
+            const queryParams = [];
+            let paramIndex = 1;
+
+            if (search) {
+                const searchTerm = `%${search}%`;
+                const field = String(searchField || 'id_anuncio').toLowerCase();
+                let cond = `a.id_anuncio ILIKE $${paramIndex}`;
+                if (field === 'sku') cond = `a.sku ILIKE $${paramIndex}`;
+                else if (field === 'descricao') cond = `a.descricao ILIKE $${paramIndex}`;
+                else if (field === 'geral' || field === 'all') cond = `(a.sku ILIKE $${paramIndex} OR a.descricao ILIKE $${paramIndex} OR a.id_anuncio ILIKE $${paramIndex})`;
+                whereClauses.push(cond);
+                queryParams.push(searchTerm);
+                paramIndex++;
+            }
+            if (status) {
+                whereClauses.push(`a.status = $${paramIndex}`);
+                queryParams.push(status);
+                paramIndex++;
+            }
+            if (catalog === 'com') whereClauses.push(`a.catalog_listing = TRUE`);
+            else if (catalog === 'sem') whereClauses.push(`a.catalog_listing = FALSE`);
+            if (tipo) {
+                whereClauses.push(`a.tipo_anuncio = $${paramIndex}`);
+                queryParams.push(tipo);
+                paramIndex++;
+            }
+            if (empresa) {
+                whereClauses.push(`a.empresa ILIKE $${paramIndex}`);
+                queryParams.push(`%${empresa}%`);
+                paramIndex++;
+            }
+
+            const whereCondition = `WHERE ${whereClauses.join(' AND ')}`;
+            const idsResult = await pool.query(`SELECT a.id_anuncio FROM anuncios_ml a ${whereCondition}`, queryParams);
+            targetIds = idsResult.rows.map(r => r.id_anuncio);
+        }
+
+        if (targetIds.length === 0) {
+            return res.status(200).json({
+                success: true,
+                message: 'Nenhum anúncio com promoções encontrado para sincronizar.',
+                total: 0
+            });
+        }
+
+        console.log(`[Promoções Sync] Sincronizando promoções de ${targetIds.length} anúncio(s)...`);
+
+        // 1. Chama o hub para buscar promoções de todos os IDs
+        const hubResult = await hubProdutosService.sincronizarPromocoesAnuncios(targetIds);
+
+        // 2. Busca os dados atualizados do Hub e atualiza a tabela anuncios_ml do Inova
+        const { poolProdutos } = require('../hub/config/database');
+        const hubAnuncios = await poolProdutos.query(
+            'SELECT id_anuncio, promocoes_json, preco_promocional FROM produtos_anuncios WHERE id_anuncio = ANY($1)',
+            [targetIds]
+        );
+
+        let atualizadosInova = 0;
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            for (const hubRow of hubAnuncios.rows) {
+                let promoVal = null;
+                if (hubRow.promocoes_json) {
+                    promoVal = typeof hubRow.promocoes_json === 'string' ? hubRow.promocoes_json : JSON.stringify(hubRow.promocoes_json);
+                }
+
+                await client.query(`
+                    UPDATE anuncios_ml
+                    SET promocoes_json = $1,
+                        preco_promocional = $2,
+                        last_updated_at = NOW()
+                    WHERE id_anuncio = $3
+                `, [promoVal, hubRow.preco_promocional, hubRow.id_anuncio]);
+                atualizadosInova++;
+            }
+
+            // Atualiza has_active_promo para os anúncios afetados
+            try {
+                const idsPlaceholders = targetIds.map((_, i) => `$${i + 1}`).join(', ');
+                await client.query(`
+                    UPDATE anuncios_ml
+                    SET has_active_promo = (
+                        promocoes_json IS NOT NULL
+                        AND promocoes_json::text != '[]'
+                        AND promocoes_json::text != 'null'
+                        AND promocoes_json::text != ''
+                        AND EXISTS (
+                            SELECT 1 FROM jsonb_array_elements(promocoes_json) elem
+                            WHERE (elem->>'price') IS NOT NULL
+                            AND (elem->>'price')::numeric > 0
+                        )
+                    )
+                    WHERE id_anuncio IN (${idsPlaceholders})
+                `, targetIds);
+            } catch (e) {
+                console.warn('[Promoções Sync] Erro ao atualizar has_active_promo:', e.message);
+            }
+
+            await client.query('COMMIT');
+        } catch (dbErr) {
+            await client.query('ROLLBACK');
+            throw dbErr;
+        } finally {
+            client.release();
+        }
+
+        const message = `Sincronização de promoções concluída! ${hubResult.totalProcessados} promoção(ões) atualizada(s) no Hub, ${atualizadosInova} anúncio(s) atualizado(s) no Inova.`;
+
+        console.log(`[Promoções Sync] ${message}`);
+
+        res.status(200).json({
+            success: true,
+            message,
+            total: targetIds.length,
+            processados_hub: hubResult.totalProcessados,
+            erros_hub: hubResult.totalErros,
+            atualizados_inova: atualizadosInova
+        });
+
+    } catch (error) {
+        console.error('[Promoções Sync] Erro:', error.message);
+        res.status(500).json({ error: 'Erro ao sincronizar promoções.' });
+    }
+};
+
+
+/**
+ * Endpoint para Opt-In de um anúncio em uma promoção via Mercado Livre.
+ */
+exports.aderirPromocaoApi = async (req, res) => {
+    try {
+        const hubProdutosService = require('../hub/services/hubProdutosService');
+        const { item_id, promotion_id, promotion_type, deal_price, options } = req.body;
+
+        if (!item_id) {
+            return res.status(400).json({ error: 'O campo "item_id" é obrigatório.' });
+        }
+
+        const cleanItemId = String(item_id).trim().toUpperCase();
+
+        // 1. Executa adesão no Hub / Mercado Livre
+        const resultado = await hubProdutosService.aderirPromocaoItem(
+            cleanItemId,
+            promotion_id,
+            promotion_type,
+            deal_price,
+            options || {}
+        );
+
+        // 2. Atualiza no banco do Inova (anuncios_ml)
+        const hasActive = (resultado.promocoes || []).some(
+            p => (p.status === 'started' || p.status === 'active') && p.price != null && Number(p.price) > 0
+        );
+
+        await pool.query(`
+            UPDATE anuncios_ml
+            SET promocoes_json = $1,
+                preco_promocional = $2,
+                has_active_promo = $3,
+                last_updated_at = NOW()
+            WHERE id_anuncio = $4
+        `, [resultado.promocoes_json, resultado.preco_promocional, hasActive, cleanItemId]);
+
+        // 3. Busca o anúncio atualizado para retornar com todos os campos e margem recalculada
+        const estoqueJoin = await getEstoqueJoinSQL();
+        const itemResult = await pool.query(`
+            SELECT 
+                a.id, a.id_anuncio, a.sku, a.descricao, a.status, a.empresa,
+                a.catalog_product_id, a.estoque_ml, a.prazo_disponibilidade,
+                a.catalog_listing, a.frete, a.tipo_anuncio, a.ganhando_catalogo,
+                a.experiencia_compra, a.vendas_total, a.preco, a.preco_promocional,
+                a.tarifa, a.permalink, a.thumbnail, a.custo_produto, a.imposto,
+                a.margem_lucro, a.promocoes_json, a.last_updated_at, cp.estoque_plataforma
+            FROM anuncios_ml a
+            ${estoqueJoin}
+            WHERE a.id_anuncio = $1
+            LIMIT 1
+        `, [cleanItemId]);
+
+        let updatedRow = itemResult.rows[0] || null;
+        if (updatedRow) {
+            let promos = [];
+            if (updatedRow.promocoes_json) {
+                try {
+                    promos = typeof updatedRow.promocoes_json === 'string' ? JSON.parse(updatedRow.promocoes_json) : updatedRow.promocoes_json;
+                } catch (e) { promos = []; }
+            }
+            promos = Array.isArray(promos) ? promos : [];
+            const activePromos = promos.filter(p => p && (p.status === 'started' || p.status === 'active') && p.price != null && Number(p.price) > 0);
+            activePromos.sort((a, b) => Number(a.price) - Number(b.price));
+            const lowestActivePromo = activePromos[0] || null;
+
+            if (lowestActivePromo) {
+                updatedRow.preco_promocional = Number(lowestActivePromo.price);
+                updatedRow.nome_promo_ativa = lowestActivePromo.name || lowestActivePromo.id || 'Promoção Ativa';
+                updatedRow.margem_lucro = calcularMargemLucro(updatedRow, lowestActivePromo);
+            } else {
+                updatedRow.preco_promocional = null;
+                updatedRow.nome_promo_ativa = null;
+                updatedRow.margem_lucro = null;
+            }
+        }
+
+        res.status(200).json({
+            success: true,
+            message: `Anúncio ${cleanItemId} incluído na promoção com sucesso!`,
+            item: updatedRow,
+            ...resultado
+        });
+
+    } catch (error) {
+        console.error('[Anúncios Controller] Erro no opt-in de promoção:', error.message);
+        res.status(400).json({
+            success: false,
+            error: error.message || 'Erro ao participar da promoção no Mercado Livre.'
+        });
+    }
+};
+
+/**
+ * Endpoint para Opt-Out de um anúncio em uma promoção via Mercado Livre.
+ */
+exports.removerPromocaoApi = async (req, res) => {
+    try {
+        const hubProdutosService = require('../hub/services/hubProdutosService');
+        const { item_id, promotion_id, promotion_type, options } = req.body;
+
+        if (!item_id) {
+            return res.status(400).json({ error: 'O campo "item_id" é obrigatório.' });
+        }
+
+        const cleanItemId = String(item_id).trim().toUpperCase();
+
+        // 1. Executa remoção no Hub / Mercado Livre
+        const resultado = await hubProdutosService.removerPromocaoItem(
+            cleanItemId,
+            promotion_id,
+            promotion_type,
+            options || {}
+        );
+
+
+        // 2. Atualiza no banco do Inova (anuncios_ml)
+        const hasActive = (resultado.promocoes || []).some(
+            p => (p.status === 'started' || p.status === 'active') && p.price != null && Number(p.price) > 0
+        );
+
+        await pool.query(`
+            UPDATE anuncios_ml
+            SET promocoes_json = $1,
+                preco_promocional = $2,
+                has_active_promo = $3,
+                last_updated_at = NOW()
+            WHERE id_anuncio = $4
+        `, [resultado.promocoes_json, resultado.preco_promocional, hasActive, cleanItemId]);
+
+        // 3. Busca o anúncio atualizado para retornar com todos os campos e margem recalculada
+        const estoqueJoin = await getEstoqueJoinSQL();
+        const itemResult = await pool.query(`
+            SELECT 
+                a.id, a.id_anuncio, a.sku, a.descricao, a.status, a.empresa,
+                a.catalog_product_id, a.estoque_ml, a.prazo_disponibilidade,
+                a.catalog_listing, a.frete, a.tipo_anuncio, a.ganhando_catalogo,
+                a.experiencia_compra, a.vendas_total, a.preco, a.preco_promocional,
+                a.tarifa, a.permalink, a.thumbnail, a.custo_produto, a.imposto,
+                a.margem_lucro, a.promocoes_json, a.last_updated_at, cp.estoque_plataforma
+            FROM anuncios_ml a
+            ${estoqueJoin}
+            WHERE a.id_anuncio = $1
+            LIMIT 1
+        `, [cleanItemId]);
+
+        let updatedRow = itemResult.rows[0] || null;
+        if (updatedRow) {
+            let promos = [];
+            if (updatedRow.promocoes_json) {
+                try {
+                    promos = typeof updatedRow.promocoes_json === 'string' ? JSON.parse(updatedRow.promocoes_json) : updatedRow.promocoes_json;
+                } catch (e) { promos = []; }
+            }
+            promos = Array.isArray(promos) ? promos : [];
+            const activePromos = promos.filter(p => p && (p.status === 'started' || p.status === 'active') && p.price != null && Number(p.price) > 0);
+            activePromos.sort((a, b) => Number(a.price) - Number(b.price));
+            const lowestActivePromo = activePromos[0] || null;
+
+            if (lowestActivePromo) {
+                updatedRow.preco_promocional = Number(lowestActivePromo.price);
+                updatedRow.nome_promo_ativa = lowestActivePromo.name || lowestActivePromo.id || 'Promoção Ativa';
+                updatedRow.margem_lucro = calcularMargemLucro(updatedRow, lowestActivePromo);
+            } else {
+                updatedRow.preco_promocional = null;
+                updatedRow.nome_promo_ativa = null;
+                updatedRow.margem_lucro = null;
+            }
+        }
+
+        res.status(200).json({
+            success: true,
+            message: `Anúncio ${cleanItemId} removido da promoção com sucesso!`,
+            item: updatedRow,
+            ...resultado
+        });
+
+    } catch (error) {
+        console.error('[Anúncios Controller] Erro no opt-out de promoção:', error.message);
+        res.status(400).json({
+            success: false,
+            error: error.message || 'Erro ao sair da promoção no Mercado Livre.'
+        });
+    }
+};
+
 // Exporta o método interno para o index.js / cron usar
 exports.sincronizarAnunciosInterno = sincronizarAnunciosInterno;
+
+
 
 /**
  * API para exportar relatório Excel respeitando os mesmos filtros
@@ -2088,10 +2413,118 @@ exports.salvarPrazoFornecedorApi = async (req, res) => {
 };
 
 /**
+ * API para salvar prazos em lote para Múltiplos Fornecedores.
+ */
+exports.salvarPrazoFornecedoresLoteApi = async (req, res) => {
+    try {
+        const { fornecedores, prazo_dias } = req.body;
+
+        if (!Array.isArray(fornecedores) || fornecedores.length === 0) {
+            return res.status(400).json({ error: 'Nenhum fornecedor fornecido.' });
+        }
+
+        const dias = Number(prazo_dias);
+        if (isNaN(dias) || dias < 0 || dias > 45) {
+            return res.status(400).json({ error: 'O prazo deve ser um número entre 0 e 45 dias.' });
+        }
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            for (const f of fornecedores) {
+                const fornId = f.fornecedor_id ? Number(f.fornecedor_id) : null;
+                const fornNome = f.fornecedor_nome || '';
+                if (!fornId && !fornNome) continue;
+
+                await client.query(`
+                    INSERT INTO configuracao_prazos_fornecedor (fornecedor_id, fornecedor_nome, prazo_dias, updated_at)
+                    VALUES ($1, $2, $3, NOW())
+                    ON CONFLICT (fornecedor_id) DO UPDATE SET
+                        fornecedor_nome = EXCLUDED.fornecedor_nome,
+                        prazo_dias = EXCLUDED.prazo_dias,
+                        updated_at = NOW()
+                `, [fornId, fornNome, dias]);
+            }
+            await client.query('COMMIT');
+        } catch (errDb) {
+            await client.query('ROLLBACK');
+            throw errDb;
+        } finally {
+            client.release();
+        }
+
+        console.log(`[Config Prazos] Prazo de ${dias} dias salvo em lote para ${fornecedores.length} fornecedor(es).`);
+        res.status(200).json({ success: true, count: fornecedores.length, prazo_dias: dias });
+
+    } catch (error) {
+        console.error('[Config Prazos] Erro ao salvar prazos de fornecedores em lote:', error);
+        res.status(500).json({ error: 'Erro ao salvar prazos em lote para fornecedores.' });
+    }
+};
+
+// Helper para extrair número de dias do texto de prazo
+function extrairDiasPrazo(prazo) {
+    if (prazo === null || prazo === undefined) return 0;
+    const str = String(prazo).trim().toLowerCase();
+    if (str === '' || str === 'null' || str === 'undefined' || str === '0' || str === '0 dias' || str.includes('pronta') || str === '-') {
+        return 0;
+    }
+    const digits = str.replace(/\D/g, '');
+    return digits ? parseInt(digits, 10) : 0;
+}
+
+// Helper para registrar no histórico de alterações de prazos
+async function registrarHistoricoPrazo(dados) {
+    try {
+        await pool.query(`
+            INSERT INTO historico_prazos_anuncios 
+            (id_anuncio, sku, descricao, fornecedor_nome, estoque_bling, acao, prazo_anterior, prazo_novo, motivo, sucesso, mensagem_erro, executado_por)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        `, [
+            dados.id_anuncio,
+            dados.sku,
+            dados.descricao,
+            dados.fornecedor_nome,
+            dados.estoque_bling,
+            dados.acao,
+            dados.prazo_anterior,
+            dados.prazo_novo,
+            dados.motivo,
+            dados.sucesso !== false,
+            dados.mensagem_erro || null,
+            dados.executado_por || 'Manual'
+        ]);
+    } catch (err) {
+        console.error('[Prazos ML] Erro ao gravar histórico:', err.message);
+    }
+}
+
+/**
  * API para buscar a listagem de Produtos (SKUs dos anúncios) com seus fornecedores e prazos.
  */
 exports.getConfigPrazosProdutosApi = async (req, res) => {
     try {
+        // Garante que a coluna liberar_indeterminado existe na tabela
+        await pool.query(`
+            ALTER TABLE configuracao_prazos_produto 
+            ADD COLUMN IF NOT EXISTS liberar_indeterminado BOOLEAN DEFAULT FALSE;
+        `);
+
+        // Reseta automaticamente liberação indeterminada para SKUs cujo estoque zerou ou negativou
+        await pool.query(`
+            UPDATE configuracao_prazos_produto cpp
+            SET liberar_indeterminado = FALSE, updated_at = NOW()
+            FROM (
+                SELECT DISTINCT ON (UPPER(TRIM(sku))) UPPER(TRIM(sku)) AS clean_sku, COALESCE(estoque_plataforma, 0) AS estoque
+                FROM cached_products
+                WHERE sku IS NOT NULL AND TRIM(sku) != ''
+                ORDER BY UPPER(TRIM(sku)), (bling_account = 'lucas') DESC, last_updated_at DESC
+            ) pb
+            WHERE UPPER(TRIM(cpp.sku)) = pb.clean_sku 
+              AND cpp.liberar_indeterminado = TRUE 
+              AND pb.estoque <= 0;
+        `);
+
         const query = `
             WITH skus_anuncios AS (
                 SELECT 
@@ -2103,14 +2536,15 @@ exports.getConfigPrazosProdutosApi = async (req, res) => {
                 GROUP BY sku
             ),
             produtos_bling AS (
-                SELECT DISTINCT ON (sku)
+                SELECT DISTINCT ON (UPPER(TRIM(sku)))
+                    UPPER(TRIM(sku)) AS clean_sku,
                     sku,
                     bling_id,
                     nome,
                     estoque_plataforma
                 FROM cached_products
                 WHERE sku IS NOT NULL AND TRIM(sku) != ''
-                ORDER BY sku, (bling_account = 'lucas') DESC, last_updated_at DESC
+                ORDER BY UPPER(TRIM(sku)), (bling_account = 'lucas') DESC, last_updated_at DESC
             ),
             estruturas_fornecedor AS (
                 SELECT DISTINCT ON (cs.parent_product_bling_id)
@@ -2133,14 +2567,27 @@ exports.getConfigPrazosProdutosApi = async (req, res) => {
                 COALESCE(ef.fornecedor_nome, 'Não definido') AS fornecedor_nome,
                 COALESCE(cpf.prazo_dias, 0) AS prazo_fornecedor,
                 COALESCE(cpp.prazo_dias, 0) AS prazo_personalizado,
+                cpp.ignorar_prazos_ate,
+                COALESCE(cpp.liberar_indeterminado, FALSE) AS liberar_indeterminado,
                 CASE 
+                    WHEN cpp.liberar_indeterminado = TRUE AND COALESCE(pb.estoque_plataforma, 0) > 0 THEN TRUE
+                    ELSE FALSE
+                END AS is_indeterminado_ativo,
+                CASE 
+                    WHEN cpp.liberar_indeterminado = TRUE AND COALESCE(pb.estoque_plataforma, 0) > 0 THEN FALSE
+                    WHEN cpp.ignorar_prazos_ate IS NOT NULL AND cpp.ignorar_prazos_ate > NOW() THEN TRUE 
+                    ELSE FALSE 
+                END AS is_temporizador_ativo,
+                CASE 
+                    WHEN cpp.liberar_indeterminado = TRUE AND COALESCE(pb.estoque_plataforma, 0) > 0 THEN 0
+                    WHEN cpp.ignorar_prazos_ate IS NOT NULL AND cpp.ignorar_prazos_ate > NOW() THEN 0
                     WHEN COALESCE(cpp.prazo_dias, 0) > 0 THEN cpp.prazo_dias
                     WHEN COALESCE(cpf.prazo_dias, 0) > 0 THEN cpf.prazo_dias
                     ELSE 0
                 END AS prazo_efetivo,
                 sa.total_anuncios
             FROM skus_anuncios sa
-            LEFT JOIN produtos_bling pb ON pb.sku = sa.sku
+            LEFT JOIN produtos_bling pb ON pb.clean_sku = UPPER(TRIM(sa.sku))
             LEFT JOIN estruturas_fornecedor ef ON ef.parent_product_bling_id = pb.bling_id
             LEFT JOIN configuracao_prazos_fornecedor cpf 
                 ON (cpf.fornecedor_id = ef.fornecedor_id OR (cpf.fornecedor_id IS NULL AND cpf.fornecedor_nome = ef.fornecedor_nome))
@@ -2175,13 +2622,28 @@ exports.salvarPrazoProdutoApi = async (req, res) => {
             return res.status(400).json({ error: 'O prazo deve ser um número entre 0 e 45 dias.' });
         }
 
-        await pool.query(`
-            INSERT INTO configuracao_prazos_produto (sku, prazo_dias, updated_at)
-            VALUES ($1, $2, NOW())
-            ON CONFLICT (sku) DO UPDATE SET
-                prazo_dias = EXCLUDED.prazo_dias,
-                updated_at = NOW()
-        `, [cleanSku, dias]);
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            const existRes = await client.query(`
+                SELECT ignorar_prazos_ate, liberar_indeterminado FROM configuracao_prazos_produto WHERE UPPER(TRIM(sku)) = UPPER(TRIM($1)) LIMIT 1
+            `, [cleanSku]);
+            const existingIgnorar = existRes.rows.length > 0 ? existRes.rows[0].ignorar_prazos_ate : null;
+            const existingIndeterminado = existRes.rows.length > 0 ? Boolean(existRes.rows[0].liberar_indeterminado) : false;
+
+            // Remove registros anteriores com o mesmo SKU (case-insensitive) para manter consistência
+            await client.query(`DELETE FROM configuracao_prazos_produto WHERE UPPER(TRIM(sku)) = UPPER(TRIM($1))`, [cleanSku]);
+            await client.query(`
+                INSERT INTO configuracao_prazos_produto (sku, prazo_dias, ignorar_prazos_ate, liberar_indeterminado, updated_at)
+                VALUES ($1, $2, $3, $4, NOW())
+            `, [cleanSku, dias, existingIgnorar, existingIndeterminado]);
+            await client.query('COMMIT');
+        } catch (errDb) {
+            await client.query('ROLLBACK');
+            throw errDb;
+        } finally {
+            client.release();
+        }
 
         console.log(`[Config Prazos] Prazo de produto salvo para SKU "${cleanSku}": ${dias} dias`);
         res.status(200).json({ success: true, sku: cleanSku, prazo_dias: dias });
@@ -2193,24 +2655,741 @@ exports.salvarPrazoProdutoApi = async (req, res) => {
 };
 
 /**
+ * API para salvar prazos em lote para Múltiplos Produtos (SKUs).
+ */
+exports.salvarPrazoProdutosLoteApi = async (req, res) => {
+    try {
+        const { skus, prazo_dias } = req.body;
+
+        if (!Array.isArray(skus) || skus.length === 0) {
+            return res.status(400).json({ error: 'Nenhum SKU fornecido.' });
+        }
+
+        const dias = Number(prazo_dias);
+        if (isNaN(dias) || dias < 0 || dias > 45) {
+            return res.status(400).json({ error: 'O prazo deve ser um número entre 0 e 45 dias.' });
+        }
+
+        const cleanSkus = skus.map(s => String(s).trim()).filter(Boolean);
+        if (cleanSkus.length === 0) {
+            return res.status(400).json({ error: 'Nenhum SKU válido fornecido.' });
+        }
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            for (const s of cleanSkus) {
+                const existRes = await client.query(`
+                    SELECT ignorar_prazos_ate, liberar_indeterminado FROM configuracao_prazos_produto WHERE UPPER(TRIM(sku)) = UPPER(TRIM($1)) LIMIT 1
+                `, [s]);
+                const existingIgnorar = existRes.rows.length > 0 ? existRes.rows[0].ignorar_prazos_ate : null;
+                const existingIndeterminado = existRes.rows.length > 0 ? Boolean(existRes.rows[0].liberar_indeterminado) : false;
+
+                await client.query(`DELETE FROM configuracao_prazos_produto WHERE UPPER(TRIM(sku)) = UPPER(TRIM($1))`, [s]);
+                await client.query(`
+                    INSERT INTO configuracao_prazos_produto (sku, prazo_dias, ignorar_prazos_ate, liberar_indeterminado, updated_at)
+                    VALUES ($1, $2, $3, $4, NOW())
+                `, [s, dias, existingIgnorar, existingIndeterminado]);
+            }
+            await client.query('COMMIT');
+        } catch (errDb) {
+            await client.query('ROLLBACK');
+            throw errDb;
+        } finally {
+            client.release();
+        }
+
+        console.log(`[Config Prazos] Prazo de ${dias} dias salvo em lote para ${cleanSkus.length} SKU(s).`);
+        res.status(200).json({ success: true, count: cleanSkus.length, prazo_dias: dias });
+
+    } catch (error) {
+        console.error('[Config Prazos] Erro ao salvar prazos de produtos em lote:', error);
+        res.status(500).json({ error: 'Erro ao salvar prazos em lote para produtos.' });
+    }
+};
+
+/**
+ * API para ativar ou desativar o Temporizador de 48h para um Produto (SKU).
+ * Ao ativar:
+ * - Define ignorar_prazos_ate = NOW() + INTERVAL '2 days' e liberar_indeterminado = FALSE
+ * - Remove imediatamente qualquer prazo de disponibilidade nos anúncios ativos do ML para esse SKU.
+ * Ao desativar:
+ * - Define ignorar_prazos_ate = NULL
+ * - Se estoque <= 5 e prazo_efetivo > 0, reavalia e aplica o prazo devido no Mercado Livre.
+ */
+exports.salvarTemporizadorProdutoApi = async (req, res) => {
+    try {
+        const { sku, acao } = req.body; // acao: 'ativar' | 'desativar'
+
+        if (!sku) {
+            return res.status(400).json({ error: 'SKU é obrigatório.' });
+        }
+
+        const cleanSku = String(sku).trim();
+        const isAtivar = acao === 'ativar';
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            if (isAtivar) {
+                // Upsert em configuracao_prazos_produto com prazo_dias preservado se existir
+                const existRes = await client.query(`
+                    SELECT prazo_dias FROM configuracao_prazos_produto WHERE UPPER(TRIM(sku)) = UPPER(TRIM($1)) LIMIT 1
+                `, [cleanSku]);
+                const existingPrazo = existRes.rows.length > 0 ? existRes.rows[0].prazo_dias : 0;
+
+                await client.query(`DELETE FROM configuracao_prazos_produto WHERE UPPER(TRIM(sku)) = UPPER(TRIM($1))`, [cleanSku]);
+                await client.query(`
+                    INSERT INTO configuracao_prazos_produto (sku, prazo_dias, ignorar_prazos_ate, liberar_indeterminado, updated_at)
+                    VALUES ($1, $2, NOW() + INTERVAL '2 days', FALSE, NOW())
+                `, [cleanSku, existingPrazo || 0]);
+            } else {
+                // Desativa / cancela temporizador
+                await client.query(`
+                    UPDATE configuracao_prazos_produto
+                    SET ignorar_prazos_ate = NULL, updated_at = NOW()
+                    WHERE UPPER(TRIM(sku)) = UPPER(TRIM($1))
+                `, [cleanSku]);
+            }
+
+            await client.query('COMMIT');
+        } catch (errDb) {
+            await client.query('ROLLBACK');
+            throw errDb;
+        } finally {
+            client.release();
+        }
+
+        const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+        let anunciosAfetados = 0;
+
+        try {
+            // Busca anúncios ativos do SKU
+            const queryAnuncios = `
+                WITH produtos_bling AS (
+                    SELECT DISTINCT ON (UPPER(TRIM(sku)))
+                        UPPER(TRIM(sku)) AS clean_sku,
+                        sku,
+                        bling_id,
+                        estoque_plataforma
+                    FROM cached_products
+                    WHERE sku IS NOT NULL AND TRIM(sku) != ''
+                    ORDER BY UPPER(TRIM(sku)), (bling_account = 'lucas') DESC, last_updated_at DESC
+                ),
+                estruturas_fornecedor AS (
+                    SELECT DISTINCT ON (cs.parent_product_bling_id)
+                        cs.parent_product_bling_id,
+                        f.bling_id AS fornecedor_id,
+                        f.nome AS fornecedor_nome
+                    FROM cached_structures cs
+                    JOIN fornecedor f ON f.bling_id = cs.fornecedor_bling_id
+                    WHERE cs.fornecedor_bling_id IS NOT NULL
+                      AND f.nome IS NOT NULL 
+                      AND TRIM(f.nome) != ''
+                      AND LOWER(TRIM(f.nome)) NOT IN ('não definido', 'nao definido', 'sem fornecedor')
+                    ORDER BY cs.parent_product_bling_id, cs.component_sku ASC
+                )
+                SELECT 
+                    a.id_anuncio,
+                    a.sku,
+                    a.descricao,
+                    a.status,
+                    a.prazo_disponibilidade,
+                    COALESCE(pb.estoque_plataforma, 0) AS estoque_plataforma,
+                    ef.fornecedor_nome,
+                    COALESCE(cpp.prazo_dias, 0) AS prazo_sku,
+                    COALESCE(cpf.prazo_dias, 0) AS prazo_fornecedor,
+                    CASE 
+                        WHEN cpp.liberar_indeterminado = TRUE AND COALESCE(pb.estoque_plataforma, 0) > 0 THEN 0
+                        WHEN cpp.ignorar_prazos_ate IS NOT NULL AND cpp.ignorar_prazos_ate > NOW() THEN 0
+                        WHEN COALESCE(cpp.prazo_dias, 0) > 0 THEN cpp.prazo_dias
+                        WHEN COALESCE(cpf.prazo_dias, 0) > 0 THEN cpf.prazo_dias
+                        ELSE 0
+                    END AS prazo_efetivo
+                FROM anuncios_ml a
+                LEFT JOIN produtos_bling pb ON pb.clean_sku = UPPER(TRIM(a.sku))
+                LEFT JOIN estruturas_fornecedor ef ON ef.parent_product_bling_id = pb.bling_id
+                LEFT JOIN configuracao_prazos_fornecedor cpf 
+                    ON (cpf.fornecedor_id = ef.fornecedor_id OR (cpf.fornecedor_id IS NULL AND cpf.fornecedor_nome = ef.fornecedor_nome))
+                LEFT JOIN configuracao_prazos_produto cpp 
+                    ON UPPER(TRIM(cpp.sku)) = UPPER(TRIM(a.sku))
+                WHERE UPPER(TRIM(a.sku)) = UPPER(TRIM($1)) AND a.status = 'active'
+            `;
+
+            const resAnuncios = await pool.query(queryAnuncios, [cleanSku]);
+            for (const an of resAnuncios.rows) {
+                const itemId = an.id_anuncio;
+                const diasAtuais = extrairDiasPrazo(an.prazo_disponibilidade);
+                const estoque = Number(an.estoque_plataforma) || 0;
+                const prazoEfetivo = Number(an.prazo_efetivo) || 0;
+
+                if (isAtivar) {
+                    // Ao ativar 48h: se o anúncio tem prazo no ML, remove imediatamente!
+                    if (diasAtuais > 0) {
+                        try {
+                            const conta = await hubProdutosService.resolverContaPorItem(itemId);
+                            if (conta) {
+                                const accessToken = await hubTokenService.getValidAccessToken(conta);
+                                await hubProdutosService.removerPrazoDisponibilidade(itemId, accessToken);
+                                await pool.query('UPDATE anuncios_ml SET prazo_disponibilidade = NULL, last_updated_at = NOW() WHERE id_anuncio = $1', [itemId]);
+                                await registrarHistoricoPrazo({
+                                    id_anuncio: itemId,
+                                    sku: an.sku,
+                                    descricao: an.descricao,
+                                    fornecedor_nome: an.fornecedor_nome,
+                                    estoque_bling: estoque,
+                                    acao: 'REMOVIDO',
+                                    prazo_anterior: `${diasAtuais} dias`,
+                                    prazo_novo: '0 dias (Pronta Entrega)',
+                                    motivo: 'Temporizador 48h Ativado (Reposição Iminente)',
+                                    sucesso: true,
+                                    executado_por: 'Temporizador 48h'
+                                });
+                                anunciosAfetados++;
+                                await sleep(200);
+                            }
+                        } catch (errSync) {
+                            console.error(`[Temporizador 48h] Erro ao remover prazo do anúncio ${itemId}:`, errSync.message);
+                        }
+                    }
+                } else {
+                    // Ao desativar: se estoque <= 5 e prazo_efetivo > 0, reaplica o prazo devido no ML
+                    if (estoque <= 5 && prazoEfetivo > 0 && diasAtuais !== prazoEfetivo) {
+                        try {
+                            const conta = await hubProdutosService.resolverContaPorItem(itemId);
+                            if (conta) {
+                                const accessToken = await hubTokenService.getValidAccessToken(conta);
+                                await hubProdutosService.setPrazoDisponibilidade(itemId, prazoEfetivo, accessToken);
+                                await pool.query('UPDATE anuncios_ml SET prazo_disponibilidade = $1, last_updated_at = NOW() WHERE id_anuncio = $2', [`${prazoEfetivo} dias`, itemId]);
+                                await registrarHistoricoPrazo({
+                                    id_anuncio: itemId,
+                                    sku: an.sku,
+                                    descricao: an.descricao,
+                                    fornecedor_nome: an.fornecedor_nome,
+                                    estoque_bling: estoque,
+                                    acao: 'APLICADO',
+                                    prazo_anterior: diasAtuais > 0 ? `${diasAtuais} dias` : '0 dias (Pronta Entrega)',
+                                    prazo_novo: `${prazoEfetivo} dias`,
+                                    motivo: 'Temporizador 48h Cancelado (Retorno ao fluxo padrão de estoque <= 5)',
+                                    sucesso: true,
+                                    executado_por: 'Temporizador 48h'
+                                });
+                                anunciosAfetados++;
+                                await sleep(200);
+                            }
+                        } catch (errSync) {
+                            console.error(`[Temporizador 48h] Erro ao reaplicar prazo do anúncio ${itemId}:`, errSync.message);
+                        }
+                    }
+                }
+            }
+        } catch (errSyncAll) {
+            console.error('[Temporizador 48h] Erro na sincronização com ML:', errSyncAll.message);
+        }
+
+        // Retorna dados atualizados
+        const resUpdated = await pool.query(`
+            SELECT ignorar_prazos_ate, 
+                   (ignorar_prazos_ate IS NOT NULL AND ignorar_prazos_ate > NOW()) AS is_temporizador_ativo
+            FROM configuracao_prazos_produto
+            WHERE UPPER(TRIM(sku)) = UPPER(TRIM($1))
+            LIMIT 1
+        `, [cleanSku]);
+
+        const row = resUpdated.rows[0] || {};
+        res.status(200).json({
+            success: true,
+            sku: cleanSku,
+            acao,
+            ignorar_prazos_ate: row.ignorar_prazos_ate || null,
+            is_temporizador_ativo: Boolean(row.is_temporizador_ativo),
+            anuncios_afetados: anunciosAfetados
+        });
+
+    } catch (error) {
+        console.error('[Config Prazos] Erro ao processar temporizador do produto:', error);
+        res.status(500).json({ error: 'Erro ao processar temporizador do produto.' });
+    }
+};
+
+/**
+ * API para ativar ou desativar o Temporizador de 48h em Lote para múltiplos Produtos (SKUs).
+ */
+exports.salvarTemporizadorProdutosLoteApi = async (req, res) => {
+    try {
+        const { skus, acao } = req.body;
+
+        if (!Array.isArray(skus) || skus.length === 0) {
+            return res.status(400).json({ error: 'Nenhum SKU fornecido.' });
+        }
+
+        const cleanSkus = skus.map(s => String(s).trim()).filter(Boolean);
+        if (cleanSkus.length === 0) {
+            return res.status(400).json({ error: 'Nenhum SKU válido fornecido.' });
+        }
+
+        const isAtivar = acao === 'ativar';
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            for (const s of cleanSkus) {
+                if (isAtivar) {
+                    const existRes = await client.query(`
+                        SELECT prazo_dias FROM configuracao_prazos_produto WHERE UPPER(TRIM(sku)) = UPPER(TRIM($1)) LIMIT 1
+                    `, [s]);
+                    const existingPrazo = existRes.rows.length > 0 ? existRes.rows[0].prazo_dias : 0;
+
+                    await client.query(`DELETE FROM configuracao_prazos_produto WHERE UPPER(TRIM(sku)) = UPPER(TRIM($1))`, [s]);
+                    await client.query(`
+                        INSERT INTO configuracao_prazos_produto (sku, prazo_dias, ignorar_prazos_ate, liberar_indeterminado, updated_at)
+                        VALUES ($1, $2, NOW() + INTERVAL '2 days', FALSE, NOW())
+                    `, [s, existingPrazo || 0]);
+                } else {
+                    await client.query(`
+                        UPDATE configuracao_prazos_produto
+                        SET ignorar_prazos_ate = NULL, updated_at = NOW()
+                        WHERE UPPER(TRIM(sku)) = UPPER(TRIM($1))
+                    `, [s]);
+                }
+            }
+            await client.query('COMMIT');
+        } catch (errDb) {
+            await client.query('ROLLBACK');
+            throw errDb;
+        } finally {
+            client.release();
+        }
+
+        // Executa atualização dos anúncios em background para não travar a resposta HTTP
+        setImmediate(async () => {
+            try {
+                await processarPrazosAutomaticosInterno(`Temporizador 48h Lote (${isAtivar ? 'Ativar' : 'Cancelar'})`);
+            } catch (e) {
+                console.error('[Temporizador 48h Lote] Erro ao sincronizar com ML:', e);
+            }
+        });
+
+        res.status(200).json({
+            success: true,
+            count: cleanSkus.length,
+            acao,
+            ignorar_prazos_ate: isAtivar ? new Date(Date.now() + 48 * 3600 * 1000).toISOString() : null
+        });
+
+    } catch (error) {
+        console.error('[Config Prazos] Erro ao processar temporizador em lote:', error);
+        res.status(500).json({ error: 'Erro ao processar temporizador em lote.' });
+    }
+};
+
+/**
+ * API para ativar ou desativar a Liberação por Tempo Indeterminado para um Produto (SKU).
+ * Ao ativar:
+ * - Valida se estoque_plataforma > 0 (rejeita se <= 0)
+ * - Define liberar_indeterminado = TRUE e ignorar_prazos_ate = NULL
+ * - Remove imediatamente qualquer prazo de disponibilidade nos anúncios ativos do ML para esse SKU.
+ * Ao desativar:
+ * - Define liberar_indeterminado = FALSE
+ * - Se estoque <= 5 e prazo_efetivo > 0, reavalia e aplica o prazo devido no Mercado Livre.
+ */
+exports.salvarIndeterminadoProdutoApi = async (req, res) => {
+    try {
+        const { sku, acao } = req.body; // acao: 'ativar' | 'desativar'
+
+        if (!sku) {
+            return res.status(400).json({ error: 'SKU é obrigatório.' });
+        }
+
+        const cleanSku = String(sku).trim();
+        const isAtivar = acao === 'ativar';
+
+        // Validação de estoque para ativação
+        if (isAtivar) {
+            const stockRes = await pool.query(`
+                SELECT COALESCE(estoque_plataforma, 0) AS estoque
+                FROM cached_products
+                WHERE UPPER(TRIM(sku)) = UPPER(TRIM($1))
+                ORDER BY (bling_account = 'lucas') DESC, last_updated_at DESC
+                LIMIT 1
+            `, [cleanSku]);
+
+            const estoqueAtual = stockRes.rows.length > 0 ? Number(stockRes.rows[0].estoque) : 0;
+            if (estoqueAtual <= 0) {
+                return res.status(400).json({ 
+                    error: `Não é possível ativar a liberação indeterminada para o SKU "${cleanSku}" pois o estoque no Bling é ${estoqueAtual} (zerado ou menor que zero).` 
+                });
+            }
+        }
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            if (isAtivar) {
+                const existRes = await client.query(`
+                    SELECT prazo_dias FROM configuracao_prazos_produto WHERE UPPER(TRIM(sku)) = UPPER(TRIM($1)) LIMIT 1
+                `, [cleanSku]);
+                const existingPrazo = existRes.rows.length > 0 ? existRes.rows[0].prazo_dias : 0;
+
+                await client.query(`DELETE FROM configuracao_prazos_produto WHERE UPPER(TRIM(sku)) = UPPER(TRIM($1))`, [cleanSku]);
+                await client.query(`
+                    INSERT INTO configuracao_prazos_produto (sku, prazo_dias, ignorar_prazos_ate, liberar_indeterminado, updated_at)
+                    VALUES ($1, $2, NULL, TRUE, NOW())
+                `, [cleanSku, existingPrazo || 0]);
+            } else {
+                await client.query(`
+                    UPDATE configuracao_prazos_produto
+                    SET liberar_indeterminado = FALSE, updated_at = NOW()
+                    WHERE UPPER(TRIM(sku)) = UPPER(TRIM($1))
+                `, [cleanSku]);
+            }
+
+            await client.query('COMMIT');
+        } catch (errDb) {
+            await client.query('ROLLBACK');
+            throw errDb;
+        } finally {
+            client.release();
+        }
+
+        const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+        let anunciosAfetados = 0;
+
+        try {
+            // Busca anúncios ativos do SKU
+            const queryAnuncios = `
+                WITH produtos_bling AS (
+                    SELECT DISTINCT ON (UPPER(TRIM(sku)))
+                        UPPER(TRIM(sku)) AS clean_sku,
+                        sku,
+                        bling_id,
+                        estoque_plataforma
+                    FROM cached_products
+                    WHERE sku IS NOT NULL AND TRIM(sku) != ''
+                    ORDER BY UPPER(TRIM(sku)), (bling_account = 'lucas') DESC, last_updated_at DESC
+                ),
+                estruturas_fornecedor AS (
+                    SELECT DISTINCT ON (cs.parent_product_bling_id)
+                        cs.parent_product_bling_id,
+                        f.bling_id AS fornecedor_id,
+                        f.nome AS fornecedor_nome
+                    FROM cached_structures cs
+                    JOIN fornecedor f ON f.bling_id = cs.fornecedor_bling_id
+                    WHERE cs.fornecedor_bling_id IS NOT NULL
+                      AND f.nome IS NOT NULL 
+                      AND TRIM(f.nome) != ''
+                      AND LOWER(TRIM(f.nome)) NOT IN ('não definido', 'nao definido', 'sem fornecedor')
+                    ORDER BY cs.parent_product_bling_id, cs.component_sku ASC
+                )
+                SELECT 
+                    a.id_anuncio,
+                    a.sku,
+                    a.descricao,
+                    a.status,
+                    a.prazo_disponibilidade,
+                    COALESCE(pb.estoque_plataforma, 0) AS estoque_plataforma,
+                    ef.fornecedor_nome,
+                    COALESCE(cpp.prazo_dias, 0) AS prazo_sku,
+                    COALESCE(cpf.prazo_dias, 0) AS prazo_fornecedor,
+                    CASE 
+                        WHEN cpp.liberar_indeterminado = TRUE AND COALESCE(pb.estoque_plataforma, 0) > 0 THEN 0
+                        WHEN cpp.ignorar_prazos_ate IS NOT NULL AND cpp.ignorar_prazos_ate > NOW() THEN 0
+                        WHEN COALESCE(cpp.prazo_dias, 0) > 0 THEN cpp.prazo_dias
+                        WHEN COALESCE(cpf.prazo_dias, 0) > 0 THEN cpf.prazo_dias
+                        ELSE 0
+                    END AS prazo_efetivo
+                FROM anuncios_ml a
+                LEFT JOIN produtos_bling pb ON pb.clean_sku = UPPER(TRIM(a.sku))
+                LEFT JOIN estruturas_fornecedor ef ON ef.parent_product_bling_id = pb.bling_id
+                LEFT JOIN configuracao_prazos_fornecedor cpf 
+                    ON (cpf.fornecedor_id = ef.fornecedor_id OR (cpf.fornecedor_id IS NULL AND cpf.fornecedor_nome = ef.fornecedor_nome))
+                LEFT JOIN configuracao_prazos_produto cpp 
+                    ON UPPER(TRIM(cpp.sku)) = UPPER(TRIM(a.sku))
+                WHERE UPPER(TRIM(a.sku)) = UPPER(TRIM($1)) AND a.status = 'active'
+            `;
+
+            const resAnuncios = await pool.query(queryAnuncios, [cleanSku]);
+            for (const an of resAnuncios.rows) {
+                const itemId = an.id_anuncio;
+                const diasAtuais = extrairDiasPrazo(an.prazo_disponibilidade);
+                const estoque = Number(an.estoque_plataforma) || 0;
+                const prazoEfetivo = Number(an.prazo_efetivo) || 0;
+
+                if (isAtivar) {
+                    if (diasAtuais > 0) {
+                        try {
+                            const conta = await hubProdutosService.resolverContaPorItem(itemId);
+                            if (conta) {
+                                const accessToken = await hubTokenService.getValidAccessToken(conta);
+                                await hubProdutosService.removerPrazoDisponibilidade(itemId, accessToken);
+                                await pool.query('UPDATE anuncios_ml SET prazo_disponibilidade = NULL, last_updated_at = NOW() WHERE id_anuncio = $1', [itemId]);
+                                await registrarHistoricoPrazo({
+                                    id_anuncio: itemId,
+                                    sku: an.sku,
+                                    descricao: an.descricao,
+                                    fornecedor_nome: an.fornecedor_nome,
+                                    estoque_bling: estoque,
+                                    acao: 'REMOVIDO',
+                                    prazo_anterior: `${diasAtuais} dias`,
+                                    prazo_novo: '0 dias (Pronta Entrega)',
+                                    motivo: 'Liberação Indeterminada Ativada (Pronta Entrega)',
+                                    sucesso: true,
+                                    executado_por: 'Liberação Indeterminada'
+                                });
+                                anunciosAfetados++;
+                                await sleep(200);
+                            }
+                        } catch (errSync) {
+                            console.error(`[Liberação Indeterminada] Erro ao remover prazo do anúncio ${itemId}:`, errSync.message);
+                        }
+                    }
+                } else {
+                    if (estoque <= 5 && prazoEfetivo > 0 && diasAtuais !== prazoEfetivo) {
+                        try {
+                            const conta = await hubProdutosService.resolverContaPorItem(itemId);
+                            if (conta) {
+                                const accessToken = await hubTokenService.getValidAccessToken(conta);
+                                await hubProdutosService.setPrazoDisponibilidade(itemId, prazoEfetivo, accessToken);
+                                await pool.query('UPDATE anuncios_ml SET prazo_disponibilidade = $1, last_updated_at = NOW() WHERE id_anuncio = $2', [`${prazoEfetivo} dias`, itemId]);
+                                await registrarHistoricoPrazo({
+                                    id_anuncio: itemId,
+                                    sku: an.sku,
+                                    descricao: an.descricao,
+                                    fornecedor_nome: an.fornecedor_nome,
+                                    estoque_bling: estoque,
+                                    acao: 'APLICADO',
+                                    prazo_anterior: diasAtuais > 0 ? `${diasAtuais} dias` : '0 dias (Pronta Entrega)',
+                                    prazo_novo: `${prazoEfetivo} dias`,
+                                    motivo: 'Liberação Indeterminada Desativada (Retorno ao fluxo padrão)',
+                                    sucesso: true,
+                                    executado_por: 'Liberação Indeterminada'
+                                });
+                                anunciosAfetados++;
+                                await sleep(200);
+                            }
+                        } catch (errSync) {
+                            console.error(`[Liberação Indeterminada] Erro ao reaplicar prazo do anúncio ${itemId}:`, errSync.message);
+                        }
+                    }
+                }
+            }
+        } catch (errSyncAll) {
+            console.error('[Liberação Indeterminada] Erro na sincronização com ML:', errSyncAll.message);
+        }
+
+        // Retorna dados atualizados
+        const resUpdated = await pool.query(`
+            WITH produtos_bling AS (
+                SELECT DISTINCT ON (UPPER(TRIM(sku)))
+                    UPPER(TRIM(sku)) AS clean_sku,
+                    COALESCE(estoque_plataforma, 0) AS estoque_plataforma
+                FROM cached_products
+                WHERE sku IS NOT NULL AND TRIM(sku) != ''
+                ORDER BY UPPER(TRIM(sku)), (bling_account = 'lucas') DESC, last_updated_at DESC
+            )
+            SELECT 
+                cpp.ignorar_prazos_ate,
+                COALESCE(cpp.liberar_indeterminado, FALSE) AS liberar_indeterminado,
+                CASE 
+                    WHEN cpp.liberar_indeterminado = TRUE AND COALESCE(pb.estoque_plataforma, 0) > 0 THEN TRUE
+                    ELSE FALSE
+                END AS is_indeterminado_ativo,
+                CASE 
+                    WHEN cpp.liberar_indeterminado = TRUE AND COALESCE(pb.estoque_plataforma, 0) > 0 THEN FALSE
+                    WHEN cpp.ignorar_prazos_ate IS NOT NULL AND cpp.ignorar_prazos_ate > NOW() THEN TRUE 
+                    ELSE FALSE 
+                END AS is_temporizador_ativo
+            FROM configuracao_prazos_produto cpp
+            LEFT JOIN produtos_bling pb ON pb.clean_sku = UPPER(TRIM(cpp.sku))
+            WHERE UPPER(TRIM(cpp.sku)) = UPPER(TRIM($1))
+            LIMIT 1
+        `, [cleanSku]);
+
+        const row = resUpdated.rows[0] || {};
+        res.status(200).json({
+            success: true,
+            sku: cleanSku,
+            acao,
+            liberar_indeterminado: Boolean(row.liberar_indeterminado),
+            is_indeterminado_ativo: Boolean(row.is_indeterminado_ativo),
+            is_temporizador_ativo: Boolean(row.is_temporizador_ativo),
+            ignorar_prazos_ate: row.ignorar_prazos_ate || null,
+            anuncios_afetados: anunciosAfetados
+        });
+
+    } catch (error) {
+        console.error('[Config Prazos] Erro ao processar liberação indeterminada do produto:', error);
+        res.status(500).json({ error: 'Erro ao processar liberação indeterminada do produto.' });
+    }
+};
+
+/**
+ * API para ativar ou desativar a Liberação Indeterminada em Lote para múltiplos Produtos (SKUs).
+ */
+exports.salvarIndeterminadoProdutosLoteApi = async (req, res) => {
+    try {
+        const { skus, acao } = req.body;
+
+        if (!Array.isArray(skus) || skus.length === 0) {
+            return res.status(400).json({ error: 'Nenhum SKU fornecido.' });
+        }
+
+        const cleanSkus = skus.map(s => String(s).trim()).filter(Boolean);
+        if (cleanSkus.length === 0) {
+            return res.status(400).json({ error: 'Nenhum SKU válido fornecido.' });
+        }
+
+        const isAtivar = acao === 'ativar';
+        const client = await pool.connect();
+        const skusAfetados = [];
+
+        try {
+            await client.query('BEGIN');
+
+            if (isAtivar) {
+                // Filtra apenas SKUs com estoque > 0
+                const stockRes = await client.query(`
+                    SELECT DISTINCT ON (UPPER(TRIM(sku)))
+                        UPPER(TRIM(sku)) AS clean_sku,
+                        COALESCE(estoque_plataforma, 0) AS estoque
+                    FROM cached_products
+                    WHERE UPPER(TRIM(sku)) = ANY($1::text[])
+                    ORDER BY UPPER(TRIM(sku)), (bling_account = 'lucas') DESC, last_updated_at DESC
+                `, [cleanSkus.map(s => s.toUpperCase())]);
+
+                const validStockSkus = new Set(stockRes.rows.filter(r => Number(r.estoque) > 0).map(r => r.clean_sku));
+
+                for (const s of cleanSkus) {
+                    if (!validStockSkus.has(s.toUpperCase())) {
+                        continue; // Pula produtos com estoque <= 0
+                    }
+                    skusAfetados.push(s);
+
+                    const existRes = await client.query(`
+                        SELECT prazo_dias FROM configuracao_prazos_produto WHERE UPPER(TRIM(sku)) = UPPER(TRIM($1)) LIMIT 1
+                    `, [s]);
+                    const existingPrazo = existRes.rows.length > 0 ? existRes.rows[0].prazo_dias : 0;
+
+                    await client.query(`DELETE FROM configuracao_prazos_produto WHERE UPPER(TRIM(sku)) = UPPER(TRIM($1))`, [s]);
+                    await client.query(`
+                        INSERT INTO configuracao_prazos_produto (sku, prazo_dias, ignorar_prazos_ate, liberar_indeterminado, updated_at)
+                        VALUES ($1, $2, NULL, TRUE, NOW())
+                    `, [s, existingPrazo || 0]);
+                }
+            } else {
+                for (const s of cleanSkus) {
+                    skusAfetados.push(s);
+                    await client.query(`
+                        UPDATE configuracao_prazos_produto
+                        SET liberar_indeterminado = FALSE, updated_at = NOW()
+                        WHERE UPPER(TRIM(sku)) = UPPER(TRIM($1))
+                    `, [s]);
+                }
+            }
+
+            await client.query('COMMIT');
+        } catch (errDb) {
+            await client.query('ROLLBACK');
+            throw errDb;
+        } finally {
+            client.release();
+        }
+
+        // Executa atualização dos anúncios em background para não travar a resposta HTTP
+        setImmediate(async () => {
+            try {
+                await processarPrazosAutomaticosInterno(`Liberação Indeterminada Lote (${isAtivar ? 'Ativar' : 'Cancelar'})`);
+            } catch (e) {
+                console.error('[Liberação Indeterminada Lote] Erro ao sincronizar com ML:', e);
+            }
+        });
+
+        res.status(200).json({
+            success: true,
+            count: skusAfetados.length,
+            total_solicitado: cleanSkus.length,
+            acao,
+            is_indeterminado_ativo: isAtivar
+        });
+
+    } catch (error) {
+        console.error('[Config Prazos] Erro ao processar liberação indeterminada em lote:', error);
+        res.status(500).json({ error: 'Erro ao processar liberação indeterminada em lote.' });
+    }
+};
+
+/**
  * Processamento automático e central de aplicação/remoção de prazos nos anúncios do Mercado Livre.
  * Regras:
- * - Se estoque_plataforma <= 5 E prazo_efetivo > 0: aplica prazo no ML se já não estiver aplicado.
+ * - Se liberação indeterminada ativa (estoque > 0) OU temporizador 48h ativo: remove qualquer prazo no ML e mantém pronta entrega.
+ * - Se estoque_plataforma <= 0 em produto com liberação indeterminada ativa: cancela liberação indeterminada automaticamente.
+ * - Se estoque_plataforma <= 5 E prazo_efetivo > 0 (e não ignorado): aplica prazo no ML se já não estiver aplicado.
  * - Se estoque_plataforma >= 15 E anúncio tem prazo no ML: remove prazo no ML.
  */
-async function processarPrazosAutomaticosInterno() {
-    console.log('[Prazos ML] Iniciando verificação e aplicação de prazos...');
+async function processarPrazosAutomaticosInterno(executadoPor = 'Manual (Aplicar Prazos)') {
+    console.log(`[Prazos ML] Iniciando verificação e aplicação de prazos (Origem: ${executadoPor})...`);
 
     try {
+        // Garante migration da coluna
+        await pool.query(`
+            ALTER TABLE configuracao_prazos_produto 
+            ADD COLUMN IF NOT EXISTS liberar_indeterminado BOOLEAN DEFAULT FALSE;
+        `);
+
+        // Cancela automaticamente a liberação indeterminada para SKUs cujo estoque zerou ou negativou
+        const skusZeradosRes = await pool.query(`
+            WITH produtos_bling AS (
+                SELECT DISTINCT ON (UPPER(TRIM(sku)))
+                    UPPER(TRIM(sku)) AS clean_sku,
+                    sku,
+                    COALESCE(estoque_plataforma, 0) AS estoque_plataforma
+                FROM cached_products
+                WHERE sku IS NOT NULL AND TRIM(sku) != ''
+                ORDER BY UPPER(TRIM(sku)), (bling_account = 'lucas') DESC, last_updated_at DESC
+            )
+            SELECT cpp.sku, pb.estoque_plataforma
+            FROM configuracao_prazos_produto cpp
+            JOIN produtos_bling pb ON pb.clean_sku = UPPER(TRIM(cpp.sku))
+            WHERE cpp.liberar_indeterminado = TRUE AND pb.estoque_plataforma <= 0
+        `);
+
+        if (skusZeradosRes.rows.length > 0) {
+            const skusZerados = skusZeradosRes.rows.map(r => r.sku);
+            console.log(`[Prazos ML] Cancelando liberação indeterminada automaticamente para ${skusZerados.length} SKU(s) com estoque <= 0:`, skusZerados);
+            await pool.query(`
+                UPDATE configuracao_prazos_produto
+                SET liberar_indeterminado = FALSE, updated_at = NOW()
+                WHERE UPPER(TRIM(sku)) = ANY($1::text[])
+            `, [skusZerados.map(s => s.toUpperCase().trim())]);
+
+            for (const r of skusZeradosRes.rows) {
+                await registrarHistoricoPrazo({
+                    id_anuncio: '-',
+                    sku: r.sku,
+                    descricao: 'Cancelamento Automático de Liberação Indeterminada',
+                    fornecedor_nome: '-',
+                    estoque_bling: Number(r.estoque_plataforma) || 0,
+                    acao: 'DESATIVADO',
+                    prazo_anterior: '0 dias (Indeterminado)',
+                    prazo_novo: 'Fluxo Padrão',
+                    motivo: `Liberação Indeterminada Desativada Automaticamente (Estoque Zerado/Negativo: ${r.estoque_plataforma})`,
+                    sucesso: true,
+                    executado_por: executadoPor
+                });
+            }
+        }
+
         const query = `
             WITH produtos_bling AS (
-                SELECT DISTINCT ON (sku)
+                SELECT DISTINCT ON (UPPER(TRIM(sku)))
+                    UPPER(TRIM(sku)) AS clean_sku,
                     sku,
                     bling_id,
                     estoque_plataforma
                 FROM cached_products
                 WHERE sku IS NOT NULL AND TRIM(sku) != ''
-                ORDER BY sku, (bling_account = 'lucas') DESC, last_updated_at DESC
+                ORDER BY UPPER(TRIM(sku)), (bling_account = 'lucas') DESC, last_updated_at DESC
             ),
             estruturas_fornecedor AS (
                 SELECT DISTINCT ON (cs.parent_product_bling_id)
@@ -2236,12 +3415,24 @@ async function processarPrazosAutomaticosInterno() {
                 COALESCE(cpp.prazo_dias, 0) AS prazo_sku,
                 COALESCE(cpf.prazo_dias, 0) AS prazo_fornecedor,
                 CASE 
+                    WHEN cpp.liberar_indeterminado = TRUE AND COALESCE(pb.estoque_plataforma, 0) > 0 THEN 0
+                    WHEN cpp.ignorar_prazos_ate IS NOT NULL AND cpp.ignorar_prazos_ate > NOW() THEN 0
                     WHEN COALESCE(cpp.prazo_dias, 0) > 0 THEN cpp.prazo_dias
                     WHEN COALESCE(cpf.prazo_dias, 0) > 0 THEN cpf.prazo_dias
                     ELSE 0
-                END AS prazo_efetivo
+                END AS prazo_efetivo,
+                CASE 
+                    WHEN cpp.liberar_indeterminado = TRUE AND COALESCE(pb.estoque_plataforma, 0) > 0 THEN TRUE
+                    WHEN cpp.ignorar_prazos_ate IS NOT NULL AND cpp.ignorar_prazos_ate > NOW() THEN TRUE 
+                    ELSE FALSE 
+                END AS is_ignorado,
+                CASE 
+                    WHEN cpp.liberar_indeterminado = TRUE AND COALESCE(pb.estoque_plataforma, 0) > 0 THEN 'Liberação Indeterminada Ativa (Pronta Entrega)'
+                    WHEN cpp.ignorar_prazos_ate IS NOT NULL AND cpp.ignorar_prazos_ate > NOW() THEN 'Temporizador 48h Ativo (Reposição Iminente)'
+                    ELSE NULL
+                END AS motivo_ignorado
             FROM anuncios_ml a
-            LEFT JOIN produtos_bling pb ON pb.sku = a.sku
+            LEFT JOIN produtos_bling pb ON pb.clean_sku = UPPER(TRIM(a.sku))
             LEFT JOIN estruturas_fornecedor ef ON ef.parent_product_bling_id = pb.bling_id
             LEFT JOIN configuracao_prazos_fornecedor cpf 
                 ON (cpf.fornecedor_id = ef.fornecedor_id OR (cpf.fornecedor_id IS NULL AND cpf.fornecedor_nome = ef.fornecedor_nome))
@@ -2253,16 +3444,6 @@ async function processarPrazosAutomaticosInterno() {
         const result = await pool.query(query);
         const anuncios = result.rows;
 
-        function extrairDiasPrazo(prazo) {
-            if (prazo === null || prazo === undefined) return 0;
-            const str = String(prazo).trim().toLowerCase();
-            if (str === '' || str === 'null' || str === 'undefined' || str === '0' || str === '0 dias' || str.includes('pronta') || str === '-') {
-                return 0;
-            }
-            const digits = str.replace(/\D/g, '');
-            return digits ? parseInt(digits, 10) : 0;
-        }
-
         const gruposAplicar = {}; // { '5': [anuncioObj1, anuncioObj2] }
         const itensRemover = []; // [anuncioObj1, ...]
 
@@ -2270,6 +3451,15 @@ async function processarPrazosAutomaticosInterno() {
             const estoque = Number(a.estoque_plataforma) || 0;
             const prazoEfetivo = Number(a.prazo_efetivo) || 0;
             const diasAtuais = extrairDiasPrazo(a.prazo_disponibilidade);
+            const isIgnorado = Boolean(a.is_ignorado);
+
+            // REGRA 0: Liberação Indeterminada ou Temporizador 48h ativo -> Se anúncio possui prazo no ML, remove imediatamente!
+            if (isIgnorado) {
+                if (diasAtuais > 0) {
+                    itensRemover.push({ ...a, motivo_especifico: a.motivo_ignorado || 'Liberação Especial Ativa (Pronta Entrega)' });
+                }
+                continue;
+            }
 
             // REGRA 1: Estoque <= 5 e tem prazo configurado > 0
             if (estoque <= 5 && prazoEfetivo > 0) {
@@ -2290,6 +3480,7 @@ async function processarPrazosAutomaticosInterno() {
 
         let totalAplicados = 0;
         let totalRemovidos = 0;
+        const itensModificadosIds = [];
 
         // 1. Executa aplicação por grupos de dias
         for (const [dias, itens] of Object.entries(gruposAplicar)) {
@@ -2330,6 +3521,7 @@ async function processarPrazosAutomaticosInterno() {
 
                     if (isSucesso) {
                         totalAplicados++;
+                        itensModificadosIds.push(itemId);
                         await pool.query(
                             `UPDATE anuncios_ml SET prazo_disponibilidade = $1, last_updated_at = NOW() WHERE id_anuncio = $2`,
                             [`${numDias} dias`, itemId]
@@ -2358,7 +3550,7 @@ async function processarPrazosAutomaticosInterno() {
                         motivo,
                         isSucesso,
                         msgErro,
-                        'Manual (Aplicar Prazos)'
+                        executadoPor
                     ]);
                 } catch (histErr) {
                     console.error('[Prazos ML] Erro ao gravar histórico de aplicação:', histErr.message);
@@ -2375,9 +3567,9 @@ async function processarPrazosAutomaticosInterno() {
             for (const an of itensRemover) {
                 const itemId = an.id_anuncio;
                 const prazoAnteriorStr = an.prazo_disponibilidade || 'Com Prazo';
-                const motivo = `Estoque Bling >= 15 (Estoque atual: ${an.estoque_plataforma})`;
+                const motivo = an.motivo_especifico || `Estoque Bling >= 15 (Estoque atual: ${an.estoque_plataforma})`;
 
-                console.log(`[Prazos ML] [REMOVENDO] Anúncio: ${itemId} | SKU: ${an.sku} | Fornecedor: ${an.fornecedor_nome || 'N/A'} | Estoque: ${an.estoque_plataforma} | Prazo Anterior: ${prazoAnteriorStr}`);
+                console.log(`[Prazos ML] [REMOVENDO] Anúncio: ${itemId} | SKU: ${an.sku} | Fornecedor: ${an.fornecedor_nome || 'N/A'} | Estoque: ${an.estoque_plataforma} | Motivo: ${motivo} | Prazo Anterior: ${prazoAnteriorStr}`);
 
                 let isSucesso = false;
                 let msgErro = null;
@@ -2406,6 +3598,7 @@ async function processarPrazosAutomaticosInterno() {
 
                     if (isSucesso) {
                         totalRemovidos++;
+                        itensModificadosIds.push(itemId);
                         await pool.query(
                             `UPDATE anuncios_ml SET prazo_disponibilidade = NULL, last_updated_at = NOW() WHERE id_anuncio = $1`,
                             [itemId]
@@ -2434,13 +3627,26 @@ async function processarPrazosAutomaticosInterno() {
                         motivo,
                         isSucesso,
                         msgErro,
-                        'Manual (Aplicar Prazos)'
+                        executadoPor
                     ]);
                 } catch (histErr) {
                     console.error('[Prazos ML] Erro ao gravar histórico de remoção:', histErr.message);
                 }
 
+
                 await sleep(150);
+            }
+        }
+
+        // 3. Sincronização automática pós-aplicação: Atualiza todas as informações no Inova apenas dos anúncios modificados
+        const cleanModificados = Array.from(new Set(itensModificadosIds));
+        if (cleanModificados.length > 0) {
+            console.log(`[Prazos ML] Sincronizando ${cleanModificados.length} anúncio(s) alterado(s) com o Mercado Livre...`);
+            try {
+                await sincronizarAnunciosInterno(true, { item_ids: cleanModificados });
+                console.log(`[Prazos ML] Sincronização pós-alteração de prazos concluída com sucesso.`);
+            } catch (errSync) {
+                console.error('[Prazos ML] Erro ao sincronizar anúncios pós-aplicação de prazos:', errSync.message);
             }
         }
 
@@ -2451,8 +3657,10 @@ async function processarPrazosAutomaticosInterno() {
             total: anuncios.length,
             aplicados: totalAplicados,
             removidos: totalRemovidos,
-            inalterados: totalInalterados
+            inalterados: totalInalterados,
+            sincronizados: cleanModificados.length
         };
+
 
     } catch (error) {
         console.error('[Prazos ML] Erro geral durante o processamento:', error);

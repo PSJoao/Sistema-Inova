@@ -1,0 +1,161 @@
+-- ================================================================
+-- SCRIPT DE OTIMIZAÇÃO DE PERFORMANCE — DASHBOARD DE EXPEDIÇÃO
+-- Execute este script no banco PostgreSQL (inovamonitoramento)
+-- Todos os comandos são idempotentes (seguros para rodar múltiplas vezes)
+-- ================================================================
+
+-- ============================================
+-- 1. HABILITAR EXTENSÃO pg_trgm (para buscas ILIKE ultra-rápidas)
+-- ============================================
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+-- ============================================
+-- 2. ÍNDICES NA TABELA cached_etiquetas_ml
+-- ============================================
+
+-- Índice de ordenação por data de criação
+CREATE INDEX IF NOT EXISTS idx_cached_etiquetas_ml_created_at 
+ON cached_etiquetas_ml (created_at DESC);
+
+-- Índice por status
+CREATE INDEX IF NOT EXISTS idx_cached_etiquetas_ml_status 
+ON cached_etiquetas_ml (status);
+
+-- Índice composto para filtro de status + ordenação por data
+CREATE INDEX IF NOT EXISTS idx_cached_etiquetas_ml_status_created 
+ON cached_etiquetas_ml (status, created_at DESC);
+
+-- Índice parcial para o filtro padrão da expedição (não expedidos / ativos)
+CREATE INDEX IF NOT EXISTS idx_cached_etiquetas_ml_active_filter 
+ON cached_etiquetas_ml (created_at DESC) 
+WHERE status != 'impresso';
+
+-- Índice por status_ml (Mercado Livre)
+CREATE INDEX IF NOT EXISTS idx_cached_etiquetas_ml_status_ml 
+ON cached_etiquetas_ml (status_ml);
+
+-- Índice B-Tree exato por NFe
+CREATE INDEX IF NOT EXISTS idx_cached_etiquetas_ml_nfe_btree 
+ON cached_etiquetas_ml (nfe_numero);
+
+-- Busca ILIKE / Trigram por Número de Nota Fiscal
+CREATE INDEX IF NOT EXISTS idx_cached_etiquetas_ml_nfe_trgm 
+ON cached_etiquetas_ml USING gin (nfe_numero gin_trgm_ops);
+
+-- Busca ILIKE / Trigram por Pack ID
+CREATE INDEX IF NOT EXISTS idx_cached_etiquetas_ml_pack_id_trgm 
+ON cached_etiquetas_ml USING gin (pack_id gin_trgm_ops);
+
+-- Busca ILIKE / Trigram por Número da Loja
+CREATE INDEX IF NOT EXISTS idx_cached_etiquetas_ml_numero_loja_trgm 
+ON cached_etiquetas_ml USING gin (numero_loja gin_trgm_ops);
+
+-- Busca ILIKE / Trigram por SKUs dentro do JSON/Texto
+CREATE INDEX IF NOT EXISTS idx_cached_etiquetas_ml_skus_trgm 
+ON cached_etiquetas_ml USING gin ((skus::text) gin_trgm_ops);
+
+-- Filtro por validação de foto
+CREATE INDEX IF NOT EXISTS idx_cached_etiquetas_ml_foto 
+ON cached_etiquetas_ml (foto_validacao, tem_foto);
+
+-- Filtro por embarcado
+CREATE INDEX IF NOT EXISTS idx_cached_etiquetas_ml_embarcado 
+ON cached_etiquetas_ml (embarcado);
+
+-- ============================================
+-- 3. ÍNDICES NA TABELA cached_pedido_venda
+-- ============================================
+
+-- JOIN por nfe_parent_numero
+CREATE INDEX IF NOT EXISTS idx_cached_pedido_venda_parent 
+ON cached_pedido_venda (nfe_parent_numero);
+
+-- Índice composto para acelerar o agrupamento por pedido
+CREATE INDEX IF NOT EXISTS idx_cached_pedido_venda_parent_order 
+ON cached_pedido_venda (nfe_parent_numero, data_pedido DESC NULLS LAST, created_at DESC, id DESC);
+
+-- Busca ILIKE por número do pedido
+CREATE INDEX IF NOT EXISTS idx_cached_pedido_venda_numero_trgm 
+ON cached_pedido_venda USING gin (numero gin_trgm_ops);
+
+-- Busca ILIKE por número da loja no pedido
+CREATE INDEX IF NOT EXISTS idx_cached_pedido_venda_loja_trgm 
+ON cached_pedido_venda USING gin (numero_loja gin_trgm_ops);
+
+-- ============================================
+-- 4. MATERIALIZED VIEW — Pedidos de Venda por NFe (Substitui subquery pesada)
+-- ============================================
+
+DROP MATERIALIZED VIEW IF EXISTS mv_cached_pedidos_nfe;
+CREATE MATERIALIZED VIEW mv_cached_pedidos_nfe AS
+SELECT DISTINCT ON (TRIM(nfe_parent_numero)) 
+    TRIM(nfe_parent_numero) AS nfe_parent_numero, 
+    numero, 
+    numero_loja, 
+    cep
+FROM cached_pedido_venda
+WHERE nfe_parent_numero IS NOT NULL AND TRIM(nfe_parent_numero) != ''
+ORDER BY TRIM(nfe_parent_numero), 
+    data_pedido DESC NULLS LAST, 
+    created_at DESC, 
+    id DESC;
+
+-- Índice único na Materialized View para JOIN instantâneo e refresh concorrente
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_cached_pedidos_nfe_parent 
+ON mv_cached_pedidos_nfe (nfe_parent_numero);
+
+-- Índice Trigram para busca rápida por número de pedido na view
+CREATE INDEX IF NOT EXISTS idx_mv_cached_pedidos_nfe_numero_trgm 
+ON mv_cached_pedidos_nfe USING gin (numero gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS idx_mv_cached_pedidos_nfe_loja_trgm 
+ON mv_cached_pedidos_nfe USING gin (numero_loja gin_trgm_ops);
+
+-- ============================================
+-- 5. MATERIALIZED VIEW — Informações de Produtos & Estoque (cached_products)
+-- ============================================
+
+DROP MATERIALIZED VIEW IF EXISTS mv_cached_produtos_info;
+CREATE MATERIALIZED VIEW mv_cached_produtos_info AS
+SELECT DISTINCT ON (UPPER(TRIM(sku))) 
+    UPPER(TRIM(sku)) AS clean_sku,
+    sku, 
+    tipo_ml,
+    estoque,
+    estoque_plataforma
+FROM cached_products
+WHERE sku IS NOT NULL AND TRIM(sku) != ''
+ORDER BY UPPER(TRIM(sku)), 
+    CASE 
+        WHEN bling_account = 'lucas' THEN 1 
+        WHEN bling_account = 'eliane' THEN 2 
+        ELSE 3 
+    END,
+    last_updated_at DESC;
+
+-- Índice único na Materialized View para busca e JOIN instantâneo
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_cached_produtos_info_sku 
+ON mv_cached_produtos_info (clean_sku);
+
+-- Índice Trigram para busca por tipo_ml
+CREATE INDEX IF NOT EXISTS idx_mv_cached_produtos_info_tipo_trgm 
+ON mv_cached_produtos_info USING gin (tipo_ml gin_trgm_ops);
+
+-- ============================================
+-- 6. ÍNDICES EM CARREGADORES E REGISTROS DE EXPEDIÇÃO
+-- ============================================
+
+CREATE INDEX IF NOT EXISTS idx_expedicao_registros_created_at 
+ON expedicao_registros (created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_expedicao_reg_carr_carregador 
+ON expedicao_registro_carregadores (carregador_id, registro_id);
+
+CREATE INDEX IF NOT EXISTS idx_carregadores_ativo 
+ON carregadores (ativo);
+
+-- ============================================
+-- FIM DO SCRIPT DE OTIMIZAÇÃO DA EXPEDIÇÃO
+-- ============================================
+-- PRONTO! Execute este script no banco de dados e reinicie a aplicação.
+-- ============================================

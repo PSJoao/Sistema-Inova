@@ -96,6 +96,7 @@ router.post('/api/expedicao/corrigir-flag-foto', etiquetasController.apiCorrigir
 
 // Rotas de API para a Gestão de Conferência em Massa (Dashboard)
 router.get('/api/expedicao/conferencia-gestao', etiquetasController.apiGetConferenciaGestao);
+router.get('/api/expedicao/conferencia-gestao/relatorio', etiquetasController.apiDownloadRelatorioGestaoConferencia);
 router.post('/api/expedicao/conferencia-sync-bling', etiquetasController.apiSyncBlingConferencia);
 router.post('/api/expedicao/conferencia-sync-bling-individual', etiquetasController.apiSyncBlingConferenciaIndividual);
 router.post('/api/expedicao/conferencia-sync-bling-lote', etiquetasController.apiSyncBlingConferenciaLote);

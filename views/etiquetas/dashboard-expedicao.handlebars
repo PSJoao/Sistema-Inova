@@ -266,6 +266,11 @@
                 Gestão de Conferência (Envio em Lote)</h4>
 
             <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <button id="btn-relatorio-gestao-conferencia" class="btn-premium"
+                    style="background: #198754; border-color: #198754; color: #fff; padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px;"
+                    title="Gerar Relatório Excel da Conferência">
+                    <i class="fas fa-file-excel"></i> Gerar Relatório
+                </button>
                 <button id="btn-ver-progresso-lote" class="btn-premium outline"
                     style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px;">
                     <i class="fas fa-eye"></i> Ver Status do Envio
@@ -325,6 +330,42 @@
         logística.</p>
     <div id="historico-container" style="display: flex; flex-wrap:wrap; gap: 15px;">
         <!-- O JS preenche isso com stat-cards de histórico -->
+    </div>
+</div>
+
+<!-- Modal de Seleção de Período para Relatório de Conferência -->
+<div id="modalRelatorioConferenciaOverlay" class="modal-overlay"></div>
+<div id="modalRelatorioConferencia" class="custom-modal" style="max-width: 440px;" role="dialog" aria-modal="true"
+    aria-labelledby="modalRelatorioConferenciaTitle">
+    <div class="custom-modal-header">
+        <h3 id="modalRelatorioConferenciaTitle" class="custom-modal-title-text">Relatório de Conferência</h3>
+        <button id="btnFecharModalRelatorioX" class="custom-modal-close-btn" aria-label="Fechar">&times;</button>
+    </div>
+
+    <div class="custom-modal-body">
+        <p style="margin-bottom: 1rem; color: var(--text-secondary);">
+            Selecione o período de conferência (data da checagem) desejado para exportar a planilha:
+        </p>
+
+        <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 0.5rem;">
+            <div>
+                <label for="relatorio-conferencia-data-inicio" style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 5px;">
+                    Data Início:
+                </label>
+                <input type="date" id="relatorio-conferencia-data-inicio" class="form-control form-control-dark" style="width: 100%; border-radius: 6px;">
+            </div>
+            <div>
+                <label for="relatorio-conferencia-data-fim" style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 5px;">
+                    Data Fim:
+                </label>
+                <input type="date" id="relatorio-conferencia-data-fim" class="form-control form-control-dark" style="width: 100%; border-radius: 6px;">
+            </div>
+        </div>
+    </div>
+
+    <div class="custom-modal-footer">
+        <button id="btnConfirmarGerarRelatorio" class="btn btn-accent">Baixar Relatório</button>
+        <button id="btnCancelarModalRelatorio" class="btn btn-outline-accent">Cancelar</button>
     </div>
 </div>
 

@@ -29,6 +29,7 @@ const estoqueRoutes = require('./routes/estoqueRoutes');
 const conferenciaRoutes = require('./routes/conferenciaRoutes.js');
 const produtosRoutes = require('./routes/produtosRoutes');
 const anunciosRoutes = require('./routes/anunciosRoutes');
+const pedidosMlRoutes = require('./routes/pedidosMlRoutes');
 const faturamentoAutomaticoRoutes = require('./routes/faturamentoAutomaticoRoutes');
 const { syncBlingProductsLucas, syncBlingProductsEliane, syncEstoqueBling } = require('./blingSyncService.js');
 const hubProdutosService = require('./hub/services/hubProdutosService');
@@ -95,7 +96,7 @@ app.use((req, res, next) => {
         res.locals.cargo = req.user.role;    // Torna {{cargo}} disponível nos templates
         res.locals.tipo_conta = req.user.tipo_conta;
         res.locals.sidebar_collapsed = req.user.sidebar_collapsed;
-        
+
         // Flags de nível de permissão
         const isAdmin = req.user.tipo_conta === 0 || req.user.tipo_conta === 1;
         res.locals.isAdmin = isAdmin;
@@ -103,12 +104,12 @@ app.use((req, res, next) => {
 
         // Permissões granulares detalhadas (botão a botão)
         const modulos = req.user.modulos_permitidos || [];
-        
+
         // Monitoramento
         res.locals.permit_monitoramento_madeira_lucas = isAdmin || modulos.includes('monitoramento_madeira_lucas');
         res.locals.permit_monitoramento_madeira_eliane = isAdmin || modulos.includes('monitoramento_madeira_eliane');
         res.locals.permit_monitoramento_viavarejo = isAdmin || modulos.includes('monitoramento_viavarejo');
-        
+
         // Faturamento
         res.locals.permit_faturamento_gerenciar_emissoes = isAdmin || modulos.includes('faturamento_gerenciar_emissoes');
         res.locals.permit_faturamento_gerar_etiquetas = isAdmin || modulos.includes('faturamento_gerar_etiquetas');
@@ -116,7 +117,7 @@ app.use((req, res, next) => {
         res.locals.permit_faturamento_gerenciar_pedidos = isAdmin || modulos.includes('faturamento_gerenciar_pedidos');
         res.locals.permit_faturamento_assistencias = isAdmin || modulos.includes('faturamento_assistencias');
         res.locals.permit_faturamento_historico_notas = isAdmin || modulos.includes('faturamento_historico_notas');
-        
+
         // Produtos
         res.locals.permit_produtos_gerenciar = isAdmin || modulos.includes('produtos_gerenciar');
         res.locals.permit_produtos_tipos = isAdmin || modulos.includes('produtos_tipos');
@@ -124,7 +125,7 @@ app.use((req, res, next) => {
         res.locals.permit_produtos_estoque_dev = isAdmin || modulos.includes('produtos_estoque_dev');
         res.locals.permit_produtos_bipagem_pecas = isAdmin || modulos.includes('produtos_bipagem_pecas');
         res.locals.permit_produtos_anuncios = isAdmin || modulos.includes('produtos_gerenciar');
-        
+
         // Expedição
         res.locals.permit_expedicao_ordenador = isAdmin || modulos.includes('expedicao_ordenador');
         res.locals.permit_expedicao_gondolas = isAdmin || modulos.includes('expedicao_gondolas');
@@ -133,12 +134,12 @@ app.use((req, res, next) => {
         res.locals.permit_expedicao_dashboard = isAdmin || modulos.includes('expedicao_dashboard');
         res.locals.permit_expedicao_bipagem_exp = isAdmin || modulos.includes('expedicao_bipagem_exp');
         res.locals.permit_expedicao_massa = isAdmin || modulos.includes('expedicao_massa');
-        
+
         // Conferência
         res.locals.permit_conferencia_bipagem = isAdmin || modulos.includes('conferencia_bipagem');
         res.locals.permit_conferencia_codigos = isAdmin || modulos.includes('conferencia_codigos');
         res.locals.permit_conferencia_ml_batch = isAdmin || modulos.includes('conferencia_ml_batch');
-        
+
         // Logística
         res.locals.permit_logistica_relacoes = isAdmin || modulos.includes('logistica_relacoes');
         res.locals.permit_logistica_rastreio = isAdmin || modulos.includes('logistica_rastreio');
@@ -158,7 +159,7 @@ app.use((req, res, next) => {
         res.locals.isAdmin = false;
         res.locals.isMaster = false;
         res.locals.sidebar_collapsed = false;
-        
+
         res.locals.permit_monitoramento = false;
         res.locals.permit_faturamento = false;
         res.locals.permit_produtos = false;
@@ -198,6 +199,7 @@ app.use('/', etiquetasRoutes);
 app.use('/', tiposRoutes);
 app.use('/', produtosRoutes);
 app.use('/', anunciosRoutes);
+app.use('/', pedidosMlRoutes);
 app.use('/faturamento-automatico', faturamentoAutomaticoRoutes);
 app.use('/product-sync', prodSyncRoutes);
 app.use('/conferencia', conferenciaRoutes);
@@ -567,25 +569,33 @@ cron.schedule('0 12 * * *', async () => {
     }
 });
 
-// Sincroniza estoques uma vez por dia (às 2h da manhã) 0 2 * * *
-cron.schedule('0 2 * * *', async () => {
-    console.log(`${new Date().toISOString()}: Disparando job agendado diário de sincronização de ESTOQUES.`);
+// Sincroniza estoques e dispara aplicação/remoção automática de prazos a cada 1 hora
+let isJobEstoquePrazosRunning = false;
+
+cron.schedule('0 * * * *', async () => {
+    if (isJobEstoquePrazosRunning) {
+        console.log(`${new Date().toISOString()}: [CRON Estoque & Prazos] Execução anterior ainda em andamento. Pulando este ciclo.`);
+        return;
+    }
+
+    isJobEstoquePrazosRunning = true;
+    console.log(`${new Date().toISOString()}: [CRON Estoque & Prazos] Disparando job agendado de ESTOQUE do Bling e PRAZOS do Mercado Livre...`);
+
     try {
-        await syncEstoqueBling();
+        // 1. Sincroniza todos os saldos de estoque do Bling (físico e plataforma)
+        await syncEstoqueBling(false);
+        console.log(`${new Date().toISOString()}: [CRON Estoque & Prazos] Estoque Bling sincronizado com sucesso. Iniciando verificação e aplicação de prazos...`);
+
+        // 2. Executa a aplicação e remoção de prazos nos anúncios ML e sincronização pós-alteração
+        const resultadoPrazos = await anunciosController.processarPrazosAutomaticosInterno('Agendamento Automático (1h)');
+        console.log(`${new Date().toISOString()}: [CRON Estoque & Prazos] Processamento de prazos finalizado:`, resultadoPrazos);
     } catch (error) {
-        console.error(`${new Date().toISOString()}: Erro pego pelo agendador ao sincronizar estoques:`, error);
+        console.error(`${new Date().toISOString()}: [CRON Estoque & Prazos] Erro pego pelo agendador ao sincronizar estoques e aplicar prazos:`, error);
+    } finally {
+        isJobEstoquePrazosRunning = false;
     }
 });
 
-// Sincroniza estoques uma vez por dia (às 5h da manhã)
-cron.schedule('0 14 * * *', async () => {
-    console.log(`${new Date().toISOString()}: Disparando job agendado diário de sincronização de ESTOQUES.`);
-    try {
-        await syncEstoqueBling(false);
-    } catch (error) {
-        console.error(`${new Date().toISOString()}: Erro pego pelo agendador ao sincronizar estoques:`, error);
-    }
-});
 
 // Limpeza diária das fotos de conferência (às 00:00)
 //cron.schedule('0 0 * * *', async () => {

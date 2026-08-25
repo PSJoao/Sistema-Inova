@@ -1,0 +1,174 @@
+-- ================================================================
+-- SCRIPT DE OTIMIZAÇÃO DE PERFORMANCE — Sistema Inova
+-- Execute este script no banco PostgreSQL (inovamonitoramento)
+-- Todos os comandos são idempotentes (seguros para rodar múltiplas vezes)
+-- ================================================================
+
+-- ============================================
+-- 1. HABILITAR EXTENSÃO pg_trgm (para ILIKE com índice)
+-- ============================================
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+-- ============================================
+-- 2. ÍNDICES NA TABELA anuncios_ml
+-- ============================================
+
+-- Filtro por status (WHERE status = 'active')
+CREATE INDEX IF NOT EXISTS idx_anuncios_ml_status 
+ON anuncios_ml (status);
+
+-- Filtro por catálogo (WHERE catalog_listing = TRUE)
+CREATE INDEX IF NOT EXISTS idx_anuncios_ml_catalog_listing 
+ON anuncios_ml (catalog_listing);
+
+-- Índice composto para o filtro padrão da página (status + catalog_listing)
+CREATE INDEX IF NOT EXISTS idx_anuncios_ml_status_catalog 
+ON anuncios_ml (status, catalog_listing);
+
+-- Busca ILIKE por ID de anúncio (gin_trgm_ops = trigram para pattern matching)
+CREATE INDEX IF NOT EXISTS idx_anuncios_ml_id_anuncio_trgm 
+ON anuncios_ml USING gin (id_anuncio gin_trgm_ops);
+
+-- Busca ILIKE por SKU
+CREATE INDEX IF NOT EXISTS idx_anuncios_ml_sku_trgm 
+ON anuncios_ml USING gin (sku gin_trgm_ops);
+
+-- Busca ILIKE por Descrição
+CREATE INDEX IF NOT EXISTS idx_anuncios_ml_descricao_trgm 
+ON anuncios_ml USING gin (descricao gin_trgm_ops);
+
+-- JOIN e subquery de irmãos de catálogo (catalog_product_id)
+CREATE INDEX IF NOT EXISTS idx_anuncios_ml_catalog_product_id 
+ON anuncios_ml (catalog_product_id) 
+WHERE catalog_product_id IS NOT NULL AND catalog_product_id != '';
+
+-- Filtro por tipo de anúncio
+CREATE INDEX IF NOT EXISTS idx_anuncios_ml_tipo_anuncio 
+ON anuncios_ml (tipo_anuncio);
+
+-- Filtro por empresa (ILIKE)
+CREATE INDEX IF NOT EXISTS idx_anuncios_ml_empresa_trgm 
+ON anuncios_ml USING gin (empresa gin_trgm_ops);
+
+-- Ordenação padrão (ORDER BY last_updated_at DESC)
+CREATE INDEX IF NOT EXISTS idx_anuncios_ml_last_updated_at 
+ON anuncios_ml (last_updated_at DESC NULLS LAST);
+
+-- JOIN por SKU com cached_products (B-Tree exato)
+CREATE INDEX IF NOT EXISTS idx_anuncios_ml_sku 
+ON anuncios_ml (sku);
+
+-- ============================================
+-- 3. ÍNDICES NA TABELA cached_products
+-- ============================================
+
+-- JOIN com anuncios_ml.sku
+CREATE INDEX IF NOT EXISTS idx_cached_products_sku 
+ON cached_products (sku);
+
+-- DISTINCT ON (sku) com prioridade por bling_account
+CREATE INDEX IF NOT EXISTS idx_cached_products_sku_account_updated 
+ON cached_products (sku, bling_account, last_updated_at DESC);
+
+-- ============================================
+-- 4. ÍNDICE DE ESTOQUE EM TEMPO REAL (cached_products)
+-- ============================================
+
+-- Remove Materialized View estática caso tenha sido criada anteriormente (evita dados defasados)
+DROP MATERIALIZED VIEW IF EXISTS mv_cached_estoque;
+
+-- Índice para junções ultra-rápidas em tempo real com anúncios_ml
+CREATE INDEX IF NOT EXISTS idx_cached_products_upper_trim_sku 
+ON cached_products (UPPER(TRIM(sku)));
+
+
+-- ============================================
+-- 5. COLUNA has_active_promo + ÍNDICE PARCIAL
+-- ============================================
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'anuncios_ml' AND column_name = 'has_active_promo'
+    ) THEN
+        ALTER TABLE anuncios_ml ADD COLUMN has_active_promo BOOLEAN DEFAULT FALSE;
+    END IF;
+END $$;
+
+-- Popula a coluna para os dados existentes
+UPDATE anuncios_ml 
+SET has_active_promo = (
+    promocoes_json IS NOT NULL 
+    AND promocoes_json::text != '[]' 
+    AND promocoes_json::text != 'null' 
+    AND promocoes_json::text != '' 
+    AND EXISTS (
+        SELECT 1 FROM jsonb_array_elements(promocoes_json) elem 
+        WHERE (elem->>'price') IS NOT NULL 
+        AND (elem->>'price')::numeric > 0
+    )
+)
+WHERE promocoes_json IS NOT NULL;
+
+-- Marca FALSE nos que não têm promoções
+UPDATE anuncios_ml 
+SET has_active_promo = FALSE 
+WHERE promocoes_json IS NULL AND (has_active_promo IS NULL OR has_active_promo = TRUE);
+
+-- Índice parcial para filtrar rapidamente só anúncios com promoções ativas
+CREATE INDEX IF NOT EXISTS idx_anuncios_ml_has_active_promo 
+ON anuncios_ml (has_active_promo) 
+WHERE has_active_promo = TRUE;
+
+-- ============================================
+-- 6. TABELA DE PREFERÊNCIAS DE COLUNAS (ORDEM E LARGURA POR USUÁRIO)
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS user_column_preferences (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    view_name VARCHAR(100) NOT NULL,
+    column_order JSONB,
+    column_widths JSONB,
+    updated_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(user_id, view_name)
+);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'user_column_preferences' AND column_name = 'column_widths'
+    ) THEN
+        ALTER TABLE user_column_preferences ADD COLUMN column_widths JSONB;
+    END IF;
+END $$;
+
+-- ============================================
+-- 7. TEMPORIZADOR 48H — LIBERAÇÃO DE PRONTA ENTREGA (REPOSIÇÃO IMINENTE)
+-- ============================================
+
+ALTER TABLE configuracao_prazos_produto 
+ADD COLUMN IF NOT EXISTS ignorar_prazos_ate TIMESTAMP WITH TIME ZONE;
+
+CREATE INDEX IF NOT EXISTS idx_config_prazos_prod_ignorar_ate 
+ON configuracao_prazos_produto (ignorar_prazos_ate);
+
+-- ============================================
+-- 8. LIBERAÇÃO POR TEMPO INDETERMINADO (PRONTA ENTREGA)
+-- ============================================
+
+ALTER TABLE configuracao_prazos_produto 
+ADD COLUMN IF NOT EXISTS liberar_indeterminado BOOLEAN DEFAULT FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_config_prazos_prod_liberar_indet 
+ON configuracao_prazos_produto (liberar_indeterminado);
+
+-- ============================================
+-- FIM DO SCRIPT DE OTIMIZAÇÃO E ESTRUTURA
+-- ============================================
+-- PRONTO! Reinicie o sistema para aplicar todas as melhorias.
+-- ============================================
+
+

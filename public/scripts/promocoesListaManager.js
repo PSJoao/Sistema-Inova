@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const tableBody = document.getElementById('table-body');
     const paginationContainer = document.getElementById('pagination-container');
     const emptyState = document.getElementById('empty-state');
-    const btnSincronizar = document.getElementById('btnSincronizar');
+    const btnSincronizarPromos = document.getElementById('btnSincronizarPromos');
     const btnExportarPromos = document.getElementById('btnExportarPromos');
     const tableHeaders = document.querySelectorAll('#tabela-estoque th.sortable');
 
@@ -463,10 +463,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const name = escapeHtml(p.name || p.id || 'Campanha Promocional');
 
-            // Status Badge
+            // Status Badge interativo com suporte a Opt-In e Opt-Out
             const statusBadge = isActive
-                ? `<span class="promo-status-badge promo-status-active"><i class="fas fa-circle promo-pulse-dot"></i> Ativa</span>`
-                : `<span class="promo-status-badge promo-status-eligible">Elegível</span>`;
+                ? `<button type="button" class="promo-status-badge promo-status-active promo-badge-clickable" data-action="opt-out" data-id-anuncio="${escapeHtml(anuncio.id_anuncio)}" data-promo-id="${escapeHtml(p.id || '')}" data-promo-type="${escapeHtml(p.type || '')}" title="Promoção Ativa. Clique para Sair."><i class="fas fa-circle promo-pulse-dot"></i> Ativa <i class="fas fa-sign-out-alt ms-1" style="font-size:0.62rem; opacity:0.8;"></i></button>`
+                : `<button type="button" class="promo-status-badge promo-status-eligible promo-badge-clickable" data-action="opt-in" data-id-anuncio="${escapeHtml(anuncio.id_anuncio)}" data-promo-id="${escapeHtml(p.id || '')}" data-promo-type="${escapeHtml(p.type || '')}" title="Promoção Elegível. Clique para Entrar."><i class="fas fa-bolt me-1" style="font-size:0.62rem; opacity:0.8;"></i> Elegível</button>`;
+
 
             // 1. Reembolso ML (Tarifa coberta pelo Mercado Livre em R$)
             const meliPct = p.meli_percentage != null ? Number(p.meli_percentage) : 0;
@@ -482,7 +483,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
             }
 
-            // 2. Desconto do Vendedor (em R$)
+            // 2. Desconto do Vendedor (em R$) - Desativado a pedido do usuário (deixado comentado)
+            /*
             const sellerPct = p.seller_percentage != null ? Number(p.seller_percentage) : 0;
             let sellerBadge = '';
             if (sellerPct > 0) {
@@ -495,6 +497,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </span>
                 `;
             }
+            */
 
             // 3. Margem de Lucro Específica da Promoção (%)
             let margemHtml = '';
@@ -563,7 +566,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         <div class="promo-flags-grid">
                             ${meliBadge}
-                            ${sellerBadge}
                             ${margemHtml}
                             ${reembolsoMaxHtml}
                             ${margemReembolsoMaxHtml}
@@ -992,13 +994,14 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // =============================================
-    // === SINCRONIZAÇÃO ===
+    // === SINCRONIZAÇÃO DEDICADA DE PROMOÇÕES ===
     // =============================================
 
-    const handleSync = async () => {
-        if (!btnSincronizar) return;
-        btnSincronizar.disabled = true;
-        btnSincronizar.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Sincronizando...';
+    const handleSyncPromos = async () => {
+        if (!btnSincronizarPromos) return;
+        btnSincronizarPromos.disabled = true;
+        btnSincronizarPromos.classList.add('syncing');
+        btnSincronizarPromos.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Sincronizando Promoções...';
 
         const syncParams = {};
         const busca = buscaInput ? buscaInput.value.trim() : '';
@@ -1010,34 +1013,36 @@ document.addEventListener('DOMContentLoaded', () => {
         if (filtroCatalogo && filtroCatalogo.value) syncParams.catalog = filtroCatalogo.value;
         if (filtroTipo && filtroTipo.value) syncParams.tipo = filtroTipo.value;
         if (filtroEmpresa && filtroEmpresa.value) syncParams.empresa = filtroEmpresa.value;
-        if (filtroMargemAbaixoReemb && filtroMargemAbaixoReemb.value) syncParams.margem_reemb = filtroMargemAbaixoReemb.value;
 
-        const hasFilters = Object.keys(syncParams).length > 0;
-
-        if (hasFilters && Array.isArray(rawAnunciosList) && rawAnunciosList.length > 0) {
+        // Se existem anúncios carregados, envia os IDs para sincronizar apenas esses
+        if (Array.isArray(rawAnunciosList) && rawAnunciosList.length > 0) {
             syncParams.item_ids = rawAnunciosList.map(a => a.id_anuncio).filter(Boolean);
         }
 
+        const startTime = Date.now();
+
         try {
-            const response = await fetch('/api/anuncios/sync', {
+            const response = await fetch('/api/anuncios/promocoes/sync', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(syncParams)
             });
             const result = await response.json();
+            const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
             if (response.ok) {
-                showToast(result.message || 'Sincronização concluída!');
+                showToast(result.message ? `${result.message} (${elapsed}s)` : `Promoções sincronizadas! (${elapsed}s)`);
                 currentPage = 1;
                 loadPromocoes();
             } else {
-                showToast(`Erro: ${result.message || 'desconhecido'}`);
+                showToast(`Erro: ${result.message || result.error || 'desconhecido'}`);
             }
         } catch (error) {
-            console.error('[Promoções] Erro sync:', error);
-            showToast('Erro de conexão ao sincronizar.');
+            console.error('[Promoções] Erro sync promoções:', error);
+            showToast('Erro de conexão ao sincronizar promoções.');
         } finally {
-            btnSincronizar.disabled = false;
-            btnSincronizar.innerHTML = '<i class="fas fa-sync me-2"></i>Sincronizar Anúncios';
+            btnSincronizarPromos.disabled = false;
+            btnSincronizarPromos.classList.remove('syncing');
+            btnSincronizarPromos.innerHTML = '<i class="fas fa-bolt me-2"></i>Sincronizar Promoções';
         }
     };
 
@@ -1607,7 +1612,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (filtroMargemReembMin) filtroMargemReembMin.addEventListener('input', handleMargemInput);
     if (filtroMargemReembMax) filtroMargemReembMax.addEventListener('input', handleMargemInput);
 
-    if (btnSincronizar) btnSincronizar.addEventListener('click', handleSync);
+    if (btnSincronizarPromos) btnSincronizarPromos.addEventListener('click', handleSyncPromos);
 
     if (btnExportarPromos) {
         btnExportarPromos.addEventListener('click', () => {
@@ -1685,8 +1690,505 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             }
+            return;
+        }
+
+        // Clique no Badge / Botão de Ação da Promoção (Opt-In / Opt-Out)
+        const promoActionTrigger = e.target.closest('.promo-badge-clickable, .promo-card-action-btn');
+        if (promoActionTrigger) {
+            e.stopPropagation();
+            e.preventDefault();
+            const action = promoActionTrigger.dataset.action;
+            const idAnuncio = promoActionTrigger.dataset.idAnuncio;
+            const promoId = promoActionTrigger.dataset.promoId;
+            const promoType = promoActionTrigger.dataset.promoType;
+
+            const anuncio = rawAnunciosList.find(a => String(a.id_anuncio) === String(idAnuncio));
+            if (!anuncio) {
+                showToast('Anúncio não encontrado na lista atual.');
+                return;
+            }
+
+            const promos = parsePromos(anuncio.promocoes_json);
+            // Encontra a promoção pelo ID ou pelo Tipo (ou primeira promoção se id vazio)
+            let promo = null;
+            if (promoId) {
+                promo = promos.find(p => String(p.id) === String(promoId));
+            }
+            if (!promo && promoType) {
+                promo = promos.find(p => String(p.type) === String(promoType));
+            }
+            if (!promo && promos.length > 0) {
+                promo = promos[0];
+            }
+
+            if (!promo) {
+                showToast('Detalhes da promoção não encontrados.');
+                return;
+            }
+
+            if (action === 'opt-in') {
+                openOptInModal(anuncio, promo);
+            } else if (action === 'opt-out') {
+                openOptOutModal(anuncio, promo);
+            }
+            return;
         }
     });
+
+    // =============================================
+    // === MODAL DE OPT-IN (ENTRAR NA PROMOÇÃO) ===
+    // =============================================
+
+    const modalOptInPromo = document.getElementById('modalOptInPromo');
+    const btnCloseOptInModal = document.getElementById('btnCloseOptInModal');
+    const btnCancelOptIn = document.getElementById('btnCancelOptIn');
+    const btnConfirmOptIn = document.getElementById('btnConfirmOptIn');
+
+    const optInProdThumb = document.getElementById('optInProdThumb');
+    const optInProdDescricao = document.getElementById('optInProdDescricao');
+    const optInProdSku = document.getElementById('optInProdSku');
+    const optInProdMlb = document.getElementById('optInProdMlb');
+    const optInProdEmpresa = document.getElementById('optInProdEmpresa');
+    const optInCampName = document.getElementById('optInCampName');
+    const optInCampType = document.getElementById('optInCampType');
+    const optInDatesText = document.getElementById('optInDatesText');
+    const optInLimitsBox = document.getElementById('optInLimitsBox');
+    const optInLimitsGrid = document.getElementById('optInLimitsGrid');
+    const optInPrecoOriginal = document.getElementById('optInPrecoOriginal');
+    const optInPrecoInput = document.getElementById('optInPrecoInput');
+    const optInPrecoHint = document.getElementById('optInPrecoHint');
+    const optInPrevDescVendedor = document.getElementById('optInPrevDescVendedor');
+    const optInPrevReembMeli = document.getElementById('optInPrevReembMeli');
+    const optInPrevMeliCard = document.getElementById('optInPrevMeliCard');
+    const optInPrevMargem = document.getElementById('optInPrevMargem');
+    const optInPrevMargemMax = document.getElementById('optInPrevMargemMax');
+    const optInPrevReembMaxCard = document.getElementById('optInPrevReembMaxCard');
+
+    let currentOptInContext = null;
+
+    const openOptInModal = (anuncio, promo) => {
+        currentOptInContext = { anuncio, promo };
+
+        // Preenche dados do produto
+        if (optInProdThumb) {
+            optInProdThumb.src = anuncio.thumbnail || '/public/images/no-image.png';
+        }
+        if (optInProdDescricao) optInProdDescricao.textContent = anuncio.descricao || 'Sem descrição';
+        if (optInProdSku) optInProdSku.textContent = anuncio.sku || '-';
+        if (optInProdMlb) optInProdMlb.textContent = anuncio.id_anuncio || '-';
+        if (optInProdEmpresa) optInProdEmpresa.textContent = anuncio.empresa || '-';
+
+        // Preenche detalhes da campanha
+        const campName = promo.name || promo.id || 'Campanha Promocional';
+        if (optInCampName) optInCampName.textContent = campName;
+        if (optInCampType) optInCampType.textContent = promo.type || 'PROMO';
+
+        if (optInDatesText) {
+            if (promo.start_date && promo.finish_date) {
+                optInDatesText.textContent = `De ${formatDate(promo.start_date)} até ${formatDate(promo.finish_date)}`;
+            } else if (promo.finish_date) {
+                optInDatesText.textContent = `Término em ${formatDate(promo.finish_date)}`;
+            } else {
+                optInDatesText.textContent = 'Validade indeterminada';
+            }
+        }
+
+        // Limites da Campanha do Mercado Livre
+        if (optInLimitsBox && optInLimitsGrid) {
+            const limitsChips = [];
+            if (promo.suggested_discounted_price != null && Number(promo.suggested_discounted_price) > 0) {
+                limitsChips.push(`<span class="promo-limit-chip"><strong>Sugerido:</strong> R$ ${Number(promo.suggested_discounted_price).toFixed(2).replace('.', ',')}</span>`);
+            }
+            if (promo.max_discounted_price != null && Number(promo.max_discounted_price) > 0) {
+                limitsChips.push(`<span class="promo-limit-chip"><strong>Máx. Permitido:</strong> R$ ${Number(promo.max_discounted_price).toFixed(2).replace('.', ',')}</span>`);
+            }
+            if (promo.min_discounted_price != null && Number(promo.min_discounted_price) > 0) {
+                limitsChips.push(`<span class="promo-limit-chip"><strong>Mín. Permitido:</strong> R$ ${Number(promo.min_discounted_price).toFixed(2).replace('.', ',')}</span>`);
+            }
+            if (promo.meli_percentage != null && Number(promo.meli_percentage) > 0) {
+                limitsChips.push(`<span class="promo-limit-chip text-info"><strong>Reembolso ML:</strong> ${Number(promo.meli_percentage).toFixed(1).replace('.', ',')}%</span>`);
+            }
+
+            if (limitsChips.length > 0) {
+                optInLimitsGrid.innerHTML = limitsChips.join('');
+                optInLimitsBox.style.display = 'block';
+            } else {
+                optInLimitsBox.style.display = 'none';
+            }
+        }
+
+        // Preço Original
+        const origPriceVal = (promo.original_price != null && Number(promo.original_price) > 0)
+            ? Number(promo.original_price)
+            : (anuncio.preco != null && Number(anuncio.preco) > 0 ? Number(anuncio.preco) : 0);
+
+        if (optInPrecoOriginal) {
+            optInPrecoOriginal.textContent = `R$ ${origPriceVal.toFixed(2).replace('.', ',')}`;
+        }
+
+        // Define valor inicial para o input
+        let defaultInputPrice = null;
+        if (promo.suggested_discounted_price != null && Number(promo.suggested_discounted_price) > 0) {
+            defaultInputPrice = Number(promo.suggested_discounted_price);
+        } else if (promo.price != null && Number(promo.price) > 0) {
+            defaultInputPrice = Number(promo.price);
+        } else if (promo.max_discounted_price != null && Number(promo.max_discounted_price) > 0) {
+            defaultInputPrice = Number(promo.max_discounted_price);
+        } else if (origPriceVal > 0) {
+            defaultInputPrice = Number((origPriceVal * 0.9).toFixed(2));
+        }
+
+        if (optInPrecoInput) {
+            optInPrecoInput.value = defaultInputPrice ? defaultInputPrice.toFixed(2) : '';
+        }
+
+        updateOptInLiveCalculations();
+
+        if (modalOptInPromo) {
+            modalOptInPromo.classList.add('visible');
+            modalOptInPromo.style.display = 'block';
+            const dialog = modalOptInPromo.querySelector('.custom-modal');
+            if (dialog) dialog.classList.add('visible');
+            setTimeout(() => {
+                if (optInPrecoInput) optInPrecoInput.focus();
+            }, 100);
+        }
+    };
+
+    const closeOptInModal = () => {
+        if (modalOptInPromo) {
+            modalOptInPromo.classList.remove('visible');
+            modalOptInPromo.style.display = 'none';
+            const dialog = modalOptInPromo.querySelector('.custom-modal');
+            if (dialog) dialog.classList.remove('visible');
+        }
+        currentOptInContext = null;
+        if (btnConfirmOptIn) {
+            btnConfirmOptIn.disabled = false;
+            btnConfirmOptIn.innerHTML = 'Confirmar Participação';
+        }
+    };
+
+    const updateOptInLiveCalculations = () => {
+        if (!currentOptInContext) return;
+        const { anuncio, promo } = currentOptInContext;
+
+        const origPriceVal = (promo.original_price != null && Number(promo.original_price) > 0)
+            ? Number(promo.original_price)
+            : (anuncio.preco != null && Number(anuncio.preco) > 0 ? Number(anuncio.preco) : 0);
+
+        const inputPriceVal = optInPrecoInput ? parseFloat(optInPrecoInput.value) : 0;
+        const promoPrice = (!isNaN(inputPriceVal) && inputPriceVal > 0) ? inputPriceVal : 0;
+
+        // 1. Desconto do Vendedor
+        if (optInPrevDescVendedor) {
+            if (origPriceVal > 0 && promoPrice > 0 && promoPrice < origPriceVal) {
+                const descReais = origPriceVal - promoPrice;
+                const descPct = (descReais / origPriceVal) * 100;
+                optInPrevDescVendedor.textContent = `${descPct.toFixed(1).replace('.', ',')}% (R$ ${descReais.toFixed(2).replace('.', ',')})`;
+            } else {
+                optInPrevDescVendedor.textContent = '0,0%';
+            }
+        }
+
+        // 2. Reembolso ML
+        const meliPct = promo.meli_percentage != null ? Number(promo.meli_percentage) : 0;
+        if (optInPrevReembMeli && optInPrevMeliCard) {
+            if (meliPct > 0 && origPriceVal > 0) {
+                const meliReais = (meliPct / 100.0) * origPriceVal;
+                optInPrevReembMeli.textContent = `+${meliPct.toFixed(1).replace('.', ',')}% (R$ ${meliReais.toFixed(2).replace('.', ',')})`;
+                optInPrevMeliCard.style.display = 'flex';
+            } else {
+                optInPrevMeliCard.style.display = 'none';
+            }
+        }
+
+        // 3. Margem de Lucro Estimada
+        if (optInPrevMargem) {
+            if (promoPrice > 0) {
+                const tempPromo = { ...promo, price: promoPrice, original_price: origPriceVal };
+                const margem = calculatePromoMargin(anuncio, tempPromo);
+                if (margem !== null && !isNaN(margem)) {
+                    optInPrevMargem.textContent = `${margem.toFixed(2).replace('.', ',')}%`;
+                    if (margem >= 15) {
+                        optInPrevMargem.style.color = '#34d399';
+                    } else if (margem >= 5) {
+                        optInPrevMargem.style.color = '#fbbf24';
+                    } else {
+                        optInPrevMargem.style.color = '#f87171';
+                    }
+                } else {
+                    optInPrevMargem.textContent = '-- %';
+                    optInPrevMargem.style.color = 'var(--text-muted)';
+                }
+            } else {
+                optInPrevMargem.textContent = '-- %';
+                optInPrevMargem.style.color = 'var(--text-muted)';
+            }
+        }
+
+        // 4. Margem com Reembolso Máximo
+        const promoId = promo.id || null;
+        if (optInPrevMargemMax && optInPrevReembMaxCard) {
+            if (promoId && reembolsoMap[promoId] != null && Number(reembolsoMap[promoId]) > 0 && promoPrice > 0) {
+                const reembPct = Number(reembolsoMap[promoId]);
+                const tempPromo = { ...promo, price: promoPrice, original_price: origPriceVal };
+                const margemMax = calculateReembolsoMaxMargin(anuncio, tempPromo, reembPct);
+                if (margemMax !== null && !isNaN(margemMax)) {
+                    optInPrevMargemMax.textContent = `${margemMax.toFixed(2).replace('.', ',')}%`;
+                    optInPrevReembMaxCard.style.display = 'flex';
+                } else {
+                    optInPrevReembMaxCard.style.display = 'none';
+                }
+            } else {
+                optInPrevReembMaxCard.style.display = 'none';
+            }
+        }
+
+        // Validação no Hint
+        if (optInPrecoHint) {
+            if (promoPrice <= 0) {
+                optInPrecoHint.textContent = 'Informe um preço maior que zero.';
+                optInPrecoHint.style.color = '#f87171';
+            } else if (origPriceVal > 0 && promoPrice >= origPriceVal) {
+                optInPrecoHint.textContent = 'Atenção: O preço promocional deve ser menor que o preço base.';
+                optInPrecoHint.style.color = '#fbbf24';
+            } else if (promo.max_discounted_price && promoPrice > promo.max_discounted_price) {
+                optInPrecoHint.textContent = `Atenção: Valor acima do limite máximo (R$ ${Number(promo.max_discounted_price).toFixed(2).replace('.', ',')}).`;
+                optInPrecoHint.style.color = '#fbbf24';
+            } else {
+                optInPrecoHint.textContent = 'Preço válido para adesão.';
+                optInPrecoHint.style.color = '#34d399';
+            }
+        }
+    };
+
+    if (optInPrecoInput) {
+        optInPrecoInput.addEventListener('input', updateOptInLiveCalculations);
+    }
+
+    if (btnCloseOptInModal) btnCloseOptInModal.addEventListener('click', closeOptInModal);
+    if (btnCancelOptIn) btnCancelOptIn.addEventListener('click', closeOptInModal);
+
+    const submitOptIn = async () => {
+        if (!currentOptInContext) return;
+        const { anuncio, promo } = currentOptInContext;
+
+        const inputPriceVal = optInPrecoInput ? parseFloat(optInPrecoInput.value) : null;
+        if (!inputPriceVal || isNaN(inputPriceVal) || inputPriceVal <= 0) {
+            showToast('Por favor, informe um preço promocional válido.');
+            if (optInPrecoInput) optInPrecoInput.focus();
+            return;
+        }
+
+        if (btnConfirmOptIn) {
+            btnConfirmOptIn.disabled = true;
+            btnConfirmOptIn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Ativando...';
+        }
+
+        try {
+            const payload = {
+                item_id: anuncio.id_anuncio,
+                promotion_id: promo.id || null,
+                promotion_type: promo.type || null,
+                deal_price: inputPriceVal,
+                options: {
+                    offer_id: promo.ref_id || promo.offer_id || null,
+                    ref_id: promo.ref_id || promo.offer_id || null
+                }
+            };
+
+            const response = await fetch('/api/anuncios/promocoes/opt-in', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const result = await response.json();
+
+            if (response.ok && result.success) {
+                showToast(`🎉 Anúncio ${anuncio.id_anuncio} ativado na promoção ${promo.name || promo.id || ''}!`);
+                closeOptInModal();
+
+                // Atualiza o item em rawAnunciosList
+                const index = rawAnunciosList.findIndex(a => String(a.id_anuncio) === String(anuncio.id_anuncio));
+                if (index !== -1 && result.item) {
+                    rawAnunciosList[index] = {
+                        ...rawAnunciosList[index],
+                        ...result.item
+                    };
+                } else if (index !== -1 && result.promocoes_json) {
+                    rawAnunciosList[index].promocoes_json = result.promocoes_json;
+                    rawAnunciosList[index].preco_promocional = result.preco_promocional;
+                }
+
+                // Re-renderiza para refletir a nova promoção ativa
+                applyExcelFiltersAndRender();
+            } else {
+                showToast(`Erro ao ativar: ${result.error || result.message || 'Falha no Mercado Livre'}`);
+            }
+        } catch (err) {
+            console.error('[Opt-In] Erro:', err);
+            showToast('Erro de conexão ao ativar promoção.');
+        } finally {
+            if (btnConfirmOptIn) {
+                btnConfirmOptIn.disabled = false;
+                btnConfirmOptIn.innerHTML = 'Confirmar Participação';
+            }
+        }
+    };
+
+    if (btnConfirmOptIn) {
+        btnConfirmOptIn.addEventListener('click', submitOptIn);
+    }
+
+    // =============================================
+    // === MODAL DE OPT-OUT (SAIR DA PROMOÇÃO) ===
+    // =============================================
+
+    const modalOptOutPromo = document.getElementById('modalOptOutPromo');
+    const btnCloseOptOutModal = document.getElementById('btnCloseOptOutModal');
+    const btnCancelOptOut = document.getElementById('btnCancelOptOut');
+    const btnConfirmOptOut = document.getElementById('btnConfirmOptOut');
+
+    const optOutProdThumb = document.getElementById('optOutProdThumb');
+    const optOutProdDescricao = document.getElementById('optOutProdDescricao');
+    const optOutProdSku = document.getElementById('optOutProdSku');
+    const optOutProdMlb = document.getElementById('optOutProdMlb');
+    const optOutCampName = document.getElementById('optOutCampName');
+    const optOutPrecoPromo = document.getElementById('optOutPrecoPromo');
+    const optOutPrecoOriginal = document.getElementById('optOutPrecoOriginal');
+
+    let currentOptOutContext = null;
+
+    const openOptOutModal = (anuncio, promo) => {
+        currentOptOutContext = { anuncio, promo };
+
+        if (optOutProdThumb) {
+            optOutProdThumb.src = anuncio.thumbnail || '/public/images/no-image.png';
+        }
+        if (optOutProdDescricao) optOutProdDescricao.textContent = anuncio.descricao || 'Sem descrição';
+        if (optOutProdSku) optOutProdSku.textContent = anuncio.sku || '-';
+        if (optOutProdMlb) optOutProdMlb.textContent = anuncio.id_anuncio || '-';
+
+        const campName = promo.name || promo.id || 'Campanha Ativa';
+        if (optOutCampName) optOutCampName.textContent = campName;
+
+        const promoPrice = Number(promo.price) || Number(anuncio.preco_promocional) || 0;
+        if (optOutPrecoPromo) {
+            optOutPrecoPromo.textContent = `R$ ${promoPrice.toFixed(2).replace('.', ',')}`;
+        }
+
+        const origPrice = Number(promo.original_price) || Number(anuncio.preco) || promoPrice;
+        if (optOutPrecoOriginal) {
+            optOutPrecoOriginal.textContent = `R$ ${origPrice.toFixed(2).replace('.', ',')}`;
+        }
+
+        if (modalOptOutPromo) {
+            modalOptOutPromo.classList.add('visible');
+            modalOptOutPromo.style.display = 'block';
+            const dialog = modalOptOutPromo.querySelector('.custom-modal');
+            if (dialog) dialog.classList.add('visible');
+        }
+    };
+
+    const closeOptOutModal = () => {
+        if (modalOptOutPromo) {
+            modalOptOutPromo.classList.remove('visible');
+            modalOptOutPromo.style.display = 'none';
+            const dialog = modalOptOutPromo.querySelector('.custom-modal');
+            if (dialog) dialog.classList.remove('visible');
+        }
+        currentOptOutContext = null;
+        if (btnConfirmOptOut) {
+            btnConfirmOptOut.disabled = false;
+            btnConfirmOptOut.innerHTML = 'Confirmar Saída';
+        }
+    };
+
+    if (btnCloseOptOutModal) btnCloseOptOutModal.addEventListener('click', closeOptOutModal);
+    if (btnCancelOptOut) btnCancelOptOut.addEventListener('click', closeOptOutModal);
+
+    const submitOptOut = async () => {
+        if (!currentOptOutContext) return;
+        const { anuncio, promo } = currentOptOutContext;
+
+        if (btnConfirmOptOut) {
+            btnConfirmOptOut.disabled = true;
+            btnConfirmOptOut.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Removendo...';
+        }
+
+        try {
+            const payload = {
+                item_id: anuncio.id_anuncio,
+                promotion_id: promo.id || null,
+                promotion_type: promo.type || null,
+                options: {
+                    offer_id: promo.ref_id || promo.offer_id || null,
+                    ref_id: promo.ref_id || promo.offer_id || null
+                }
+            };
+
+            const response = await fetch('/api/anuncios/promocoes/opt-out', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+
+            const result = await response.json();
+
+            if (response.ok && result.success) {
+                showToast(`Anúncio ${anuncio.id_anuncio} retirado da promoção com sucesso!`);
+                closeOptOutModal();
+
+                // Atualiza o item em rawAnunciosList
+                const index = rawAnunciosList.findIndex(a => String(a.id_anuncio) === String(anuncio.id_anuncio));
+                if (index !== -1 && result.item) {
+                    rawAnunciosList[index] = {
+                        ...rawAnunciosList[index],
+                        ...result.item
+                    };
+                } else if (index !== -1 && result.promocoes_json) {
+                    rawAnunciosList[index].promocoes_json = result.promocoes_json;
+                    rawAnunciosList[index].preco_promocional = result.preco_promocional;
+                }
+
+                // Re-renderiza para refletir o novo estado
+                applyExcelFiltersAndRender();
+            } else {
+                showToast(`Erro ao sair da promoção: ${result.error || result.message || 'Falha no Mercado Livre'}`);
+            }
+        } catch (err) {
+            console.error('[Opt-Out] Erro:', err);
+            showToast('Erro de conexão ao sair da promoção.');
+        } finally {
+            if (btnConfirmOptOut) {
+                btnConfirmOptOut.disabled = false;
+                btnConfirmOptOut.innerHTML = 'Confirmar Saída';
+            }
+        }
+    };
+
+    if (btnConfirmOptOut) {
+        btnConfirmOptOut.addEventListener('click', submitOptOut);
+    }
+
+
+    // Fechar modais ao clicar no backdrop ou pressionar ESC
+    window.addEventListener('click', (e) => {
+        if (e.target === modalOptInPromo) closeOptInModal();
+        if (e.target === modalOptOutPromo) closeOptOutModal();
+    });
+
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeOptInModal();
+            closeOptOutModal();
+        }
+    });
+
 
     // =============================================
     // === INICIALIZAÇÃO ===

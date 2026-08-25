@@ -94,21 +94,31 @@ exports.apiGetDashboardExpedicao = async (req, res) => {
 
 exports.apiGetDashboardTabela = async (req, res) => {
     try {
-        const { dataInicio, dataFim, draw, start, length, search, order, statusInterno, statusMl, statusFoto, statusEmbarcado } = req.query;
+        const { dataInicio, dataFim, draw, start, length, search, order, statusInterno, statusMl, statusFoto, statusEmbarcado, all } = req.query;
         
+        let searchValue = '';
+        if (typeof search === 'object' && search !== null) {
+            searchValue = search.value || '';
+        } else if (typeof search === 'string') {
+            searchValue = search;
+        }
+
+        const isFull = all === 'true' || all === true || length === '-1' || length === -1;
+
         const params = {
             dataInicio,
             dataFim,
             draw: parseInt(draw) || 1,
             start: parseInt(start) || 0,
-            length: parseInt(length) || 10,
-            searchValue: search ? search.value : '',
+            length: isFull ? -1 : (parseInt(length) || 10),
+            searchValue: searchValue,
             orderColIndex: order && order[0] ? order[0].column : null,
             orderDir: order && order[0] ? order[0].dir : null,
             statusInterno,
             statusMl,
             statusFoto,
-            statusEmbarcado
+            statusEmbarcado,
+            all: isFull
         };
 
         const dadosTabela = await etiquetasService.obterTabelaDashboardExpedicao(params);
@@ -251,6 +261,24 @@ exports.apiDownloadRelatorioExpedicao = async (req, res) => {
     } catch (error) {
         console.error('[EtiquetasController] Erro ao gerar Excel:', error);
         res.status(500).send('Erro ao gerar relatório Excel.');
+    }
+};
+
+exports.apiDownloadRelatorioGestaoConferencia = async (req, res) => {
+    try {
+        const { dataInicio, dataFim } = req.query;
+        if (!dataInicio || !dataFim) {
+            return res.status(400).json({ success: false, message: 'Data de início e data de fim são obrigatórias.' });
+        }
+
+        const buffer = await etiquetasService.gerarRelatorioExcelGestaoConferencia(dataInicio, dataFim);
+
+        res.setHeader('Content-Disposition', `attachment; filename="Relatorio_Conferencia_${dataInicio}_a_${dataFim}.xlsx"`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.send(buffer);
+    } catch (error) {
+        console.error('[EtiquetasController] Erro ao gerar relatório Excel da gestão de conferência:', error);
+        res.status(500).json({ success: false, message: 'Erro ao gerar relatório Excel da conferência.' });
     }
 };
 

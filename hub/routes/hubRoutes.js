@@ -14,6 +14,16 @@ router.post('/api/login', hubApiController.login);
 router.get('/api/pedidos', verifyHubToken, hubApiController.getPedidos);
 router.get('/api/pedidos/monitoramento-instantaneo', verifyHubToken, hubApiController.monitoramentoInstantaneo);
 
+// Novas Rotas On-Demand de Sincronização (Gatilhos HTTP sem chamada à API de Etiquetas)
+router.post('/api/pedidos/sincronizar/novos', verifyHubToken, hubApiController.sincronizarNovosPedidos);
+router.post('/api/pedidos/sincronizar/diferentes', verifyHubToken, hubApiController.sincronizarPedidosDiferentes);
+router.post('/api/pedidos/sincronizar/existentes', verifyHubToken, hubApiController.sincronizarPedidosExistentes);
+router.post('/api/pedidos/sincronizar/devolucoes', verifyHubToken, hubApiController.sincronizarDevolucoes);
+
+// Rota Dedicada e Isolada para Obtenção/Download Real de Etiquetas
+router.post('/api/pedidos/etiquetas/obter', verifyHubToken, hubApiController.obterEtiquetasEnvio);
+router.get('/api/pedidos/etiquetas/:id_envio', verifyHubToken, hubApiController.baixarEtiquetaPorEnvio);
+
 // Rota para buscar todos os pedidos vinculados a um ID de Envio específico
 router.get('/api/envios/:id_envio', verifyHubToken, hubApiController.getEnvioPorId);
 
@@ -42,4 +52,9 @@ router.get('/api/produtos/:identificador', verifyHubToken, hubApiController.getP
 router.put('/api/anuncios/prazo-disponibilidade', verifyHubToken, hubApiController.setPrazoDisponibilidade);
 router.delete('/api/anuncios/prazo-disponibilidade', verifyHubToken, hubApiController.removerPrazoDisponibilidade);
 
-module.exports = router;
+// Rotas de Gestão de Promoções (Opt-In / Opt-Out)
+router.post('/api/promocoes/opt-in', verifyHubToken, hubApiController.aderirPromocao);
+router.post('/api/promocoes/opt-out', verifyHubToken, hubApiController.removerPromocao);
+router.delete('/api/promocoes/opt-out', verifyHubToken, hubApiController.removerPromocao);
+
+module.exports = router;

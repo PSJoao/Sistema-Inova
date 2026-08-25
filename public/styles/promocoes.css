@@ -664,3 +664,428 @@ th.sortable.filter-active::before {
     margin-right: 6px;
     font-size: 0.8rem;
 }
+
+/* === BOTÃO SINCRONIZAR PROMOÇÕES === */
+.btn-sync-promos {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    padding: 8px 18px;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    background: linear-gradient(135deg, #e65100 0%, #ff9100 50%, #ffab40 100%);
+    background-size: 200% 200%;
+    color: #fff;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 8px rgba(230, 81, 0, 0.25);
+    letter-spacing: 0.3px;
+}
+
+.btn-sync-promos::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg,
+            transparent 30%,
+            rgba(255, 255, 255, 0.12) 50%,
+            transparent 70%);
+    background-size: 200% 100%;
+    animation: shimmerSync 3s ease-in-out infinite;
+}
+
+@keyframes shimmerSync {
+
+    0%,
+    100% {
+        background-position: 200% 0;
+    }
+
+    50% {
+        background-position: -200% 0;
+    }
+}
+
+.btn-sync-promos:hover {
+    background-position: 100% 100%;
+    box-shadow: 0 4px 20px rgba(255, 145, 0, 0.4),
+        0 0 15px rgba(255, 171, 64, 0.2);
+    transform: translateY(-1px);
+}
+
+.btn-sync-promos:active {
+    transform: translateY(0) scale(0.98);
+    box-shadow: 0 2px 6px rgba(230, 81, 0, 0.3);
+}
+
+.btn-sync-promos:disabled {
+    opacity: 0.85;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.btn-sync-promos.syncing {
+    animation: syncPulse 1.5s ease-in-out infinite;
+    box-shadow: 0 0 20px rgba(255, 145, 0, 0.3);
+}
+
+@keyframes syncPulse {
+
+    0%,
+    100% {
+        box-shadow: 0 0 10px rgba(255, 145, 0, 0.2);
+    }
+
+    50% {
+        box-shadow: 0 0 25px rgba(255, 145, 0, 0.5),
+            0 0 40px rgba(255, 171, 64, 0.15);
+    }
+}
+
+.btn-sync-promos i.fa-bolt {
+    font-size: 0.9rem;
+    filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.4));
+}
+
+/* ========================================================================= */
+/* BADGES INTERATIVOS DE STATUS (OPT-IN / OPT-OUT)                           */
+/* ========================================================================= */
+
+.promo-status-badge.promo-badge-clickable {
+    cursor: pointer;
+    position: relative;
+    user-select: none;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.promo-status-badge.promo-badge-clickable:hover {
+    transform: translateY(-1px) scale(1.04);
+}
+
+/* Badge Ativo: No hover sugere Sair */
+.promo-status-active.promo-badge-clickable:hover {
+    background: rgba(239, 68, 68, 0.25) !important;
+    border-color: rgba(239, 68, 68, 0.6) !important;
+    color: #f87171 !important;
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.35);
+}
+
+.promo-status-active.promo-badge-clickable:hover .promo-pulse-dot {
+    background: #f87171;
+    color: #f87171;
+}
+
+/* Badge Elegível: No hover sugere Entrar */
+.promo-status-eligible.promo-badge-clickable:hover {
+    background: rgba(16, 185, 129, 0.25) !important;
+    border-color: rgba(16, 185, 129, 0.6) !important;
+    color: #34d399 !important;
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.35);
+}
+
+/* Botão de Ação Rápida no Card */
+.promo-card-action-btn {
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 12px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.promo-btn-optin {
+    background: rgba(16, 185, 129, 0.18);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.promo-btn-optin:hover {
+    background: #10b981;
+    color: #ffffff;
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
+    transform: scale(1.04);
+}
+
+.promo-btn-optout {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.promo-btn-optout:hover {
+    background: #ef4444;
+    color: #ffffff;
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+    transform: scale(1.04);
+}
+
+/* ========================================================================= */
+/* MODAIS DE GESTÃO DE PROMOÇÕES (ESTILO CORPORATIVO PADRÃO DO SISTEMA)      */
+/* ========================================================================= */
+
+.promo-modal-container {
+    width: 90%;
+    max-width: 540px !important;
+}
+
+.promo-modal-container-sm {
+    width: 90%;
+    max-width: 480px !important;
+}
+
+.promo-modal-body-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 20px !important;
+}
+
+/* Card Resumo do Produto */
+.promo-corp-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--bg-tertiary);
+    border-radius: var(--border-radius-md);
+    padding: 10px 14px;
+}
+
+.promo-corp-thumb {
+    width: 42px;
+    height: 42px;
+    border-radius: var(--border-radius-sm);
+    object-fit: cover;
+    background-color: #000;
+    border: 1px solid var(--bg-tertiary);
+    flex-shrink: 0;
+}
+
+.promo-corp-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.promo-corp-title {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 2px;
+}
+
+.promo-corp-meta {
+    display: flex;
+    gap: 12px;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    flex-wrap: wrap;
+}
+
+.promo-corp-meta span strong {
+    color: var(--text-primary);
+}
+
+/* Detalhes da Campanha */
+.promo-corp-campaign {
+    flex-direction: column;
+    gap: 6px;
+    align-items: stretch;
+}
+
+.promo-corp-camp-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.promo-corp-label {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+    margin-bottom: 0;
+}
+
+.promo-corp-val {
+    font-size: 0.88rem;
+    font-weight: 600;
+}
+
+.promo-corp-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    background: var(--bg-tertiary);
+    color: var(--accent-orange);
+    padding: 2px 6px;
+    border-radius: var(--border-radius-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.promo-corp-dates {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    font-size: 0.78rem;
+}
+
+/* Faixa de Parâmetros */
+.promo-corp-limits {
+    background-color: var(--bg-primary);
+    border: 1px dashed var(--bg-tertiary);
+    border-radius: var(--border-radius-sm);
+    padding: 8px 12px;
+}
+
+.promo-corp-limits-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+
+.promo-corp-limits-grid {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.promo-corp-limits-grid .promo-limit-chip {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    padding: 2px 6px;
+    border-radius: var(--border-radius-sm);
+    font-size: 0.75rem;
+}
+
+/* Linha de Preços */
+.promo-corp-pricing-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.promo-corp-input-col {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.promo-corp-static-price {
+    background-color: var(--bg-primary);
+    border: 1px solid var(--bg-tertiary);
+    border-radius: var(--border-radius-sm);
+    padding: 6px 10px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    height: 38px;
+    display: flex;
+    align-items: center;
+}
+
+.promo-corp-input {
+    background-color: var(--bg-primary) !important;
+    border: 1px solid var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+    border-radius: var(--border-radius-sm) !important;
+    height: 38px !important;
+    font-size: 0.95rem !important;
+    font-weight: 700 !important;
+    padding: 6px 10px !important;
+}
+
+.promo-corp-input:focus {
+    border-color: var(--accent-orange) !important;
+    box-shadow: 0 0 0 2px rgba(240, 124, 0, 0.2) !important;
+    outline: none !important;
+}
+
+.promo-corp-hint {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+
+/* Grid de Métricas */
+.promo-corp-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 8px;
+}
+
+.promo-corp-metric-box {
+    background-color: var(--bg-primary);
+    border: 1px solid var(--bg-tertiary);
+    border-radius: var(--border-radius-sm);
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    text-align: center;
+}
+
+.promo-corp-metric-box .metric-label {
+    font-size: 0.68rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    font-weight: 500;
+}
+
+.promo-corp-metric-box .metric-value {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+/* Opt-Out Específico */
+.promo-corp-warning-text {
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    margin-bottom: 0;
+    line-height: 1.5;
+}
+
+.promo-corp-table-summary {
+    background-color: var(--bg-primary);
+    border: 1px solid var(--bg-tertiary);
+    border-radius: var(--border-radius-sm);
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.promo-corp-summary-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.82rem;
+}
+
+.promo-corp-summary-row .summary-label {
+    color: var(--text-secondary);
+}
+
+.promo-corp-summary-row .summary-val {
+    font-weight: 600;
+}
+
+.promo-corp-subnote {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin: 0;
+}
+
+

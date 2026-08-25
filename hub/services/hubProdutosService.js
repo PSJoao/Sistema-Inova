@@ -128,6 +128,220 @@ class HubProdutosService {
     }
 
 
+    // =====================================================
+    // GESTÃO DE PROMOÇÕES (OPT-IN E OPT-OUT VIA ML API)
+    // =====================================================
+
+    /**
+     * Adiciona um anúncio a uma promoção no Mercado Livre (Opt-In).
+     * @param {string} itemId - ID do anúncio (MLB...)
+     * @param {string} promoId - ID da promoção (ex: P-MLB123, C-MLB123)
+     * @param {string} promoType - Tipo da promoção (DEAL, SELLER_CAMPAIGN, SMART, PRICE_DISCOUNT, etc.)
+     * @param {number|null} dealPrice - Preço com desconto desejado
+     * @param {object} options - Opções adicionais (ex: ref_id)
+     * @param {number|null} clienteId - ID do cliente autenticado (opcional)
+     * @returns {object} - Resultado com dados atualizados da promoção
+     */
+    async aderirPromocaoItem(itemId, promoId, promoType, dealPrice, options = {}, clienteId = null) {
+        if (!itemId) throw new Error('ID do anúncio é obrigatório.');
+
+        const cleanItemId = String(itemId).trim().toUpperCase();
+        console.log(`[HUB PROMOÇÕES] Solicitando Opt-In para ${cleanItemId} na promoção ${promoId} (${promoType}) com preço ${dealPrice}...`);
+
+        // 1. Resolve conta ML
+        const conta = await this.resolverContaPorItem(cleanItemId, clienteId);
+        if (!conta) {
+            throw new Error(`Anúncio ${cleanItemId} não encontrado ou não pertence a nenhuma conta cadastrada.`);
+        }
+
+        // 2. Obtém token válido
+        const accessToken = await hubTokenService.getValidAccessToken(conta);
+        if (!accessToken) {
+            throw new Error(`Não foi possível obter token de acesso para a conta ${conta.nickname}.`);
+        }
+
+        // 3. Monta payload de acordo com o tipo de promoção
+        const payload = {};
+        const cleanType = String(promoType || '').toUpperCase().trim();
+        const offerId = (options && (options.offer_id || options.ref_id)) ? String(options.offer_id || options.ref_id).trim() : null;
+
+        if (cleanType === 'SMART') {
+            if (promoId) payload.promotion_id = promoId;
+            payload.promotion_type = 'SMART';
+            if (offerId) payload.offer_id = offerId;
+            if (dealPrice != null && Number(dealPrice) > 0) {
+                payload.deal_price = Number(dealPrice);
+            }
+        } else if (cleanType === 'PRICE_DISCOUNT') {
+            payload.promotion_type = 'PRICE_DISCOUNT';
+            if (dealPrice != null && Number(dealPrice) > 0) {
+                payload.deal_price = Number(dealPrice);
+            }
+            if (offerId) payload.offer_id = offerId;
+        } else {
+            if (promoId) payload.promotion_id = promoId;
+            if (promoType) payload.promotion_type = promoType;
+            if (dealPrice != null && Number(dealPrice) > 0) {
+                payload.deal_price = Number(dealPrice);
+            }
+            if (offerId) payload.offer_id = offerId;
+        }
+
+        // 4. Executa POST no Mercado Livre
+        try {
+            const url = `${ML_API_URL}/seller-promotions/items/${cleanItemId}?app_version=v2`;
+            console.log(`[HUB PROMOÇÕES] Enviando POST ${url} com payload:`, payload);
+            
+            const response = await axios.post(url, payload, {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            console.log(`[HUB PROMOÇÕES] Resposta Meli Opt-In para ${cleanItemId}:`, response.status, response.data);
+        } catch (apiErr) {
+            const errData = apiErr.response?.data;
+            const errMsg = errData?.message || errData?.error || apiErr.message;
+            console.error(`[HUB PROMOÇÕES] Erro da API Meli no Opt-In de ${cleanItemId}:`, errMsg, errData);
+            throw new Error(`Falha no Mercado Livre: ${errMsg}`);
+        }
+
+
+        // 5. Busca promoções atualizadas em tempo real
+        const promoResult = await this.buscarPrecoCampanha(cleanItemId, accessToken);
+        const promocoesList = promoResult?.promocoes || [];
+        const precoPromocional = promoResult?.precoCampanha || null;
+        const promocoesJsonStr = JSON.stringify(promocoesList);
+
+        // 6. Atualiza banco do Hub
+        try {
+            await poolProdutos.query(`
+                UPDATE produtos_anuncios
+                SET promocoes_json = $1,
+                    preco_promocional = $2,
+                    last_update = NOW()
+                WHERE id_anuncio = $3
+            `, [promocoesJsonStr, precoPromocional, cleanItemId]);
+        } catch (errDb) {
+            console.warn(`[HUB PROMOÇÕES] Erro ao atualizar produtos_anuncios após opt-in:`, errDb.message);
+        }
+
+        return {
+            success: true,
+            item_id: cleanItemId,
+            preco_promocional: precoPromocional,
+            promocoes: promocoesList,
+            promocoes_json: promocoesJsonStr,
+            conta: conta.nickname
+        };
+    }
+
+    /**
+     * Remove um anúncio de uma promoção no Mercado Livre (Opt-Out).
+     * @param {string} itemId - ID do anúncio (MLB...)
+     * @param {string} promoId - ID da promoção (ex: P-MLB123, C-MLB123)
+     * @param {string} promoType - Tipo da promoção (DEAL, SELLER_CAMPAIGN, SMART, PRICE_DISCOUNT, etc.)
+     * @param {object} options - Opções adicionais (ex: offer_id, ref_id)
+     * @param {number|null} clienteId - ID do cliente autenticado (opcional)
+     * @returns {object} - Resultado com dados atualizados da promoção
+     */
+    async removerPromocaoItem(itemId, promoId, promoType, options = {}, clienteId = null) {
+        if (!itemId) throw new Error('ID do anúncio é obrigatório.');
+
+        // Suporta passagem de clienteId como 4º argumento se options for número
+        if (typeof options === 'number') {
+            clienteId = options;
+            options = {};
+        }
+
+        const cleanItemId = String(itemId).trim().toUpperCase();
+        console.log(`[HUB PROMOÇÕES] Solicitando Opt-Out para ${cleanItemId} da promoção ${promoId} (${promoType})...`);
+
+        // 1. Resolve conta ML
+        const conta = await this.resolverContaPorItem(cleanItemId, clienteId);
+        if (!conta) {
+            throw new Error(`Anúncio ${cleanItemId} não encontrado ou não pertence a nenhuma conta cadastrada.`);
+        }
+
+        // 2. Obtém token válido
+        const accessToken = await hubTokenService.getValidAccessToken(conta);
+        if (!accessToken) {
+            throw new Error(`Não foi possível obter token de acesso para a conta ${conta.nickname}.`);
+        }
+
+        // 3. Resolve offer_id se necessário (ex: promoções SMART requerem offer_id)
+        let offerId = (options && (options.offer_id || options.ref_id)) ? String(options.offer_id || options.ref_id).trim() : null;
+        if (!offerId) {
+            try {
+                const prodRes = await poolProdutos.query('SELECT promocoes_json FROM produtos_anuncios WHERE id_anuncio = $1', [cleanItemId]);
+                if (prodRes.rows.length > 0 && prodRes.rows[0].promocoes_json) {
+                    const currentPromos = typeof prodRes.rows[0].promocoes_json === 'string' 
+                        ? JSON.parse(prodRes.rows[0].promocoes_json) 
+                        : prodRes.rows[0].promocoes_json;
+                    const activeP = (currentPromos || []).find(p => (
+                        (promoId && String(p.id) === String(promoId)) || 
+                        (promoType && String(p.type).toUpperCase() === String(promoType).toUpperCase())
+                    ) && (p.status === 'started' || p.status === 'active'));
+                    if (activeP && activeP.ref_id) {
+                        offerId = activeP.ref_id;
+                    }
+                }
+            } catch (e) {
+                console.warn(`[HUB PROMOÇÕES] Não foi possível obter offer_id prévio:`, e.message);
+            }
+        }
+
+        // 4. Monta URL DELETE
+        let deleteUrl = `${ML_API_URL}/seller-promotions/items/${cleanItemId}?app_version=v2`;
+        if (promoId) deleteUrl += `&promotion_id=${encodeURIComponent(promoId)}`;
+        if (promoType) deleteUrl += `&promotion_type=${encodeURIComponent(promoType)}`;
+        if (offerId) deleteUrl += `&offer_id=${encodeURIComponent(offerId)}`;
+
+        // 5. Executa DELETE no Mercado Livre
+        try {
+            console.log(`[HUB PROMOÇÕES] Enviando DELETE ${deleteUrl}`);
+            const response = await axios.delete(deleteUrl, {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                }
+            });
+            console.log(`[HUB PROMOÇÕES] Resposta Meli Opt-Out para ${cleanItemId}:`, response.status, response.data);
+        } catch (apiErr) {
+            const errData = apiErr.response?.data;
+            const errMsg = errData?.message || errData?.error || apiErr.message;
+            console.error(`[HUB PROMOÇÕES] Erro da API Meli no Opt-Out de ${cleanItemId}:`, errMsg, errData);
+            throw new Error(`Falha no Mercado Livre: ${errMsg}`);
+        }
+
+
+        // 5. Busca promoções atualizadas em tempo real
+        const promoResult = await this.buscarPrecoCampanha(cleanItemId, accessToken);
+        const promocoesList = promoResult?.promocoes || [];
+        const precoPromocional = promoResult?.precoCampanha || null;
+        const promocoesJsonStr = JSON.stringify(promocoesList);
+
+        // 6. Atualiza banco do Hub
+        try {
+            await poolProdutos.query(`
+                UPDATE produtos_anuncios
+                SET promocoes_json = $1,
+                    preco_promocional = $2,
+                    last_update = NOW()
+                WHERE id_anuncio = $3
+            `, [promocoesJsonStr, precoPromocional, cleanItemId]);
+        } catch (errDb) {
+            console.warn(`[HUB PROMOÇÕES] Erro ao atualizar produtos_anuncios após opt-out:`, errDb.message);
+        }
+
+        return {
+            success: true,
+            item_id: cleanItemId,
+            preco_promocional: precoPromocional,
+            promocoes: promocoesList,
+            promocoes_json: promocoesJsonStr,
+            conta: conta.nickname
+        };
+    }
 
     // =====================================================
     // SINCRONIZAÇÃO DE ANÚNCIOS (existente)
@@ -245,6 +459,142 @@ class HubProdutosService {
         } catch (error) {
             console.error('[HUB PRODUTOS] Erro ao sincronizar anúncios específicos:', error.message);
             return 0;
+        }
+    }
+
+    /**
+     * Sincroniza APENAS os dados de promoções para os anúncios informados.
+     * Muito mais rápido que sincronizarAnunciosEspecificos pois NÃO busca tarifa, frete, ads, etc.
+     * Apenas chama a API de promoções e atualiza promocoes_json + preco_promocional.
+     * @param {string[]} itemIds - Array de IDs de anúncios (ex: ['MLB1234567890', ...])
+     * @param {function} [onProgress] - Callback opcional (processados, total) para progresso
+     * @returns {object} - { totalProcessados, totalErros, totalAtualizado }
+     */
+    async sincronizarPromocoesAnuncios(itemIds, onProgress = null) {
+        if (!itemIds || !Array.isArray(itemIds) || itemIds.length === 0) {
+            return { totalProcessados: 0, totalErros: 0, totalAtualizado: 0 };
+        }
+        
+        const cleanIds = Array.from(new Set(
+            itemIds.map(id => String(id).trim().toUpperCase())
+        )).filter(id => id.startsWith('MLB') || id.length >= 8);
+        
+        if (cleanIds.length === 0) {
+            return { totalProcessados: 0, totalErros: 0, totalAtualizado: 0 };
+        }
+
+        console.log(`[HUB PRODUTOS PROMOS] Iniciando sincronização dedicada de promoções para ${cleanIds.length} anúncio(s)...`);
+
+        try {
+            // Busca todas as contas ML ativas
+            const contasResult = await poolHub.query('SELECT * FROM hub_ml_contas WHERE ativo = TRUE OR id IN (6, 7)');
+            
+            // Para cada anúncio, precisamos descobrir qual conta é dona dele
+            // Busca os anúncios no banco para saber a empresa de cada um
+            const anunciosInfo = await poolProdutos.query(
+                'SELECT id_anuncio, empresa, preco FROM produtos_anuncios WHERE id_anuncio = ANY($1)',
+                [cleanIds]
+            );
+
+            // Mapeia anúncios por empresa
+            const anunciosByEmpresa = {};
+            for (const row of anunciosInfo.rows) {
+                const emp = (row.empresa || '').toLowerCase().trim();
+                if (!anunciosByEmpresa[emp]) anunciosByEmpresa[emp] = [];
+                anunciosByEmpresa[emp].push({ id_anuncio: row.id_anuncio, preco: row.preco });
+            }
+
+            // Mapeia contas por nickname (lowercase trim)
+            const contaByNickname = {};
+            for (const conta of contasResult.rows) {
+                contaByNickname[(conta.nickname || '').toLowerCase().trim()] = conta;
+            }
+
+            let totalProcessados = 0;
+            let totalErros = 0;
+            let totalAtualizado = 0;
+
+            // Processa por empresa/conta
+            for (const [empKey, anuncios] of Object.entries(anunciosByEmpresa)) {
+                const conta = contaByNickname[empKey];
+                if (!conta) {
+                    console.warn(`[HUB PRODUTOS PROMOS] Conta não encontrada para empresa "${empKey}". Pulando ${anuncios.length} anúncio(s).`);
+                    totalErros += anuncios.length;
+                    continue;
+                }
+
+                let accessToken;
+                try {
+                    accessToken = await hubTokenService.getValidAccessToken(conta);
+                } catch (err) {
+                    console.error(`[HUB PRODUTOS PROMOS] Falha de token para ${conta.nickname}. Pulando.`);
+                    totalErros += anuncios.length;
+                    continue;
+                }
+                if (!accessToken) {
+                    totalErros += anuncios.length;
+                    continue;
+                }
+
+                // Processa anúncios em paralelo (lotes de 20 para não sobrecarregar a API)
+                const batchSize = 20;
+                for (let i = 0; i < anuncios.length; i += batchSize) {
+                    const batch = anuncios.slice(i, i + batchSize);
+                    
+                    const results = await Promise.all(batch.map(async (anuncioInfo) => {
+                        const { id_anuncio, preco } = anuncioInfo;
+                        try {
+                            // Busca APENAS promoções (chamada leve)
+                            const promoResult = await this.buscarPrecoCampanha(id_anuncio, accessToken);
+                            const promocoesList = promoResult?.promocoes || [];
+                            const precoCampanha = promoResult?.precoCampanha || null;
+
+                            const promocoesJsonStr = JSON.stringify(promocoesList);
+
+                            // Determina o preco_promocional
+                            let precoPromocional = precoCampanha || null;
+
+                            // Atualiza no banco do Hub (produtos_anuncios) — apenas colunas de promoção
+                            await poolProdutos.query(`
+                                UPDATE produtos_anuncios
+                                SET promocoes_json = $1,
+                                    preco_promocional = $2,
+                                    last_update = NOW()
+                                WHERE id_anuncio = $3
+                            `, [promocoesJsonStr, precoPromocional, id_anuncio]);
+
+                            return { id_anuncio, promocoesJsonStr, precoPromocional, success: true };
+                        } catch (err) {
+                            console.error(`[HUB PRODUTOS PROMOS] Erro ao buscar promoções de ${id_anuncio}:`, err.message);
+                            return { id_anuncio, success: false };
+                        }
+                    }));
+
+                    for (const r of results) {
+                        if (r.success) {
+                            totalProcessados++;
+                            totalAtualizado++;
+                        } else {
+                            totalErros++;
+                        }
+                    }
+
+                    if (onProgress) {
+                        try { onProgress(totalProcessados + totalErros, cleanIds.length); } catch (e) { /* ignore */ }
+                    }
+
+                    // Pequeno delay entre batches para não sobrecarregar
+                    if (i + batchSize < anuncios.length) {
+                        await delay(150);
+                    }
+                }
+            }
+
+            console.log(`[HUB PRODUTOS PROMOS] Sincronização de promoções concluída: ${totalProcessados} atualizado(s), ${totalErros} erro(s).`);
+            return { totalProcessados, totalErros, totalAtualizado };
+        } catch (error) {
+            console.error('[HUB PRODUTOS PROMOS] Erro crítico na sincronização de promoções:', error.message);
+            throw error;
         }
     }
 

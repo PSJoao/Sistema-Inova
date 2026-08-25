@@ -1522,17 +1522,19 @@ async function syncEstoqueBling(sync_prod = true) {
                     await client.query('BEGIN');
                     for (const item of response.data) {
                         const saldoFisico = item.saldoFisicoTotal || 0;
+                        const saldoVirtual = item.saldoVirtualTotal != null ? item.saldoVirtualTotal : saldoFisico;
                         const sku = item.produto?.codigo;
                         if (sku) {
                             await client.query(
-                                'UPDATE cached_products SET estoque = $1 WHERE sku = $2',
-                                [saldoFisico, sku]
+                                'UPDATE cached_products SET estoque = $1, estoque_plataforma = $2 WHERE sku = $3',
+                                [saldoFisico, saldoVirtual, sku]
                             );
                             processedCount++;
                         }
                     }
                     await client.query('COMMIT');
                 }
+
             } catch (err) {
                 // Se der erro no commit ou na API, fazemos rollback do bloco atual e continuamos o próximo
                 await client.query('ROLLBACK');

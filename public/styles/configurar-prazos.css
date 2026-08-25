@@ -436,3 +436,632 @@
     font-size: 1.05rem;
     margin-bottom: 4px;
 }
+
+/* === MODO EM LOTE & CHECKBOXES === */
+.btn-modo-lote {
+    border-color: rgba(240, 124, 0, 0.35) !important;
+    color: rgba(240, 124, 0, 0.85) !important;
+    background: transparent !important;
+    font-size: 0.82rem !important;
+    font-weight: 600 !important;
+    padding: 6.5px 16px !important;
+    line-height: 1.5 !important;
+    border-radius: 6px !important;
+    transition: all 0.25s ease !important;
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+}
+
+.btn-modo-lote:hover {
+    background: rgba(240, 124, 0, 0.08) !important;
+    border-color: rgba(240, 124, 0, 0.6) !important;
+    color: #fff !important;
+}
+
+.btn-modo-lote.active {
+    background: var(--accent-orange, #f07c00) !important;
+    border-color: var(--accent-orange, #f07c00) !important;
+    color: #fff !important;
+    box-shadow: 0 2px 10px rgba(240, 124, 0, 0.35) !important;
+}
+
+/* Checkbox columns */
+.th-checkbox,
+.td-checkbox {
+    width: 40px !important;
+    min-width: 40px !important;
+    max-width: 40px !important;
+    text-align: center !important;
+    padding: 8px 4px !important;
+    vertical-align: middle !important;
+}
+
+.select-row-checkbox,
+.select-all-checkbox {
+    width: 16px !important;
+    height: 16px !important;
+    cursor: pointer !important;
+    accent-color: var(--accent-orange, #f07c00) !important;
+    background-color: rgba(255, 255, 255, 0.06) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    border-radius: 3px !important;
+    margin: 0 auto !important;
+    display: block !important;
+    transition: border-color 0.15s ease;
+}
+
+.select-row-checkbox:hover,
+.select-all-checkbox:hover {
+    border-color: var(--accent-orange, #f07c00) !important;
+}
+
+tr.row-selected {
+    background-color: rgba(240, 124, 0, 0.06) !important;
+}
+
+tr.row-selected td {
+    color: #fff !important;
+}
+
+/* === BARRA FLUTUANTE EM LOTE === */
+.floating-batch-bar {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 820px;
+    width: auto;
+    background: rgba(18, 18, 22, 0.97);
+    backdrop-filter: blur(20px) saturate(1.4);
+    -webkit-backdrop-filter: blur(20px) saturate(1.4);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    box-shadow:
+        0 20px 60px rgba(0, 0, 0, 0.65),
+        0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+    z-index: 1050;
+    animation: slideUpBatchBar 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUpBatchBar {
+    from {
+        opacity: 0;
+        transform: translate(-50%, 20px);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, 0);
+    }
+}
+
+/* Sections */
+.batch-bar-section {
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+    gap: 8px;
+}
+
+.batch-bar-divider {
+    width: 1px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.08);
+    flex-shrink: 0;
+}
+
+/* Count section */
+.batch-bar-count-section {
+    gap: 6px;
+    padding: 10px 18px;
+    flex-shrink: 0;
+}
+
+.batch-bar-count {
+    color: var(--accent-orange, #f07c00);
+    font-weight: 800;
+    font-size: 1.15rem;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
+.batch-bar-count-label {
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 0.78rem;
+    font-weight: 500;
+    letter-spacing: 0.2px;
+}
+
+/* Presets section */
+.batch-bar-presets {
+    gap: 4px !important;
+}
+
+.btn-preset-dias {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-variant-numeric: tabular-nums;
+    min-width: 30px;
+    text-align: center;
+    line-height: 1.3;
+}
+
+.btn-preset-dias:hover {
+    background: rgba(240, 124, 0, 0.12);
+    border-color: rgba(240, 124, 0, 0.35);
+    color: #fff;
+}
+
+.btn-preset-dias.active {
+    background: var(--accent-orange, #f07c00);
+    border-color: var(--accent-orange, #f07c00);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(240, 124, 0, 0.3);
+}
+
+/* Custom input */
+.batch-bar-input-group {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 76px;
+    margin-left: 2px;
+}
+
+.batch-dias-input {
+    width: 100% !important;
+    height: 28px !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 20px !important;
+    color: #fff !important;
+    font-size: 0.8rem !important;
+    font-weight: 700 !important;
+    padding: 2px 20px 2px 10px !important;
+    text-align: center !important;
+    transition: border-color 0.2s ease;
+}
+
+.batch-dias-input:focus {
+    border-color: var(--accent-orange, #f07c00) !important;
+    box-shadow: none !important;
+    outline: none !important;
+    background: rgba(240, 124, 0, 0.06) !important;
+}
+
+.batch-input-suffix {
+    position: absolute;
+    right: 8px;
+    font-size: 0.72rem;
+    color: rgba(255, 255, 255, 0.3);
+    pointer-events: none;
+    font-weight: 500;
+}
+
+/* Actions section */
+.batch-bar-actions {
+    gap: 6px !important;
+    padding-right: 10px !important;
+}
+
+.btn-batch-select-all {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.78rem;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.btn-batch-select-all:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.15);
+    color: #fff;
+}
+
+.btn-batch-apply {
+    background: var(--accent-orange, #f07c00) !important;
+    border: none !important;
+    color: #fff !important;
+    font-weight: 700 !important;
+    font-size: 0.82rem !important;
+    padding: 6px 20px !important;
+    border-radius: 6px !important;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    letter-spacing: 0.2px;
+}
+
+.btn-batch-apply:hover {
+    filter: brightness(1.15);
+    box-shadow: 0 4px 14px rgba(240, 124, 0, 0.35);
+}
+
+.btn-batch-close {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.25);
+    font-size: 1.3rem;
+    font-weight: 300;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border-radius: 6px;
+    line-height: 1;
+    padding: 0;
+    flex-shrink: 0;
+}
+
+.btn-batch-close:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+    .floating-batch-bar {
+        flex-wrap: wrap;
+        width: calc(100% - 30px);
+        max-width: none;
+        bottom: 12px;
+        border-radius: 12px;
+    }
+    .batch-bar-divider {
+        display: none;
+    }
+    .batch-bar-section {
+        padding: 8px 12px;
+    }
+    .batch-bar-presets {
+        flex-wrap: wrap;
+    }
+}
+
+/* ========================================================
+   === TEMPORIZADOR 48H — LIBERAÇÃO DE PRONTA ENTREGA ===
+   ======================================================== */
+
+.btn-toggle-timer-48h {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #bbb;
+    font-size: 0.76rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.btn-toggle-timer-48h:hover {
+    background: rgba(0, 210, 106, 0.12);
+    border-color: rgba(0, 210, 106, 0.5);
+    color: #00d26a;
+    box-shadow: 0 0 10px rgba(0, 210, 106, 0.2);
+}
+
+.btn-toggle-timer-48h i {
+    font-size: 0.85rem;
+    color: #888;
+    transition: color 0.2s ease;
+}
+
+.btn-toggle-timer-48h:hover i {
+    color: #00d26a;
+}
+
+/* Container do Timer Ativo */
+.timer-48h-active-container {
+    display: inline-flex;
+    align-items: center;
+    background: rgba(0, 210, 106, 0.1);
+    border: 1px solid rgba(0, 210, 106, 0.35);
+    border-radius: 6px;
+    padding: 2px 6px;
+    gap: 6px;
+    animation: timerPulseGlow 2.5s infinite ease-in-out;
+}
+
+@keyframes timerPulseGlow {
+    0%, 100% {
+        box-shadow: 0 0 4px rgba(0, 210, 106, 0.15);
+        border-color: rgba(0, 210, 106, 0.35);
+    }
+    50% {
+        box-shadow: 0 0 12px rgba(0, 210, 106, 0.4);
+        border-color: rgba(0, 210, 106, 0.7);
+    }
+}
+
+.timer-48h-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: #00d26a;
+    font-size: 0.76rem;
+    font-weight: 700;
+    font-family: 'Consolas', 'Courier New', monospace;
+    white-space: nowrap;
+}
+
+.timer-48h-badge i {
+    font-size: 0.82rem;
+}
+
+.btn-timer-cancel {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.4);
+    cursor: pointer;
+    font-size: 0.8rem;
+    padding: 2px 4px;
+    border-radius: 4px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.btn-timer-cancel:hover {
+    color: #ff4757;
+    background: rgba(255, 71, 87, 0.15);
+}
+
+/* Badge especial no Prazo Efetivo quando 48h ativo */
+.badge-prazo-ignorado {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(0, 210, 106, 0.15);
+    color: #00d26a;
+    border: 1px solid rgba(0, 210, 106, 0.4);
+    border-radius: 12px;
+    padding: 3px 10px;
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+}
+
+/* Botões de Ação em Lote do Timer */
+.btn-batch-timer-on {
+    background: rgba(0, 210, 106, 0.15) !important;
+    border: 1px solid rgba(0, 210, 106, 0.4) !important;
+    color: #00d26a !important;
+    font-weight: 700 !important;
+    font-size: 0.8rem !important;
+    padding: 6px 14px !important;
+    border-radius: 6px !important;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-batch-timer-on:hover {
+    background: #00d26a !important;
+    color: #000 !important;
+    box-shadow: 0 4px 14px rgba(0, 210, 106, 0.4);
+}
+
+.btn-batch-timer-off {
+    background: rgba(255, 71, 87, 0.12) !important;
+    border: 1px solid rgba(255, 71, 87, 0.35) !important;
+    color: #ff4757 !important;
+    font-weight: 700 !important;
+    font-size: 0.8rem !important;
+    padding: 6px 14px !important;
+    border-radius: 6px !important;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-batch-timer-off:hover {
+    background: #ff4757 !important;
+    color: #fff !important;
+    box-shadow: 0 4px 14px rgba(255, 71, 87, 0.4);
+}
+
+/* ========================================================
+   === LIBERAÇÃO INDETERMINADA DE PRONTA ENTREGA ===
+   ======================================================== */
+
+.btn-toggle-indeterminado {
+    background: rgba(0, 188, 212, 0.05);
+    border: 1px solid rgba(0, 188, 212, 0.2);
+    color: #00bcd4;
+    font-size: 0.76rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.btn-toggle-indeterminado:hover:not(:disabled) {
+    background: rgba(0, 188, 212, 0.15);
+    border-color: rgba(0, 188, 212, 0.6);
+    color: #33d1ff;
+    box-shadow: 0 0 10px rgba(0, 188, 212, 0.3);
+}
+
+.btn-toggle-indeterminado i {
+    font-size: 0.85rem;
+    color: #00bcd4;
+    transition: color 0.2s ease;
+}
+
+.btn-toggle-indeterminado:hover:not(:disabled) i {
+    color: #33d1ff;
+}
+
+/* Estado Desabilitado (Estoque <= 0 ou bloqueio mútuo) */
+.btn-toggle-indeterminado:disabled,
+.btn-toggle-indeterminado.btn-indeterminado-disabled,
+.btn-toggle-timer-48h:disabled,
+.btn-toggle-timer-48h.btn-timer-disabled {
+    opacity: 0.35 !important;
+    cursor: not-allowed !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    background: rgba(255, 255, 255, 0.02) !important;
+    color: #666 !important;
+    box-shadow: none !important;
+    pointer-events: auto !important; /* Mantém title / tooltip visível */
+}
+
+.btn-toggle-indeterminado:disabled i,
+.btn-toggle-timer-48h:disabled i {
+    color: #555 !important;
+}
+
+/* Container de Liberação Indeterminada Ativa */
+.indeterminado-active-container {
+    display: inline-flex;
+    align-items: center;
+    background: rgba(0, 188, 212, 0.12);
+    border: 1px solid rgba(0, 188, 212, 0.45);
+    border-radius: 6px;
+    padding: 2px 8px;
+    gap: 6px;
+    animation: indeterminadoPulseGlow 2.5s infinite ease-in-out;
+}
+
+@keyframes indeterminadoPulseGlow {
+    0%, 100% {
+        box-shadow: 0 0 4px rgba(0, 188, 212, 0.15);
+        border-color: rgba(0, 188, 212, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 12px rgba(0, 188, 212, 0.45);
+        border-color: rgba(0, 188, 212, 0.8);
+    }
+}
+
+.indeterminado-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: #00e5ff;
+    font-size: 0.76rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.indeterminado-badge i {
+    font-size: 0.82rem;
+}
+
+.btn-indeterminado-cancel {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.4);
+    cursor: pointer;
+    font-size: 0.8rem;
+    padding: 2px 4px;
+    border-radius: 4px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.btn-indeterminado-cancel:hover {
+    color: #ff4757;
+    background: rgba(255, 71, 87, 0.15);
+}
+
+/* Badge especial no Prazo Efetivo quando Indeterminado ativo */
+.badge-prazo-indeterminado {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(0, 188, 212, 0.15);
+    color: #00e5ff;
+    border: 1px solid rgba(0, 188, 212, 0.45);
+    border-radius: 12px;
+    padding: 3px 10px;
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+}
+
+/* Botões de Ação em Lote de Liberação Indeterminada */
+.btn-batch-indeterminado-on {
+    background: rgba(0, 188, 212, 0.15) !important;
+    border: 1px solid rgba(0, 188, 212, 0.4) !important;
+    color: #00e5ff !important;
+    font-weight: 700 !important;
+    font-size: 0.8rem !important;
+    padding: 6px 14px !important;
+    border-radius: 6px !important;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-batch-indeterminado-on:hover {
+    background: #00bcd4 !important;
+    color: #000 !important;
+    box-shadow: 0 4px 14px rgba(0, 188, 212, 0.4);
+}
+
+.btn-batch-indeterminado-off {
+    background: rgba(255, 71, 87, 0.12) !important;
+    border: 1px solid rgba(255, 71, 87, 0.35) !important;
+    color: #ff4757 !important;
+    font-weight: 700 !important;
+    font-size: 0.8rem !important;
+    padding: 6px 14px !important;
+    border-radius: 6px !important;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-batch-indeterminado-off:hover {
+    background: #ff4757 !important;
+    color: #fff !important;
+    box-shadow: 0 4px 14px rgba(255, 71, 87, 0.4);
+}
+
+

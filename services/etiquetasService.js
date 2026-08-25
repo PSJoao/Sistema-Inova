@@ -2725,10 +2725,81 @@ async function obterDadosDashboardExpedicao(dataInicio, dataFim) {
     }
 }
 
+// ==========================================================
+// HELPERS DE PERFORMANCE — MATERIALIZED VIEWS COM FALLBACK
+// ==========================================================
+let useMaterializedViewPedidos = null;
+let useMaterializedViewProdutos = null;
+
+async function getPedidoVendaJoinSQL() {
+    if (useMaterializedViewPedidos === null) {
+        try {
+            await pool.query('SELECT 1 FROM mv_cached_pedidos_nfe LIMIT 1');
+            useMaterializedViewPedidos = true;
+            console.log('[Performance - Expedição] Materialized View mv_cached_pedidos_nfe detectada — usando JOIN otimizado.');
+        } catch (e) {
+            useMaterializedViewPedidos = false;
+            console.log('[Performance - Expedição] Materialized View mv_cached_pedidos_nfe não encontrada — usando subquery fallback.');
+        }
+    }
+    if (useMaterializedViewPedidos) {
+        return 'LEFT JOIN mv_cached_pedidos_nfe cpv ON cpv.nfe_parent_numero = m.nfe_numero';
+    }
+    return `LEFT JOIN (
+        SELECT DISTINCT ON (nfe_parent_numero) nfe_parent_numero, numero, numero_loja, cep
+        FROM cached_pedido_venda
+        WHERE nfe_parent_numero IS NOT NULL AND nfe_parent_numero != ''
+        ORDER BY nfe_parent_numero, data_pedido DESC NULLS LAST, created_at DESC, id DESC
+    ) cpv ON cpv.nfe_parent_numero = m.nfe_numero`;
+}
+
+async function getProdutosInfoMap(skusUpper, client) {
+    if (useMaterializedViewProdutos === null) {
+        try {
+            await client.query('SELECT 1 FROM mv_cached_produtos_info LIMIT 1');
+            useMaterializedViewProdutos = true;
+            console.log('[Performance - Expedição] Materialized View mv_cached_produtos_info detectada — usando busca otimizada.');
+        } catch (e) {
+            useMaterializedViewProdutos = false;
+            console.log('[Performance - Expedição] Materialized View mv_cached_produtos_info não encontrada — usando subquery fallback.');
+        }
+    }
+
+    let prodRes;
+    if (useMaterializedViewProdutos) {
+        const prodQuery = `SELECT sku, tipo_ml, estoque FROM mv_cached_produtos_info WHERE clean_sku = ANY($1::text[])`;
+        prodRes = await client.query(prodQuery, [skusUpper]);
+    } else {
+        const prodQuery = `SELECT DISTINCT ON (UPPER(sku)) sku, tipo_ml, estoque FROM cached_products WHERE UPPER(sku) = ANY($1::text[]) ORDER BY UPPER(sku), (bling_account = 'lucas') DESC`;
+        prodRes = await client.query(prodQuery, [skusUpper]);
+    }
+
+    const infoMap = {};
+    prodRes.rows.forEach(p => { 
+        if (p.sku) infoMap[p.sku.toUpperCase()] = { tipo_ml: p.tipo_ml, estoque: p.estoque }; 
+    });
+    return infoMap;
+}
+
+async function refreshExpedicaoPerformanceArtifacts() {
+    try {
+        await pool.query('REFRESH MATERIALIZED VIEW CONCURRENTLY mv_cached_pedidos_nfe');
+        console.log('[Performance - Expedição] Materialized View mv_cached_pedidos_nfe refreshed.');
+    } catch (e) {
+        // Ignora se não existir
+    }
+    try {
+        await pool.query('REFRESH MATERIALIZED VIEW CONCURRENTLY mv_cached_produtos_info');
+        console.log('[Performance - Expedição] Materialized View mv_cached_produtos_info refreshed.');
+    } catch (e) {
+        // Ignora se não existir
+    }
+}
+
 async function obterTabelaDashboardExpedicao(params) {
     const client = await pool.connect();
     try {
-        const { dataInicio, dataFim, start = 0, length = 10, searchValue, orderColIndex, orderDir, statusInterno, statusMl, statusFoto, statusEmbarcado } = params;
+        const { dataInicio, dataFim, start = 0, length = 10, searchValue, orderColIndex, orderDir, statusInterno, statusMl, statusFoto, statusEmbarcado, all } = params;
 
         let whereClauses = [];
         let queryParams = [];
@@ -2773,17 +2844,29 @@ async function obterTabelaDashboardExpedicao(params) {
             whereClauses.push(`(m.embarcado = FALSE OR m.embarcado IS NULL)`);
         }
 
+        const cpvJoin = await getPedidoVendaJoinSQL();
+
         if (searchValue) {
             let extraSkusClause = '';
 
-            const prodRes = await client.query(`
-                SELECT sku 
-                FROM cached_products 
-                WHERE tipo_ml ILIKE $1 OR (tipo_ml || '-' || sku) ILIKE $1
-                LIMIT 50
-            `, [`%${searchValue}%`]);
+            let prodRes;
+            if (useMaterializedViewProdutos) {
+                prodRes = await client.query(`
+                    SELECT sku 
+                    FROM mv_cached_produtos_info 
+                    WHERE tipo_ml ILIKE $1 OR (tipo_ml || '-' || sku) ILIKE $1
+                    LIMIT 50
+                `, [`%${searchValue}%`]);
+            } else {
+                prodRes = await client.query(`
+                    SELECT sku 
+                    FROM cached_products 
+                    WHERE tipo_ml ILIKE $1 OR (tipo_ml || '-' || sku) ILIKE $1
+                    LIMIT 50
+                `, [`%${searchValue}%`]);
+            }
 
-            if (prodRes.rows.length > 0) {
+            if (prodRes && prodRes.rows.length > 0) {
                 const skuMatches = [];
                 for (const r of prodRes.rows) {
                     skuMatches.push(`m.skus::text ILIKE $${paramIndex}`);
@@ -2805,26 +2888,6 @@ async function obterTabelaDashboardExpedicao(params) {
         }
 
         const whereString = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
-
-        // Count Total
-        const totalQuery = `SELECT COUNT(id) as total FROM cached_etiquetas_ml`;
-        const totalRes = await client.query(totalQuery);
-        const recordsTotal = parseInt(totalRes.rows[0].total);
-
-        // Count Filtered
-        const countQuery = `
-            SELECT COUNT(DISTINCT m.id) as total
-            FROM cached_etiquetas_ml m
-            LEFT JOIN (
-                SELECT DISTINCT ON (nfe_parent_numero) nfe_parent_numero, numero, numero_loja, cep
-                FROM cached_pedido_venda
-                WHERE nfe_parent_numero IS NOT NULL AND nfe_parent_numero != ''
-                ORDER BY nfe_parent_numero, data_pedido DESC NULLS LAST, created_at DESC, id DESC
-            ) cpv ON cpv.nfe_parent_numero = m.nfe_numero
-            ${whereString}
-        `;
-        const countRes = await client.query(countQuery, queryParams);
-        const recordsFiltered = parseInt(countRes.rows[0].total);
 
         // Order mapping para todas as colunas da tabela
         let orderClause = `ORDER BY order_status ASC, m.created_at DESC`;
@@ -2857,7 +2920,34 @@ async function obterTabelaDashboardExpedicao(params) {
             }
         }
 
-        // Fetch Data
+        const isFullFetch = length === -1 || length === '-1' || all === true || all === 'true';
+
+        let recordsTotal = 0;
+        let recordsFiltered = 0;
+
+        // Se for paginação parcial server-side tradicional, conta
+        if (!isFullFetch) {
+            const [totalRes, countRes] = await Promise.all([
+                client.query(`SELECT COUNT(id) as total FROM cached_etiquetas_ml`),
+                client.query(`
+                    SELECT COUNT(DISTINCT m.id) as total
+                    FROM cached_etiquetas_ml m
+                    ${cpvJoin}
+                    ${whereString}
+                `, queryParams)
+            ]);
+            recordsTotal = parseInt(totalRes.rows[0].total) || 0;
+            recordsFiltered = parseInt(countRes.rows[0].total) || 0;
+        }
+
+        // Fetch Data Query
+        let paginationSQL = '';
+        const dataQueryParams = [...queryParams];
+        if (!isFullFetch) {
+            paginationSQL = `LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+            dataQueryParams.push(parseInt(length) || 10, parseInt(start) || 0);
+        }
+
         const dataQuery = `
             SELECT DISTINCT
                 m.id, 
@@ -2880,22 +2970,18 @@ async function obterTabelaDashboardExpedicao(params) {
                 m.numero_coleta,
                 m.data_embarque
             FROM cached_etiquetas_ml m
-            LEFT JOIN (
-                SELECT DISTINCT ON (nfe_parent_numero) nfe_parent_numero, numero, numero_loja, cep
-                FROM cached_pedido_venda
-                WHERE nfe_parent_numero IS NOT NULL AND nfe_parent_numero != ''
-                ORDER BY nfe_parent_numero, data_pedido DESC NULLS LAST, created_at DESC, id DESC
-            ) cpv ON cpv.nfe_parent_numero = m.nfe_numero
+            ${cpvJoin}
             ${whereString}
             ${orderClause}
-            ${length === -1 ? `OFFSET $${paramIndex}` : `LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`}
+            ${paginationSQL}
         `;
-        if (length === -1) {
-            queryParams.push(start);
-        } else {
-            queryParams.push(length, start);
+
+        const filaRes = await client.query(dataQuery, dataQueryParams);
+
+        if (isFullFetch) {
+            recordsTotal = filaRes.rows.length;
+            recordsFiltered = filaRes.rows.length;
         }
-        const filaRes = await client.query(dataQuery, queryParams);
 
         // EXTRAÇÃO: Anexar 'tipo_ml' de cached_products aos SKUs processados (Ordenador Style)
         let uniqueSkus = new Set();
@@ -2914,7 +3000,7 @@ async function obterTabelaDashboardExpedicao(params) {
 
             row.parsedSkus = skusObj.map(s => {
                 let rawSku = (s.original || s.sku || (typeof s === 'string' ? s : '')).toString().trim();
-                uniqueSkus.add(rawSku);
+                if (rawSku) uniqueSkus.add(rawSku);
                 return { raw: rawSku, obj: typeof s === 'object' ? s : { original: s } };
             });
             return row;
@@ -2924,10 +3010,7 @@ async function obterTabelaDashboardExpedicao(params) {
             const skusArray = Array.from(uniqueSkus).filter(s => s !== '');
             if (skusArray.length > 0) {
                 const skusUpper = skusArray.map(s => s.toUpperCase());
-                const prodQuery = `SELECT DISTINCT ON (UPPER(sku)) sku, tipo_ml, estoque FROM cached_products WHERE UPPER(sku) = ANY($1::text[]) ORDER BY UPPER(sku), (bling_account = 'lucas') DESC`;
-                const prodRes = await client.query(prodQuery, [skusUpper]);
-                const infoMap = {};
-                prodRes.rows.forEach(p => { infoMap[p.sku.toUpperCase()] = { tipo_ml: p.tipo_ml, estoque: p.estoque }; });
+                const infoMap = await getProdutosInfoMap(skusUpper, client);
 
                 pendenciasTratadas.forEach(row => {
                     const finalSkus = row.parsedSkus.map(item => {
@@ -4670,6 +4753,140 @@ async function corrigirFlagFotoPedido(nfeNumero) {
     return validarFotoPedido(nfeNumero, 'validado');
 }
 
+async function gerarRelatorioExcelGestaoConferencia(dataInicio, dataFim) {
+    const client = await pool.connect();
+    try {
+        let whereClause = "";
+        const queryParams = [];
+
+        if (dataInicio && dataFim) {
+            whereClause = "WHERE cr.data_hora >= $1 AND cr.data_hora <= $2";
+            queryParams.push(`${dataInicio} 00:00:00`, `${dataFim} 23:59:59.999`);
+        } else if (dataInicio) {
+            whereClause = "WHERE cr.data_hora >= $1";
+            queryParams.push(`${dataInicio} 00:00:00`);
+        } else if (dataFim) {
+            whereClause = "WHERE cr.data_hora <= $1";
+            queryParams.push(`${dataFim} 23:59:59.999`);
+        }
+
+        const query = `
+            SELECT 
+                cr.id,
+                cr.nfe_numero,
+                cr.usuario,
+                cr.data_hora AS data_checagem,
+                cpv.data_pedido AS data_venda,
+                cpv.numero AS numero_pedido,
+                COALESCE(cpv.numero_loja, m.pack_id, m.numero_loja) AS numero_loja,
+                'Checado' AS situacao,
+                cpv.contato_nome AS cliente,
+                'Checkout de Pedido' AS ocorrencia,
+                COALESCE(cn.bling_account, cpv.bling_account) AS bling_account
+            FROM conferencia_relatorio cr
+            LEFT JOIN (
+                SELECT DISTINCT ON (nfe_parent_numero) 
+                    nfe_parent_numero, numero, numero_loja, contato_nome, data_pedido, bling_account
+                FROM cached_pedido_venda
+                WHERE nfe_parent_numero IS NOT NULL AND nfe_parent_numero != ''
+                ORDER BY nfe_parent_numero, data_pedido DESC NULLS LAST, created_at DESC, id DESC
+            ) cpv ON cpv.nfe_parent_numero = cr.nfe_numero
+            LEFT JOIN cached_nfe cn ON cn.nfe_numero = cr.nfe_numero
+            LEFT JOIN cached_etiquetas_ml m ON m.nfe_numero = cr.nfe_numero
+            ${whereClause}
+            ORDER BY cr.data_hora DESC
+        `;
+
+        const res = await client.query(query, queryParams);
+        const rows = res.rows;
+
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('Gestão de Conferência');
+
+        // Configuração das colunas exatamente na ordem requerida
+        sheet.columns = [
+            { header: 'Data da venda', key: 'data_venda', width: 16 },
+            { header: 'Data Checagem', key: 'data_checagem', width: 22 },
+            { header: 'Numero Pedido', key: 'numero_pedido', width: 18 },
+            { header: 'Numero Loja', key: 'numero_loja', width: 24 },
+            { header: 'Situação', key: 'situacao', width: 16 },
+            { header: 'Usuário', key: 'usuario', width: 20 },
+            { header: 'Cliente', key: 'cliente', width: 35 },
+            { header: 'Ocorrência', key: 'ocorrencia', width: 24 },
+            { header: 'Nome da Loja', key: 'nome_loja', width: 24 }
+        ];
+
+        // Estilização do cabeçalho
+        const headerStyle = {
+            font: { bold: true, color: { argb: 'FFFFFFFF' } },
+            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF07C00' } },
+            alignment: { horizontal: 'center', vertical: 'middle' }
+        };
+
+        sheet.getRow(1).height = 26;
+        sheet.getRow(1).eachCell((cell) => {
+            cell.font = headerStyle.font;
+            cell.fill = headerStyle.fill;
+            cell.alignment = headerStyle.alignment;
+        });
+
+        // Formatação de data de venda (YYYY-MM-DD)
+        const formatDataVenda = (val) => {
+            if (!val) return '';
+            if (val instanceof Date) {
+                const y = val.getUTCFullYear();
+                const m = String(val.getUTCMonth() + 1).padStart(2, '0');
+                const d = String(val.getUTCDate()).padStart(2, '0');
+                return `${y}-${m}-${d}`;
+            }
+            const s = String(val).trim();
+            if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+                return s.substring(0, 10);
+            }
+            return s;
+        };
+
+        // Formatação de data da checagem (DD/MM/YYYY HH:mm:ss)
+        const formatDataChecagem = (val) => {
+            if (!val) return '';
+            const d = new Date(val);
+            if (isNaN(d.getTime())) return String(val);
+            return d.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }).replace(',', '');
+        };
+
+        rows.forEach(r => {
+            const conta = (r.bling_account || '').toLowerCase();
+            const nomeLoja = conta.includes('eliane') ? 'Mercadão dos Móveis' : 'Inova Móveis';
+
+            const addedRow = sheet.addRow({
+                data_venda: formatDataVenda(r.data_venda),
+                data_checagem: formatDataChecagem(r.data_checagem),
+                numero_pedido: r.numero_pedido || '',
+                numero_loja: r.numero_loja || '',
+                situacao: 'Checado',
+                usuario: r.usuario || '',
+                cliente: r.cliente || '',
+                ocorrencia: 'Checkout de Pedido',
+                nome_loja: nomeLoja
+            });
+
+            addedRow.getCell('data_venda').alignment = { horizontal: 'center' };
+            addedRow.getCell('data_checagem').alignment = { horizontal: 'center' };
+            addedRow.getCell('numero_pedido').alignment = { horizontal: 'center' };
+            addedRow.getCell('numero_loja').alignment = { horizontal: 'center' };
+            addedRow.getCell('situacao').alignment = { horizontal: 'center' };
+            addedRow.getCell('usuario').alignment = { horizontal: 'center' };
+            addedRow.getCell('cliente').alignment = { horizontal: 'left' };
+            addedRow.getCell('ocorrencia').alignment = { horizontal: 'center' };
+            addedRow.getCell('nome_loja').alignment = { horizontal: 'center' };
+        });
+
+        return await workbook.xlsx.writeBuffer();
+    } finally {
+        client.release();
+    }
+}
+
 module.exports = {
     processarEtiquetas,
     buscarEtiquetaPorNF,
@@ -4699,6 +4916,7 @@ module.exports = {
     movimentarNfHierarquia,
     obterHistoricoExpedicoes,
     gerarRelatorioExcelExpedicao,
+    gerarRelatorioExcelGestaoConferencia,
     gerarExcelDinamicoDataTable,
     pausarNotasViradaDoDia,
     gerarPdfPendentes,
@@ -4713,5 +4931,6 @@ module.exports = {
     getStatusBlingLoteJob,
     obterPedidosComFoto,
     validarFotoPedido,
-    corrigirFlagFotoPedido
+    corrigirFlagFotoPedido,
+    refreshExpedicaoPerformanceArtifacts
 };
