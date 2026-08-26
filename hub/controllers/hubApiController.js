@@ -63,7 +63,18 @@ exports.getPedidos = async (req, res) => {
 
     if (data_inicio) {
         paramCount++;
-        query += ` AND p.date_created >= $${paramCount}`;
+        if (req.query.incluir_abertos !== 'false') {
+            query += ` AND (
+                p.date_created >= $${paramCount} 
+                OR p.status_envio IS NULL 
+                OR p.status_envio IN ('ready_to_ship', 'pending', 'handling') 
+                OR (p.status_pedido = 'paid' AND (p.status_envio IS NULL OR p.status_envio NOT IN ('delivered', 'cancelled')))
+                OR p.tem_dev = TRUE 
+                OR p.tem_med = TRUE
+            )`;
+        } else {
+            query += ` AND p.date_created >= $${paramCount}`;
+        }
         params.push(data_inicio);
     }
 

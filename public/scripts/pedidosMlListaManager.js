@@ -18,11 +18,13 @@ document.addEventListener('DOMContentLoaded', function () {
     const filtroEmpresa = document.getElementById('filtroEmpresa');
     const filtroSituacaoPrazo = document.getElementById('filtroSituacaoPrazo');
     const filtroSituacaoOperacional = document.getElementById('filtroSituacaoOperacional');
+    const filtroStatusImpressao = document.getElementById('filtroStatusImpressao');
     const filtroTipoEnvio = document.getElementById('filtroTipoEnvio');
     const filtroLimite = document.getElementById('filtroLimite');
     const btnSincronizarPedidos = document.getElementById('btnSincronizarPedidos');
     const btnExportarPedidos = document.getElementById('btnExportarPedidos');
     const btnImprimirSelecionados = document.getElementById('btnImprimirSelecionados');
+    const btnCancelarImpressao = document.getElementById('btnCancelarImpressao');
     const countSelecionados = document.getElementById('countSelecionados');
     const selectAllCheckbox = document.getElementById('selectAllCheckbox');
 
@@ -32,6 +34,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const kpiAtrasados = document.getElementById('kpi-atrasados');
     const kpiParaHoje = document.getElementById('kpi-para-hoje');
     const kpiFuturos = document.getElementById('kpi-futuros');
+    const kpiAguardandoEstoque = document.getElementById('kpi-aguardando-estoque');
     const kpiSemNf = document.getElementById('kpi-sem-nf');
     const kpiProntoImprimir = document.getElementById('kpi-pronto-imprimir');
     const kpiEmTransito = document.getElementById('kpi-em-transito');
@@ -45,7 +48,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const btnModalImprimirZpl = document.getElementById('btnModalImprimirZpl');
 
     const modalZplOverlay = document.getElementById('modalZplOverlay');
-    const modalZpl = document.getElementById('modalEtiquetaZpl');
+    const modalEtiquetaZpl = document.getElementById('modalEtiquetaZpl');
     const btnCloseZpl = document.getElementById('btnCloseZplModal');
     const btnFecharZpl = document.getElementById('btnFecharZplModal');
     const btnCopiarZpl = document.getElementById('btnCopiarZpl');
@@ -58,11 +61,12 @@ document.addEventListener('DOMContentLoaded', function () {
     let orderDir = 'DESC';
     let debounceTimer = null;
     let rawPedidosList = [];
+    let isPrintMode = false;
+    let selectedOrderIds = new Set();
+    let currentActiveKpi = null;
     let columnExcelFilters = {}; // { colKey: Set([val1, val2...]) }
     let activeDropdownMenu = null;
     let clickTimer = null;
-    let selectedOrderIds = new Set();
-    let currentActiveKpi = null;
 
     // Ordem Padrão das Colunas
     const DEFAULT_COLUMN_ORDER = [
@@ -71,6 +75,7 @@ document.addEventListener('DOMContentLoaded', function () {
         'id_pedido_ml',
         'id_envio_ml',
         'data_pedido',
+        'status_impressao',
         'situacao_prazo',
         'situacao_operacional',
         'status_pedido',
@@ -95,6 +100,7 @@ document.addEventListener('DOMContentLoaded', function () {
         'id_pedido_ml': 'ID Pedido',
         'id_envio_ml': 'ID Envio',
         'data_pedido': 'Data Venda',
+        'status_impressao': 'Status Impressão',
         'situacao_prazo': 'Prazo Coleta',
         'situacao_operacional': 'Situação Operacional',
         'status_pedido': 'Status Pedido',
@@ -119,6 +125,7 @@ document.addEventListener('DOMContentLoaded', function () {
         'id_pedido_ml': 165,
         'id_envio_ml': 150,
         'data_pedido': 140,
+        'status_impressao': 145,
         'situacao_prazo': 155,
         'situacao_operacional': 175,
         'status_pedido': 110,
@@ -202,6 +209,8 @@ document.addEventListener('DOMContentLoaded', function () {
     function renderOperacionalBadge(p) {
         const op = p.situacao_operacional || 'nf_a_gerenciar';
         switch (op) {
+            case 'aguardando_disponibilidade':
+                return `<span class="badge-operacional-pedido aguardando_disponibilidade"><i class="fas fa-boxes-stacked"></i> Aguardando Disp. Estoque</span>`;
             case 'nf_a_gerenciar':
                 return `<span class="badge-operacional-pedido nf_a_gerenciar"><i class="fas fa-file-invoice"></i> NF a Gerenciar</span>`;
             case 'com_nota_sem_etiqueta':
@@ -222,6 +231,21 @@ document.addEventListener('DOMContentLoaded', function () {
                 return `<span class="badge-operacional-pedido cancelado"><i class="fas fa-times"></i> Cancelado</span>`;
             default:
                 return `<span class="badge bg-secondary">${escapeHtml(op)}</span>`;
+        }
+    }
+
+    function renderStatusImpressaoBadge(p) {
+        const st = p.status_impressao || 'nao_impresso';
+        switch (st) {
+            case 'sucesso':
+            case 'impresso':
+                return `<span class="badge-status-impressao sucesso" title="Etiqueta impressa com sucesso"><i class="fas fa-check-circle me-1"></i>Impresso</span>`;
+            case 'erro':
+                const justificativa = p.justificativa_erro ? escapeHtml(p.justificativa_erro) : 'Falha desconhecida na impressão da etiqueta';
+                return `<span class="badge-status-impressao erro" title="${justificativa}"><i class="fas fa-exclamation-triangle me-1"></i>Erro <span class="badge-erro-info" onclick="event.stopPropagation(); alert('Justificativa do Erro na Impressão:\\n\\n${justificativa}')" title="Clique para ver o motivo"><i class="fas fa-question-circle"></i></span></span>`;
+            case 'nao_impresso':
+            default:
+                return `<span class="badge-status-impressao nao_impresso" title="Etiqueta ainda não impressa"><i class="fas fa-circle-notch me-1"></i>Não Impresso</span>`;
         }
     }
 
@@ -258,6 +282,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const d = new Date(p.data_pedido);
             return `<span title="${d.toLocaleString('pt-BR')}">${formatRelativeOrAbsoluteDate(d)}</span>`;
         },
+        'status_impressao': (p) => renderStatusImpressaoBadge(p),
         'situacao_prazo': (p) => renderPrazoBadge(p),
         'situacao_operacional': (p) => renderOperacionalBadge(p),
         'status_pedido': (p) => `<span class="badge bg-dark border">${escapeHtml(p.status_pedido || '-')}</span>`,
@@ -382,6 +407,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (filtroEmpresa && filtroEmpresa.value) params.set('empresa', filtroEmpresa.value);
             if (filtroSituacaoPrazo && filtroSituacaoPrazo.value) params.set('situacao_prazo', filtroSituacaoPrazo.value);
             if (filtroSituacaoOperacional && filtroSituacaoOperacional.value) params.set('situacao_operacional', filtroSituacaoOperacional.value);
+            if (filtroStatusImpressao && filtroStatusImpressao.value) params.set('status_impressao', filtroStatusImpressao.value);
             if (filtroTipoEnvio && filtroTipoEnvio.value) params.set('tipo_envio', filtroTipoEnvio.value);
 
             if (currentActiveKpi) {
@@ -427,6 +453,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (kpiAtrasados) kpiAtrasados.textContent = kpis.atrasados || 0;
         if (kpiParaHoje) kpiParaHoje.textContent = kpis.para_hoje || 0;
         if (kpiFuturos) kpiFuturos.textContent = kpis.futuros || 0;
+        if (kpiAguardandoEstoque) kpiAguardandoEstoque.textContent = kpis.aguardando_disponibilidade || 0;
         if (kpiSemNf) kpiSemNf.textContent = kpis.sem_nf || 0;
         if (kpiProntoImprimir) kpiProntoImprimir.textContent = kpis.pronto_imprimir || 0;
         if (kpiEmTransito) kpiEmTransito.textContent = kpis.em_transito || 0;
@@ -1033,9 +1060,6 @@ document.addEventListener('DOMContentLoaded', function () {
     // =============================================
     // === MULTI-SELEÇÃO & IMPRESSÃO DE ETIQUETAS ===
     // =============================================
-    let isPrintMode = false;
-    const btnCancelarImpressao = document.getElementById('btnCancelarImpressao');
-
     const togglePrintMode = (active) => {
         isPrintMode = active;
         const table = document.getElementById('tabela-estoque');
@@ -1220,6 +1244,22 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('modalDetalhesSubtitulo').textContent = ped.empresa || 'Mercado Livre';
         document.getElementById('modalStatusMl').textContent = ped.status_pedido || '-';
         document.getElementById('modalStatusEnvio').textContent = ped.status_envio || '-';
+        
+        const modalStatusImpressao = document.getElementById('modalStatusImpressao');
+        if (modalStatusImpressao) modalStatusImpressao.innerHTML = renderStatusImpressaoBadge(ped);
+
+        const modalErroImpressaoSection = document.getElementById('modalErroImpressaoSection');
+        const modalJustificativaErroContent = document.getElementById('modalJustificativaErroContent');
+        if (modalErroImpressaoSection && modalJustificativaErroContent) {
+            if (ped.status_impressao === 'erro' && ped.justificativa_erro) {
+                modalErroImpressaoSection.style.display = 'block';
+                modalJustificativaErroContent.textContent = ped.justificativa_erro;
+            } else {
+                modalErroImpressaoSection.style.display = 'none';
+                modalJustificativaErroContent.textContent = '';
+            }
+        }
+
         document.getElementById('modalPrazoColeta').innerHTML = renderPrazoBadge(ped);
         document.getElementById('modalSituacaoOperacional').innerHTML = renderOperacionalBadge(ped);
 
@@ -1432,6 +1472,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (filtroEmpresa) filtroEmpresa.addEventListener('change', () => { currentPage = 1; loadPedidos(); });
     if (filtroSituacaoPrazo) filtroSituacaoPrazo.addEventListener('change', () => { currentPage = 1; loadPedidos(); });
     if (filtroSituacaoOperacional) filtroSituacaoOperacional.addEventListener('change', () => { currentPage = 1; loadPedidos(); });
+    if (filtroStatusImpressao) filtroStatusImpressao.addEventListener('change', () => { currentPage = 1; loadPedidos(); });
     if (filtroTipoEnvio) filtroTipoEnvio.addEventListener('change', () => { currentPage = 1; loadPedidos(); });
 
     if (paginationContainer) {

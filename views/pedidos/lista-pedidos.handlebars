@@ -67,6 +67,15 @@ Visual idêntico à listagem de anúncios e promoções: tabela fixed-layout, re
             </div>
         </div>
 
+        <div class="kpi-card kpi-aguardando" data-filter-op="aguardando_disponibilidade" title="Pedidos aguardando disponibilidade de estoque / fabricação">
+            <div class="kpi-icon-wrap"><i class="fas fa-boxes-stacked"></i></div>
+            <div class="kpi-info">
+                <span class="kpi-label">Aguardando Estoque</span>
+                <span class="kpi-value text-amber" id="kpi-aguardando-estoque">0</span>
+                <span class="kpi-subtext">Disp. de Estoque</span>
+            </div>
+        </div>
+
         <div class="kpi-card kpi-sem-nf" data-filter-op="nf_a_gerenciar" title="Pedidos sem nota fiscal emitida">
             <div class="kpi-icon-wrap"><i class="fas fa-file-invoice"></i></div>
             <div class="kpi-info">
@@ -176,6 +185,7 @@ Visual idêntico à listagem de anúncios e promoções: tabela fixed-layout, re
             <label for="filtroSituacaoOperacional">Situação Operacional</label>
             <select id="filtroSituacaoOperacional" class="form-control" style="min-width: 160px;">
                 <option value="">Todas</option>
+                <option value="aguardando_disponibilidade">Aguardando Disp. de Estoque</option>
                 <option value="nf_a_gerenciar">NF a Gerenciar</option>
                 <option value="com_nota_sem_etiqueta">Com NF sem Etiqueta</option>
                 <option value="etiquetas_para_imprimir">Etiquetas p/ Imprimir</option>
@@ -185,6 +195,17 @@ Visual idêntico à listagem de anúncios e promoções: tabela fixed-layout, re
                 <option value="devolucao">Em Devolução</option>
                 <option value="reclamacao">Em Mediação</option>
                 <option value="cancelado">Cancelado</option>
+            </select>
+        </div>
+
+        {{!-- Filtro Status Impressão --}}
+        <div class="estoque-filter-group">
+            <label for="filtroStatusImpressao">Status Impressão</label>
+            <select id="filtroStatusImpressao" class="form-control" style="min-width: 145px;">
+                <option value="">Todos</option>
+                <option value="sucesso">Impresso (Sucesso)</option>
+                <option value="erro">Falha na Impressão</option>
+                <option value="nao_impresso">Não Impresso</option>
             </select>
         </div>
 
@@ -236,6 +257,7 @@ Visual idêntico à listagem de anúncios e promoções: tabela fixed-layout, re
                     <th class="sortable" data-column="id_pedido_ml">ID Pedido</th>
                     <th class="sortable" data-column="id_envio_ml">ID Envio</th>
                     <th class="sortable" data-column="data_pedido">Data Venda</th>
+                    <th class="sortable text-center" data-column="status_impressao">Status Impressão</th>
                     <th class="sortable text-center" data-column="situacao_prazo">Prazo Coleta</th>
                     <th class="sortable text-center" data-column="situacao_operacional">Situação Operacional</th>
                     <th class="sortable text-center" data-column="status_pedido">Status Pedido</th>
@@ -256,7 +278,7 @@ Visual idêntico à listagem de anúncios e promoções: tabela fixed-layout, re
             </thead>
             <tbody id="table-body">
                 <tr>
-                    <td colspan="21" class="text-center py-5">
+                    <td colspan="22" class="text-center py-5">
                         <div class="loading-spinner-container">
                             <i class="fas fa-spinner fa-spin fa-2x text-accent mb-2"></i>
                             <div class="text-muted">Carregando pedidos...</div>
@@ -296,6 +318,10 @@ Visual idêntico à listagem de anúncios e promoções: tabela fixed-layout, re
                 <span id="modalStatusEnvio" class="status-bar-val">-</span>
             </div>
             <div class="status-bar-item">
+                <span class="status-bar-label">Status Impressão</span>
+                <span id="modalStatusImpressao" class="status-bar-val">-</span>
+            </div>
+            <div class="status-bar-item">
                 <span class="status-bar-label">Prazo Coleta</span>
                 <span id="modalPrazoColeta" class="status-bar-val">-</span>
             </div>
@@ -303,6 +329,12 @@ Visual idêntico à listagem de anúncios e promoções: tabela fixed-layout, re
                 <span class="status-bar-label">Situação Operacional</span>
                 <span id="modalSituacaoOperacional" class="status-bar-val">-</span>
             </div>
+        </div>
+
+        {{!-- Alerta de Erro de Impressão (se houver) --}}
+        <div id="modalErroImpressaoSection" class="pedido-posvenda-alert mb-3" style="display: none; border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.1);">
+            <div class="posvenda-header text-danger" style="color: #f87171 !important;"><i class="fas fa-exclamation-triangle me-2"></i>Falha na Impressão da Etiqueta</div>
+            <div id="modalJustificativaErroContent" class="posvenda-body text-danger" style="color: #fca5a5 !important; font-size: 0.85rem;"></div>
         </div>
 
         {{!-- Grid de Informações Chave --}}
@@ -405,5 +437,5 @@ Visual idêntico à listagem de anúncios e promoções: tabela fixed-layout, re
 </div>
 
 {{#section "scripts"}}
-<script src="/public/scripts/pedidosMlListaManager.js?v=4"></script>
+<script src="/public/scripts/pedidosMlListaManager.js?v=6"></script>
 {{/section}}

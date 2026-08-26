@@ -37,7 +37,7 @@ class HubMercadoLivreService {
 
         try {
             // 1. Pega todas as contas ativas no Hub
-            const contasResult = await poolHub.query('SELECT * FROM hub_ml_contas WHERE ativo = TRUE');
+            const contasResult = await poolHub.query('SELECT * FROM hub_ml_contas WHERE ativo = TRUE AND id NOT IN (6, 7)');
             const contas = contasResult.rows;
 
             for (const conta of contas) {
@@ -1329,8 +1329,8 @@ class HubMercadoLivreService {
 
         const query = `
             INSERT INTO pedidos_mercado_livre 
-            (conta_id, id_pedido_ml, date_created, status_pedido, data_limite_envio, id_envio_ml, status_envio, etiqueta_zpl, itens_pedido, comprador_nickname, data_envio_disponivel, data_envio_agendado, data_previsao_entrega, tem_dev, tem_med, status_dev, status_med, id_envio_dev, status_envio_dev, frete_envio, nfe_numero, chave_acesso, tipo_envio, pack_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+            (conta_id, id_pedido_ml, date_created, status_pedido, data_limite_envio, id_envio_ml, status_envio, etiqueta_zpl, itens_pedido, comprador_nickname, data_envio_disponivel, data_envio_agendado, data_previsao_entrega, tem_dev, tem_med, status_dev, status_med, id_envio_dev, status_envio_dev, frete_envio, nfe_numero, chave_acesso, tipo_envio, pack_id, substatus_envio, manufacturing_ending_date, status_impressao, justificativa_erro)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
             ON CONFLICT (id_pedido_ml) DO UPDATE SET
             status_pedido = EXCLUDED.status_pedido,
             status_envio = EXCLUDED.status_envio,
@@ -1352,6 +1352,10 @@ class HubMercadoLivreService {
             chave_acesso = COALESCE(EXCLUDED.chave_acesso, pedidos_mercado_livre.chave_acesso),
             tipo_envio = EXCLUDED.tipo_envio,
             pack_id = EXCLUDED.pack_id,
+            substatus_envio = COALESCE(EXCLUDED.substatus_envio, pedidos_mercado_livre.substatus_envio),
+            manufacturing_ending_date = COALESCE(EXCLUDED.manufacturing_ending_date, pedidos_mercado_livre.manufacturing_ending_date),
+            status_impressao = COALESCE(EXCLUDED.status_impressao, pedidos_mercado_livre.status_impressao),
+            justificativa_erro = COALESCE(EXCLUDED.justificativa_erro, pedidos_mercado_livre.justificativa_erro),
             last_update = NOW()
         `;
 
@@ -1379,7 +1383,11 @@ class HubMercadoLivreService {
             pedido.nfe_numero || null,
             pedido.chave_acesso || null,
             pedido.tipo_envio || null,
-            pedido.pack_id ? String(pedido.pack_id) : null
+            pedido.pack_id ? String(pedido.pack_id) : null,
+            pedido.substatus_envio || null,
+            pedido.manufacturing_ending_date || null,
+            pedido.status_impressao || 'nao_impresso',
+            pedido.justificativa_erro || null
         ];
 
         try {
@@ -2044,6 +2052,8 @@ class HubMercadoLivreService {
         const resultado = {
             id_envio_ml: String(shipmentId),
             status_envio: null,
+            substatus_envio: null,
+            manufacturing_ending_date: null,
             tipo_envio: null,
             data_limite_envio: null,
             data_envio_agendado: null,
@@ -2062,6 +2072,7 @@ class HubMercadoLivreService {
 
             if (envioData) {
                 resultado.status_envio = this.resolverStatusEnvio(envioData);
+                resultado.substatus_envio = envioData.substatus || null;
                 resultado.tipo_envio = envioData.logistic_type || null;
 
                 // 1. Custos de Frete
@@ -2092,13 +2103,20 @@ class HubMercadoLivreService {
                 const shippingOption = envioData.shipping_option || {};
                 const statusHistory = envioData.status_history || {};
 
-                // 3. Data Envio Agendado (buffering futuro)
+                // 3. Data Envio Agendado (buffering futuro ou estimated_schedule_limit)
                 if (shippingOption.buffering?.date) {
                     const dataBuffering = new Date(shippingOption.buffering.date);
                     const hoje = new Date();
                     hoje.setHours(0, 0, 0, 0);
                     dataBuffering.setHours(0, 0, 0, 0);
                     resultado.data_envio_agendado = dataBuffering > hoje ? shippingOption.buffering.date : null;
+                } else if (shippingOption.estimated_schedule_limit?.date) {
+                    const dataSched = new Date(shippingOption.estimated_schedule_limit.date);
+                    const hoje = new Date();
+                    hoje.setHours(0, 0, 0, 0);
+                    dataSched.setHours(0, 0, 0, 0);
+                    resultado.data_envio_agendado = dataSched > hoje ? shippingOption.estimated_schedule_limit.date : null;
+                    resultado.manufacturing_ending_date = shippingOption.estimated_schedule_limit.date;
                 }
 
                 // 4. Data Envio Disponível
@@ -2199,10 +2217,6 @@ class HubMercadoLivreService {
                         await Promise.all(chunk.map(async (pedidoData) => {
                             try {
                                 const exists = await this.verificarSePedidoExiste(pedidoData.id);
-                                if (exists) {
-                                    metricasGerais.existentes_ignorados++;
-                                    return;
-                                }
 
                                 const itensMapeados = (pedidoData.order_items || []).map(itemWrapper => {
                                     const item = itemWrapper.item;
@@ -2237,14 +2251,22 @@ class HubMercadoLivreService {
                                     frete_envio: null,
                                     nfe_numero: null,
                                     chave_acesso: null,
-                                    pack_id: pedidoData.pack_id ? String(pedidoData.pack_id) : null
+                                    pack_id: pedidoData.pack_id ? String(pedidoData.pack_id) : null,
+                                    substatus_envio: null,
+                                    manufacturing_ending_date: pedidoData.manufacturing_ending_date || null
                                 };
+
+                                if (pedidoData.manufacturing_ending_date) {
+                                    novoPedido.substatus_envio = 'manufacturing';
+                                }
 
                                 // Se tiver envio, busca dados adicionais (custo, sla, status) SEM gerar/baixar etiqueta
                                 if (pedidoData.shipping?.id) {
                                     const dadosEnvio = await this.extrairDadosEnvioSemEtiqueta(pedidoData.shipping.id, accessToken);
                                     if (dadosEnvio) {
                                         novoPedido.status_envio = dadosEnvio.status_envio;
+                                        novoPedido.substatus_envio = dadosEnvio.substatus_envio || novoPedido.substatus_envio;
+                                        if (dadosEnvio.manufacturing_ending_date) novoPedido.manufacturing_ending_date = dadosEnvio.manufacturing_ending_date;
                                         novoPedido.tipo_envio = dadosEnvio.tipo_envio;
                                         novoPedido.frete_envio = dadosEnvio.frete_envio;
                                         if (dadosEnvio.data_limite_envio) novoPedido.data_limite_envio = dadosEnvio.data_limite_envio;
@@ -2269,8 +2291,12 @@ class HubMercadoLivreService {
                                 }
 
                                 await this.salvarPedidoNoBanco(novoPedido);
-                                metricasGerais.novos_inseridos++;
-                                totalContaNovos++;
+                                if (exists) {
+                                    metricasGerais.existentes_ignorados++;
+                                } else {
+                                    metricasGerais.novos_inseridos++;
+                                    totalContaNovos++;
+                                }
                             } catch (errPedido) {
                                 console.error(`[HUB ML On-Demand] Erro ao processar pedido ${pedidoData.id}:`, errPedido.message);
                                 metricasGerais.erros++;
@@ -2284,7 +2310,7 @@ class HubMercadoLivreService {
                         offset += limit;
                     }
 
-                    if (offset > 1000) {
+                    if (offset > 20000) {
                         continuarBuscando = false;
                     }
                     await delay(300);
@@ -2381,7 +2407,7 @@ class HubMercadoLivreService {
                                     if (searchRes.data.results && searchRes.data.results.length > 0) {
                                         dadosAtualizados = searchRes.data.results[0];
                                     }
-                                } catch (e) {}
+                                } catch (e) { }
                             }
                         }
 
@@ -2420,13 +2446,17 @@ class HubMercadoLivreService {
                             pack_id: dadosAtualizados.pack_id ? String(dadosAtualizados.pack_id) : (pedido.pack_id ? String(pedido.pack_id) : null),
                             itens_pedido: JSON.stringify(itensMapeados),
                             nfe_numero: pedido.nfe_numero,
-                            chave_acesso: pedido.chave_acesso
+                            chave_acesso: pedido.chave_acesso,
+                            substatus_envio: pedido.substatus_envio || (dadosAtualizados.manufacturing_ending_date ? 'manufacturing' : null),
+                            manufacturing_ending_date: dadosAtualizados.manufacturing_ending_date || pedido.manufacturing_ending_date || null
                         };
 
                         if (dadosAtualizados.shipping?.id) {
                             const dadosEnvio = await this.extrairDadosEnvioSemEtiqueta(dadosAtualizados.shipping.id, accessToken);
                             if (dadosEnvio) {
                                 pedidoAtualizado.status_envio = dadosEnvio.status_envio;
+                                pedidoAtualizado.substatus_envio = dadosEnvio.substatus_envio || pedidoAtualizado.substatus_envio;
+                                if (dadosEnvio.manufacturing_ending_date) pedidoAtualizado.manufacturing_ending_date = dadosEnvio.manufacturing_ending_date;
                                 pedidoAtualizado.tipo_envio = dadosEnvio.tipo_envio;
                                 pedidoAtualizado.frete_envio = dadosEnvio.frete_envio;
                                 pedidoAtualizado.data_limite_envio = dadosEnvio.data_limite_envio;
@@ -2493,8 +2523,8 @@ class HubMercadoLivreService {
                 FROM pedidos_mercado_livre p
                 JOIN hub_ml_contas c ON p.conta_id = c.id
                 WHERE p.status_pedido NOT IN ('cancelled')
-                AND p.status_envio NOT IN ('cancelled', 'delivered')
-                AND p.date_created >= NOW() - INTERVAL '${dias} days'
+                AND (p.status_envio IS NULL OR p.status_envio NOT IN ('cancelled', 'delivered'))
+                AND (p.date_created >= NOW() - INTERVAL '${dias} days' OR p.status_envio IS NULL OR p.status_envio IN ('ready_to_ship', 'pending'))
                 AND p.conta_id = ANY($1)
             `;
             const result = await client.query(query, [contaIds]);
@@ -2541,7 +2571,7 @@ class HubMercadoLivreService {
                                     if (searchRes.data.results && searchRes.data.results.length > 0) {
                                         dadosAtualizados = searchRes.data.results[0];
                                     }
-                                } catch (e) {}
+                                } catch (e) { }
                             }
                         }
 
@@ -2580,13 +2610,17 @@ class HubMercadoLivreService {
                             pack_id: dadosAtualizados.pack_id ? String(dadosAtualizados.pack_id) : (pedido.pack_id ? String(pedido.pack_id) : null),
                             itens_pedido: JSON.stringify(itensMapeados),
                             nfe_numero: pedido.nfe_numero,
-                            chave_acesso: pedido.chave_acesso
+                            chave_acesso: pedido.chave_acesso,
+                            substatus_envio: pedido.substatus_envio || (dadosAtualizados.manufacturing_ending_date ? 'manufacturing' : null),
+                            manufacturing_ending_date: dadosAtualizados.manufacturing_ending_date || pedido.manufacturing_ending_date || null
                         };
 
                         if (dadosAtualizados.shipping?.id) {
                             const dadosEnvio = await this.extrairDadosEnvioSemEtiqueta(dadosAtualizados.shipping.id, accessToken);
                             if (dadosEnvio) {
                                 pedidoAtualizado.status_envio = dadosEnvio.status_envio;
+                                pedidoAtualizado.substatus_envio = dadosEnvio.substatus_envio || pedidoAtualizado.substatus_envio;
+                                if (dadosEnvio.manufacturing_ending_date) pedidoAtualizado.manufacturing_ending_date = dadosEnvio.manufacturing_ending_date;
                                 pedidoAtualizado.tipo_envio = dadosEnvio.tipo_envio;
                                 pedidoAtualizado.frete_envio = dadosEnvio.frete_envio;
                                 pedidoAtualizado.data_limite_envio = dadosEnvio.data_limite_envio;
@@ -2801,9 +2835,9 @@ class HubMercadoLivreService {
             const enviosEncontradosSet = new Set(pedidosEncontrados.map(p => String(p.id_envio_ml)).filter(Boolean));
             const packsEncontradosSet = new Set(pedidosEncontrados.map(p => String(p.pack_id)).filter(Boolean));
 
-            const faltantes = todosIds.filter(id => 
-                !pedidosEncontradosSet.has(String(id)) && 
-                !enviosEncontradosSet.has(String(id)) && 
+            const faltantes = todosIds.filter(id =>
+                !pedidosEncontradosSet.has(String(id)) &&
+                !enviosEncontradosSet.has(String(id)) &&
                 !packsEncontradosSet.has(String(id))
             );
 
@@ -2835,7 +2869,7 @@ class HubMercadoLivreService {
                                     });
                                     break;
                                 }
-                            } catch (e) {}
+                            } catch (e) { }
 
                             // Tenta como Envio
                             try {
@@ -2856,8 +2890,8 @@ class HubMercadoLivreService {
                                     });
                                     break;
                                 }
-                            } catch (e) {}
-                        } catch (e) {}
+                            } catch (e) { }
+                        } catch (e) { }
                     }
                 }
             }
@@ -2934,7 +2968,7 @@ class HubMercadoLivreService {
                         await delay(200);
                         const responseTypeParam = formato === 'pdf' ? 'pdf' : 'zpl2';
                         const zplUrl = `${ML_API_URL}/shipment_labels?shipment_ids=${chunkShipmentIds.join(',')}&response_type=${responseTypeParam}`;
-                        
+
                         const zplResponse = await axios.get(zplUrl, {
                             headers: { 'Authorization': `Bearer ${accessToken}` },
                             responseType: 'arraybuffer'
@@ -2947,7 +2981,7 @@ class HubMercadoLivreService {
                         if (buffer && buffer[0] === 0x50 && buffer[1] === 0x4B) {
                             const zip = new AdmZip(buffer);
                             const zipEntries = zip.getEntries();
-                            
+
                             if (formato === 'pdf') {
                                 const pdfEntries = zipEntries.filter(entry => entry.entryName.toLowerCase().endsWith('.pdf'));
                                 if (pdfEntries.length > 0) {
@@ -2977,12 +3011,16 @@ class HubMercadoLivreService {
 
                         // Persiste no banco e estrutura o retorno
                         for (const idEnvio of chunkShipmentIds) {
-                            if (salvar_banco && conteudoExtraido && formato !== 'pdf') {
+                            if (salvar_banco) {
                                 try {
-                                    await client.query(
-                                        `UPDATE pedidos_mercado_livre SET etiqueta_zpl = $1, last_update = NOW() WHERE id_envio_ml = $2`,
-                                        [conteudoExtraido.replace(/\u0000/g, ''), idEnvio]
-                                    );
+                                    let updateQuery = `UPDATE pedidos_mercado_livre SET status_impressao = 'sucesso', justificativa_erro = NULL, last_update = NOW()`;
+                                    const updateParams = [idEnvio];
+                                    if (conteudoExtraido && formato !== 'pdf') {
+                                        updateQuery = `UPDATE pedidos_mercado_livre SET etiqueta_zpl = $2, status_impressao = 'sucesso', justificativa_erro = NULL, last_update = NOW()`;
+                                        updateParams.push(conteudoExtraido.replace(/\u0000/g, ''));
+                                    }
+                                    updateQuery += ` WHERE id_envio_ml = $1`;
+                                    await client.query(updateQuery, updateParams);
                                 } catch (dbErr) {
                                     console.warn(`[HUB ML Etiquetas] Falha ao persistir etiqueta do envio ${idEnvio} no banco:`, dbErr.message);
                                 }
@@ -3007,8 +3045,16 @@ class HubMercadoLivreService {
                     } catch (errLabels) {
                         const msgErro = errLabels.response?.data?.message || errLabels.response?.data?.error || errLabels.message;
                         console.error(`[HUB ML Etiquetas] Erro ao obter etiquetas dos envios ${chunkShipmentIds.join(',')}:`, msgErro);
-                        
-                        chunkShipmentIds.forEach(idEnvio => {
+
+                        for (const idEnvio of chunkShipmentIds) {
+                            if (salvar_banco) {
+                                try {
+                                    await client.query(
+                                        `UPDATE pedidos_mercado_livre SET status_impressao = 'erro', justificativa_erro = $1, last_update = NOW() WHERE id_envio_ml = $2`,
+                                        [msgErro, idEnvio]
+                                    );
+                                } catch (e) { }
+                            }
                             const ped = grupo.envios.find(e => e.id_envio_ml === idEnvio);
                             resultadosEtiquetas.push({
                                 id_pedido_ml: ped?.id_pedido_ml || null,
@@ -3018,7 +3064,7 @@ class HubMercadoLivreService {
                                 sucesso: false,
                                 erro: msgErro
                             });
-                        });
+                        }
                     }
                 }
             }
@@ -3027,16 +3073,40 @@ class HubMercadoLivreService {
             if (consolidar && formato === 'pdf' && pdfBuffersAcumulados.length > 0) {
                 try {
                     const mergedPdf = await PDFDocument.create();
+                    const labelPagesToCopy = [];
+                    const reportPagesToCopy = [];
+
                     for (const pdfBuf of pdfBuffersAcumulados) {
                         try {
                             const srcDoc = await PDFDocument.load(pdfBuf);
-                            const pageIndices = srcDoc.getPageIndices();
-                            const copiedPages = await mergedPdf.copyPages(srcDoc, pageIndices);
-                            copiedPages.forEach(page => mergedPdf.addPage(page));
+                            const totalPages = srcDoc.getPageCount();
+                            for (let pIdx = 0; pIdx < totalPages; pIdx++) {
+                                const page = srcDoc.getPage(pIdx);
+                                const { width, height } = page.getSize();
+                                const isReport = Math.min(width, height) > 450 || Math.max(width, height) > 650;
+                                if (isReport) {
+                                    reportPagesToCopy.push({ doc: srcDoc, index: pIdx });
+                                } else {
+                                    labelPagesToCopy.push({ doc: srcDoc, index: pIdx });
+                                }
+                            }
                         } catch (loadErr) {
-                            console.warn('[HUB ML Etiquetas PDF] Erro ao mesclar página de PDF:', loadErr.message);
+                            console.warn('[HUB ML Etiquetas PDF] Erro ao carregar página de PDF:', loadErr.message);
                         }
                     }
+
+                    // 1. Adiciona primeiro TODAS as páginas de etiqueta
+                    for (const item of labelPagesToCopy) {
+                        const [copiedPage] = await mergedPdf.copyPages(item.doc, [item.index]);
+                        mergedPdf.addPage(copiedPage);
+                    }
+
+                    // 2. Adiciona depois TODAS as páginas de relatório (A4) ao final do documento
+                    for (const item of reportPagesToCopy) {
+                        const [copiedPage] = await mergedPdf.copyPages(item.doc, [item.index]);
+                        mergedPdf.addPage(copiedPage);
+                    }
+
                     const mergedBytes = await mergedPdf.save();
                     pdfConsolidadoBase64 = Buffer.from(mergedBytes).toString('base64');
                 } catch (mergeErr) {

@@ -104,6 +104,7 @@ exports.getPedidosApi = async (req, res) => {
             empresa = '',
             situacao_prazo = '',
             situacao_operacional = '',
+            status_impressao = '',
             tipo_envio = '',
             status_pedido = '',
             status_envio = '',
@@ -135,58 +136,56 @@ exports.getPedidosApi = async (req, res) => {
             queryParams.push(endDate.toISOString());
         }
 
-        // 2. Busca por texto
-        const searchVal = String(busca || search || '').trim();
-        const searchFieldVal = String(campo_busca || searchField || 'geral');
-
-        if (searchVal) {
-            const searchPattern = `%${searchVal}%`;
-            switch (searchFieldVal) {
-                case 'id_pedido_ml':
-                    whereClauses.push(`id_pedido_ml ILIKE $${pIndex++}`);
-                    queryParams.push(searchPattern);
-                    break;
-                case 'id_envio_ml':
-                    whereClauses.push(`id_envio_ml ILIKE $${pIndex++}`);
-                    queryParams.push(searchPattern);
-                    break;
-                case 'sku':
-                    whereClauses.push(`(sku_principal ILIKE $${pIndex} OR skus_resumo ILIKE $${pIndex} OR itens_json::text ILIKE $${pIndex})`);
-                    queryParams.push(searchPattern);
-                    pIndex++;
-                    break;
-                case 'comprador':
-                    whereClauses.push(`(comprador_nickname ILIKE $${pIndex} OR comprador_nome ILIKE $${pIndex})`);
-                    queryParams.push(searchPattern);
-                    pIndex++;
-                    break;
-                case 'nfe':
-                    whereClauses.push(`nfe_numero ILIKE $${pIndex++}`);
-                    queryParams.push(searchPattern);
-                    break;
-                case 'chave':
-                    whereClauses.push(`chave_acesso ILIKE $${pIndex++}`);
-                    queryParams.push(searchPattern);
-                    break;
-                case 'geral':
-                default:
-                    whereClauses.push(`(
-                        id_pedido_ml ILIKE $${pIndex} OR 
-                        id_envio_ml ILIKE $${pIndex} OR 
-                        sku_principal ILIKE $${pIndex} OR 
-                        skus_resumo ILIKE $${pIndex} OR 
-                        comprador_nickname ILIKE $${pIndex} OR 
-                        nfe_numero ILIKE $${pIndex} OR
-                        itens_json::text ILIKE $${pIndex}
-                    )`);
-                    queryParams.push(searchPattern);
-                    pIndex++;
-                    break;
+        // 2. Busca Rápida
+        if (search) {
+            const searchTerm = `%${search.trim()}%`;
+            if (campo_busca && campo_busca !== 'geral') {
+                switch (campo_busca) {
+                    case 'id_pedido_ml':
+                        whereClauses.push(`id_pedido_ml ILIKE $${pIndex++}`);
+                        queryParams.push(searchTerm);
+                        break;
+                    case 'id_envio_ml':
+                        whereClauses.push(`id_envio_ml ILIKE $${pIndex++}`);
+                        queryParams.push(searchTerm);
+                        break;
+                    case 'sku':
+                        whereClauses.push(`(sku_principal ILIKE $${pIndex} OR skus_resumo ILIKE $${pIndex})`);
+                        pIndex++;
+                        queryParams.push(searchTerm);
+                        break;
+                    case 'comprador':
+                        whereClauses.push(`(comprador_nickname ILIKE $${pIndex} OR comprador_nome ILIKE $${pIndex})`);
+                        pIndex++;
+                        queryParams.push(searchTerm);
+                        break;
+                    case 'nfe':
+                        whereClauses.push(`nfe_numero ILIKE $${pIndex++}`);
+                        queryParams.push(searchTerm);
+                        break;
+                    default:
+                        whereClauses.push(`(id_pedido_ml ILIKE $${pIndex} OR comprador_nickname ILIKE $${pIndex} OR sku_principal ILIKE $${pIndex})`);
+                        pIndex++;
+                        queryParams.push(searchTerm);
+                        break;
+                }
+            } else {
+                whereClauses.push(`(
+                    id_pedido_ml ILIKE $${pIndex} OR 
+                    id_envio_ml ILIKE $${pIndex} OR 
+                    comprador_nickname ILIKE $${pIndex} OR 
+                    comprador_nome ILIKE $${pIndex} OR 
+                    sku_principal ILIKE $${pIndex} OR 
+                    skus_resumo ILIKE $${pIndex} OR 
+                    nfe_numero ILIKE $${pIndex}
+                )`);
+                pIndex++;
+                queryParams.push(searchTerm);
             }
         }
 
-        // 3. Filtros Dropdowns
-        if (empresa && empresa !== 'todas' && empresa !== '') {
+        // 3. Filtros Específicos
+        if (empresa) {
             if (empresa.includes(',')) {
                 const emps = empresa.split(',').map(e => e.trim()).filter(Boolean);
                 whereClauses.push(`empresa = ANY($${pIndex++}::text[])`);
@@ -197,7 +196,7 @@ exports.getPedidosApi = async (req, res) => {
             }
         }
 
-        if (situacao_prazo && situacao_prazo !== 'todas' && situacao_prazo !== '') {
+        if (situacao_prazo && situacao_prazo !== 'todos' && situacao_prazo !== '') {
             whereClauses.push(`situacao_prazo = $${pIndex++}`);
             queryParams.push(situacao_prazo);
         }
@@ -205,6 +204,11 @@ exports.getPedidosApi = async (req, res) => {
         if (situacao_operacional && situacao_operacional !== 'todas' && situacao_operacional !== '') {
             whereClauses.push(`situacao_operacional = $${pIndex++}`);
             queryParams.push(situacao_operacional);
+        }
+
+        if (status_impressao && status_impressao !== 'todos' && status_impressao !== '') {
+            whereClauses.push(`status_impressao = $${pIndex++}`);
+            queryParams.push(status_impressao);
         }
 
         if (tipo_envio && tipo_envio !== 'todos' && tipo_envio !== '') {
@@ -248,6 +252,7 @@ exports.getPedidosApi = async (req, res) => {
             'empresa': 'empresa',
             'situacao_prazo': 'situacao_prazo',
             'situacao_operacional': 'situacao_operacional',
+            'status_impressao': 'status_impressao',
             'status_pedido': 'status_pedido',
             'status_envio': 'status_envio',
             'tipo_envio': 'tipo_envio',
@@ -283,6 +288,8 @@ exports.getPedidosApi = async (req, res) => {
                     itens_json, sku_principal, skus_resumo, quantidade_total_itens,
                     tem_dev, status_dev, id_envio_dev, status_envio_dev,
                     tem_med, status_med, situacao_prazo, situacao_operacional,
+                    substatus_envio, manufacturing_ending_date,
+                    status_impressao, justificativa_erro,
                     last_synced_at
                 FROM pedidos_ml
                 ${whereSql}
@@ -301,6 +308,8 @@ exports.getPedidosApi = async (req, res) => {
                     itens_json, sku_principal, skus_resumo, quantidade_total_itens,
                     tem_dev, status_dev, id_envio_dev, status_envio_dev,
                     tem_med, status_med, situacao_prazo, situacao_operacional,
+                    substatus_envio, manufacturing_ending_date,
+                    status_impressao, justificativa_erro,
                     last_synced_at
                 FROM pedidos_ml
                 ${whereSql}
@@ -343,6 +352,7 @@ exports.getPedidosApi = async (req, res) => {
                 COUNT(*) FILTER (WHERE situacao_prazo = 'atrasado')::int AS atrasados,
                 COUNT(*) FILTER (WHERE situacao_prazo = 'para_hoje')::int AS para_hoje,
                 COUNT(*) FILTER (WHERE situacao_prazo = 'futuro_agendado')::int AS futuros,
+                COUNT(*) FILTER (WHERE situacao_operacional = 'aguardando_disponibilidade')::int AS aguardando_disponibilidade,
                 COUNT(*) FILTER (WHERE situacao_operacional = 'nf_a_gerenciar')::int AS sem_nf,
                 COUNT(*) FILTER (WHERE situacao_operacional = 'com_nota_sem_etiqueta')::int AS com_nota_sem_etiqueta,
                 COUNT(*) FILTER (WHERE situacao_operacional = 'etiquetas_para_imprimir')::int AS pronto_imprimir,
@@ -358,6 +368,7 @@ exports.getPedidosApi = async (req, res) => {
             atrasados: 0,
             para_hoje: 0,
             futuros: 0,
+            aguardando_disponibilidade: 0,
             sem_nf: 0,
             com_nota_sem_etiqueta: 0,
             pronto_imprimir: 0,
@@ -596,14 +607,31 @@ exports.obterEtiquetasApi = async (req, res) => {
             }
         }
 
-        // Atualiza a tabela local pedidos_ml para refletir que as etiquetas foram emitidas
-        for (const et of todasEtiquetas) {
-            if (et.sucesso && (et.id_pedido_ml || et.id_envio_ml)) {
+        // Atualiza a tabela local pedidos_ml para refletir o status de impressão de cada pedido solicitado
+        const statusPorPedido = [];
+
+        for (const pedidoId of listaSolicitada) {
+            const strId = String(pedidoId).trim();
+            const et = todasEtiquetas.find(e => 
+                String(e.id_pedido_ml) === strId || 
+                String(e.id_envio_ml) === strId || 
+                String(e.pack_id) === strId
+            );
+
+            if (et && et.sucesso) {
+                statusPorPedido.push({
+                    id: strId,
+                    id_envio_ml: et.id_envio_ml || null,
+                    status_impressao: 'sucesso',
+                    justificativa_erro: null,
+                    conta: et.conta || null
+                });
+
                 try {
-                    const params = [String(et.id_pedido_ml || ''), String(et.id_envio_ml || '')];
-                    let setSql = `tem_etiqueta = TRUE, etiqueta_status = 'pronta_para_imprimir', updated_at = NOW()`;
+                    const params = [strId, String(et.id_envio_ml || strId)];
+                    let setSql = `tem_etiqueta = TRUE, etiqueta_status = 'pronta_para_imprimir', status_impressao = 'sucesso', justificativa_erro = NULL, updated_at = NOW()`;
                     if (et.formato !== 'pdf' && et.conteudo) {
-                        setSql = `etiqueta_zpl = $3, tem_etiqueta = TRUE, etiqueta_status = 'pronta_para_imprimir', updated_at = NOW()`;
+                        setSql = `etiqueta_zpl = $3, tem_etiqueta = TRUE, etiqueta_status = 'pronta_para_imprimir', status_impressao = 'sucesso', justificativa_erro = NULL, updated_at = NOW()`;
                         params.push(et.conteudo.replace(/\u0000/g, ''));
                     }
                     await pool.query(`
@@ -616,29 +644,74 @@ exports.obterEtiquetasApi = async (req, res) => {
                         WHERE id_pedido_ml = $1 OR id_envio_ml = $2
                     `, params);
                 } catch (dbErr) {
-                    console.error('[PedidosML Etiquetas] Erro ao salvar status de etiqueta no banco local:', dbErr.message);
+                    console.error(`[PedidosML Etiquetas] Erro ao atualizar status de sucesso do pedido ${strId}:`, dbErr.message);
+                }
+            } else {
+                const motivoErro = et?.erro || 'Etiqueta não liberada pelo Mercado Livre ou pedido sem envio elegível.';
+                statusPorPedido.push({
+                    id: strId,
+                    id_envio_ml: et?.id_envio_ml || null,
+                    status_impressao: 'erro',
+                    justificativa_erro: motivoErro,
+                    conta: et?.conta || null
+                });
+
+                try {
+                    await pool.query(`
+                        UPDATE pedidos_ml 
+                        SET status_impressao = 'erro',
+                            justificativa_erro = $2,
+                            updated_at = NOW()
+                        WHERE id_pedido_ml = $1 OR id_envio_ml = $1
+                    `, [strId, motivoErro]);
+                } catch (dbErr) {
+                    console.error(`[PedidosML Etiquetas] Erro ao atualizar status de erro do pedido ${strId}:`, dbErr.message);
                 }
             }
         }
 
-        // Se o formato for PDF, mescla todas as páginas usando pdf-lib
+        // Se o formato for PDF, mescla todas as páginas usando pdf-lib com separação de Etiquetas e Relatórios
         let finalPdfBuffer = null;
         let finalPdfBase64 = null;
 
         if (formato === 'pdf' && pdfBuffersToMerge.length > 0) {
             try {
                 const mergedPdfDoc = await PDFDocument.create();
+                const labelPages = [];
+                const reportPages = [];
+
                 for (const pdfBuf of pdfBuffersToMerge) {
                     if (!pdfBuf || pdfBuf.length === 0) continue;
                     try {
                         const loadedDoc = await PDFDocument.load(pdfBuf);
-                        const pageIndices = loadedDoc.getPageIndices();
-                        const copiedPages = await mergedPdfDoc.copyPages(loadedDoc, pageIndices);
-                        copiedPages.forEach(p => mergedPdfDoc.addPage(p));
+                        const totalPages = loadedDoc.getPageCount();
+                        for (let pIdx = 0; pIdx < totalPages; pIdx++) {
+                            const page = loadedDoc.getPage(pIdx);
+                            const { width, height } = page.getSize();
+                            const isReport = Math.min(width, height) > 450 || Math.max(width, height) > 650;
+                            if (isReport) {
+                                reportPages.push({ doc: loadedDoc, index: pIdx });
+                            } else {
+                                labelPages.push({ doc: loadedDoc, index: pIdx });
+                            }
+                        }
                     } catch (loadErr) {
                         console.warn('[PedidosML PDF Consolidação] Erro ao carregar página de PDF individual:', loadErr.message);
                     }
                 }
+
+                // 1. Adiciona primeiro todas as páginas de etiqueta (térmicas)
+                for (const item of labelPages) {
+                    const [copiedPage] = await mergedPdfDoc.copyPages(item.doc, [item.index]);
+                    mergedPdfDoc.addPage(copiedPage);
+                }
+
+                // 2. Adiciona depois todos os relatórios / listas de postagem (A4) ao final do documento
+                for (const item of reportPages) {
+                    const [copiedPage] = await mergedPdfDoc.copyPages(item.doc, [item.index]);
+                    mergedPdfDoc.addPage(copiedPage);
+                }
+
                 const mergedPdfBytes = await mergedPdfDoc.save();
                 finalPdfBuffer = Buffer.from(mergedPdfBytes);
                 finalPdfBase64 = finalPdfBuffer.toString('base64');
@@ -652,7 +725,8 @@ exports.obterEtiquetasApi = async (req, res) => {
         if (todasEtiquetas.length === 0 && !finalPdfBuffer && !finalZpl) {
             return res.status(404).json({
                 sucesso: false,
-                error: 'Nenhuma etiqueta pôde ser obtida para os pedidos selecionados. Verifique se os envios já estão liberados para impressão / com nota fiscal no Mercado Livre.'
+                error: 'Nenhuma etiqueta pôde ser obtida para os pedidos selecionados. Verifique se os envios já estão liberados para impressão / com nota fiscal no Mercado Livre.',
+                status_impressao: statusPorPedido
             });
         }
 
@@ -668,7 +742,8 @@ exports.obterEtiquetasApi = async (req, res) => {
             total_gerado: totalGerado || todasEtiquetas.filter(e => e.sucesso).length,
             pdf_base64: finalPdfBase64,
             zpl_consolidado: finalZpl,
-            etiquetas: todasEtiquetas
+            etiquetas: todasEtiquetas,
+            status_impressao: statusPorPedido
         });
 
     } catch (error) {
@@ -775,7 +850,7 @@ exports.exportarPedidosExcel = async (req, res) => {
                 data_limite_envio, comprador_nickname,
                 sku_principal, skus_resumo, quantidade_total_itens,
                 valor_total, frete_envio, nfe_numero, chave_acesso,
-                tem_dev, tem_med
+                tem_dev, tem_med, status_impressao, justificativa_erro
             FROM pedidos_ml
             ${whereSql}
             ORDER BY data_pedido DESC
@@ -796,6 +871,8 @@ exports.exportarPedidosExcel = async (req, res) => {
             { header: 'Pack ID', key: 'pack_id', width: 20 },
             { header: 'ID Envio ML', key: 'id_envio_ml', width: 18 },
             { header: 'Data do Pedido', key: 'data_pedido', width: 20 },
+            { header: 'Status Impressão', key: 'status_impressao', width: 18 },
+            { header: 'Justificativa Erro', key: 'justificativa_erro', width: 35 },
             { header: 'Situação do Prazo', key: 'situacao_prazo', width: 18 },
             { header: 'Situação Operacional', key: 'situacao_operacional', width: 24 },
             { header: 'Status Pedido', key: 'status_pedido', width: 14 },
@@ -829,12 +906,18 @@ exports.exportarPedidosExcel = async (req, res) => {
             const dataPed = r.data_pedido ? new Date(r.data_pedido).toLocaleString('pt-BR') : '-';
             const dataLim = r.data_limite_envio ? new Date(r.data_limite_envio).toLocaleString('pt-BR') : '-';
 
+            let statusImpTxt = 'Não Impresso';
+            if (r.status_impressao === 'sucesso' || r.status_impressao === 'impresso') statusImpTxt = 'Impresso (Sucesso)';
+            else if (r.status_impressao === 'erro') statusImpTxt = 'Erro na Impressão';
+
             worksheet.addRow({
                 empresa: r.empresa || '-',
                 id_pedido_ml: r.id_pedido_ml || '-',
                 pack_id: r.pack_id || '-',
                 id_envio_ml: r.id_envio_ml || '-',
                 data_pedido: dataPed,
+                status_impressao: statusImpTxt,
+                justificativa_erro: r.justificativa_erro || '-',
                 situacao_prazo: r.situacao_prazo || '-',
                 situacao_operacional: r.situacao_operacional || '-',
                 status_pedido: r.status_pedido || '-',

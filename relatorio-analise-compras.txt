@@ -1,0 +1,84 @@
+# Relatório de Implementação: Sistema de Análise de Compras
+
+Este documento funciona como um guia completo para você saber exatamente tudo o que foi construído até agora para o módulo **Sistema de Análise de Compras**. Ele serve como um mapa para facilitar a retomada do projeto a qualquer momento e por qualquer pessoa.
+
+---
+
+## 1. Banco de Dados (Alterações Manuais)
+Você recebeu e ficou de executar as *queries* SQL abaixo. Elas criam as tabelas auxiliares que armazenam os dados inseridos manualmente (campo "Chegando") e o histórico dos uploads de Excel (planilhas de vendas).
+
+```sql
+-- Armazena o campo "Chegando" para cada Produto Pai
+CREATE TABLE IF NOT EXISTS analise_compras_dados (
+    parent_product_bling_id BIGINT PRIMARY KEY,
+    chegando INTEGER DEFAULT 0
+);
+
+-- Armazena o volume de saídas baseado no SKU do Componente (Estrutura)
+CREATE TABLE IF NOT EXISTS analise_compras_vendas (
+    component_sku VARCHAR(255) PRIMARY KEY,
+    vendas_3d INTEGER DEFAULT 0,
+    vendas_7d INTEGER DEFAULT 0,
+    vendas_15d INTEGER DEFAULT 0,
+    vendas_30d INTEGER DEFAULT 0,
+    data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+---
+
+## 2. Arquivos Criados
+
+Criamos **4 arquivos novos** para isolar a lógica e não misturar com o resto do sistema.
+
+### 2.1. Backend / Controller
+- **Arquivo**: [`controllers/analiseComprasController.js`](file:///c:/Users/lucca/Documents/Trabalho%20Inova/Sistema/Sistema-Inova/controllers/analiseComprasController.js)
+- **O que ele faz**: 
+  - Renderiza a página (`renderPage`).
+  - Extrai os dados do banco, fazendo um *JOIN* complexo agrupando `cached_structures`, `cached_products` e as duas tabelas novas para retornar o JSON na API (`listarProdutos`).
+  - Atualiza de forma silenciosa e síncrona (via AJAX) o input "Chegando" (`atualizarChegando`).
+  - Lida com o processamento em memória e leitura do Excel utilizando o pacote `multer` (para segurar arquivos na memória) e o `xlsx` (para leitura estruturada), iterando sobre os 4 arquivos simultaneamente e persistindo na tabela do banco (`uploadVendas`).
+  - Mantém o endpoint preparado para a lógica futura de criar PDFs de Pedidos (`gerarPedidoPDF`).
+
+### 2.2. Backend / Rotas
+- **Arquivo**: [`routes/analiseComprasRoutes.js`](file:///c:/Users/lucca/Documents/Trabalho%20Inova/Sistema/Sistema-Inova/routes/analiseComprasRoutes.js)
+- **O que ele faz**:
+  - Encaminha o tráfego HTTP para as funções adequadas do controller (`GET /`, `GET /api/produtos`, `POST /upload-vendas`, `POST /atualizar-chegando`, `POST /gerar-pedido`).
+
+### 2.3. Frontend / View (Handlebars)
+- **Arquivo**: [`views/analise/lista-compras.handlebars`](file:///c:/Users/lucca/Documents/Trabalho%20Inova/Sistema/Sistema-Inova/views/analise/lista-compras.handlebars)
+- **O que ele faz**:
+  - Desenha toda a estética do sistema utilizando o mesmo padrão profissional da sua *lista de anúncios*, injetando a classe CSS do Inova.
+  - Tabela formatada e vazada (agrupamento inteligente das colunas *Venda Real* e *Venda Estimada*).
+  - Inclui 2 Modais flutuantes (para upload de Vendas e para geração do Pedido).
+
+### 2.4. Frontend / JavaScript Dinâmico
+- **Arquivo**: [`public/scripts/analiseComprasManager.js`](file:///c:/Users/lucca/Documents/Trabalho%20Inova/Sistema/Sistema-Inova/public/scripts/analiseComprasManager.js)
+- **O que ele faz**:
+  - Busca os dados da API (`/api/produtos`) na hora do carregamento da página.
+  - Implementa 100% dos cálculos matemáticos no *Browser* (cliente), garantindo que ao mexer no input "Dias de Estoque" (no topo da tela) a tabela não trave e recalcule a *Sugestão de Compras* instantaneamente para todos os produtos da página.
+  - Controla a validação dos 4 inputs de Excel, convertendo-os para `FormData` e submetendo a requisição.
+  - Ao abrir o modal de "Geração de Pedidos", filtra apenas os itens que tem "Sugestão > 0" e monta uma pré-tabela pronta para disparar o pedido ao backend.
+
+---
+
+## 3. Arquivos Modificados
+
+Tivemos que modificar apenas 1 arquivo existente para "ligar" o módulo novo.
+
+### 3.1. Servidor Principal (`index.js`)
+- **Arquivo**: [`index.js`](file:///c:/Users/lucca/Documents/Trabalho%20Inova/Sistema/Sistema-Inova/index.js)
+- **Modificações**:
+  - Na **Linha 33**: Inserido o `const analiseComprasRoutes = require('./routes/analiseComprasRoutes');`
+  - Na **Linha 200**: Inserido o `app.use('/analise-compras', analiseComprasRoutes);` para plugar e expor a URL para os usuários.
+
+---
+
+## 4. Onde Continuar? (Próximos Passos)
+
+Quando for continuar o desenvolvimento, a fase 2 será basicamente:
+
+1. **Desenvolvimento do PDF**: Entrar no arquivo `controllers/analiseComprasController.js` na função `gerarPedidoPDF`, importar o `pdfkit` (já vi que ele existe no seu `package.json`), gerar um documento lindo com a logomarca da fábrica e da Inova e devolvê-lo (ou salvá-lo no diretório `uploads`).
+2. Adicionar validação de controle de acesso (middlewares de Auth) nas rotas (`routes/analiseComprasRoutes.js`), conforme for necessário na estrutura de permissões do sistema Inova.
+
+Este relatório detalhado funciona como a certidão de nascimento deste módulo. Qualquer dúvida ou para iniciarmos a próxima fase, é só abrir!

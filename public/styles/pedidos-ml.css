@@ -540,6 +540,12 @@ th.sortable.filter-active::before {
     white-space: nowrap;
 }
 
+.badge-operacional-pedido.aguardando_disponibilidade {
+    background: rgba(234, 179, 8, 0.15);
+    color: #facc15;
+    border: 1px solid rgba(234, 179, 8, 0.4);
+}
+
 .badge-operacional-pedido.nf_a_gerenciar {
     background: rgba(249, 115, 22, 0.14);
     color: #fb923c;
@@ -785,4 +791,54 @@ th.sortable.filter-active::before {
     font-size: 0.82rem !important;
     border: 1px solid rgba(255, 255, 255, 0.1) !important;
     resize: vertical;
+}
+
+/* === BADGES DE STATUS DE IMPRESSÃO === */
+.badge-status-impressao {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+    letter-spacing: 0.2px;
+}
+
+.badge-status-impressao.sucesso {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.badge-status-impressao.erro {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    cursor: pointer;
+}
+
+.badge-status-impressao.erro:hover {
+    background: rgba(239, 68, 68, 0.25);
+}
+
+.badge-status-impressao.nao_impresso {
+    background: rgba(156, 163, 175, 0.1);
+    color: #9ca3af;
+    border: 1px solid rgba(156, 163, 175, 0.25);
+}
+
+.badge-erro-info {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fca5a5;
+    margin-left: 2px;
+    transition: transform 0.15s ease;
+}
+
+.badge-erro-info:hover {
+    transform: scale(1.25);
+    color: #ffffff;
 }

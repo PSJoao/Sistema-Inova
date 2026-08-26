@@ -30,6 +30,7 @@ const produtosRoutes = require('./routes/produtosRoutes');
 const anunciosRoutes = require('./routes/anunciosRoutes');
 const pedidosMlRoutes = require('./routes/pedidosMlRoutes');
 const faturamentoAutomaticoRoutes = require('./routes/faturamentoAutomaticoRoutes');
+const analiseComprasRoutes = require('./routes/analiseComprasRoutes');
 
 const estoqueRoutes = require('./routes/estoqueRoutes');
 const { syncBlingProductsLucas, syncBlingProductsEliane, syncEstoqueBling } = require('./blingSyncService.js');
@@ -198,6 +199,7 @@ app.use('/assistencias', assistenciaRoutes);
 app.use('/', mlRoutes);
 app.use('/', etiquetasRoutes);
 app.use('/', tiposRoutes);
+app.use('/analise-compras', analiseComprasRoutes);
 app.use('/', produtosRoutes);
 app.use('/', anunciosRoutes);
 app.use('/', pedidosMlRoutes);

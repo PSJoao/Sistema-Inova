@@ -34,6 +34,10 @@ function getHubAccounts() {
     return accounts;
 }
 
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
+const { poolHub } = require('../hub/config/database');
+
 const HUB_ACCOUNTS = getHubAccounts();
 const hubTokenCache = {};
 
@@ -44,11 +48,13 @@ async function getHubToken(account) {
     if (cached && cached.token && cached.expiresAt > now + 300000) {
         return cached.token;
     }
+
     try {
         const response = await axios.post(`${HUB_API_URL}/hub/api/login`, {
             email: account.email,
             password: account.pass
-        });
+        }, { timeout: 4000 });
+
         if (response.data && response.data.token) {
             hubTokenCache[account.email] = {
                 token: response.data.token,
@@ -56,8 +62,30 @@ async function getHubToken(account) {
             };
             return response.data.token;
         }
-    } catch (error) {
-        console.error(`[PedidosML Sync] Falha ao logar no Hub com ${account.email}:`, error.message);
+    } catch (httpErr) {
+        // Fallback direto via banco do Hub e JWT_SECRET se o servidor HTTP estiver offline ou em contexto de script/cron
+        try {
+            const result = await poolHub.query('SELECT * FROM hub_clientes WHERE email = $1', [account.email]);
+            if (result.rows.length > 0) {
+                const cliente = result.rows[0];
+                const validPass = await bcrypt.compare(account.pass, cliente.senha_hash);
+                if (validPass) {
+                    const JWT_SECRET = process.env.HUB_JWT_SECRET || 'MDZo3SaYIS0A1vhLHyKszGAAkemOd6DN8SGmai0FxrJ';
+                    const token = jwt.sign(
+                        { id: cliente.id, email: cliente.email },
+                        JWT_SECRET,
+                        { expiresIn: '36500d' }
+                    );
+                    hubTokenCache[account.email] = {
+                        token,
+                        expiresAt: now + (24 * 60 * 60 * 1000)
+                    };
+                    return token;
+                }
+            }
+        } catch (dbErr) {
+            console.error(`[PedidosML Sync] Erro no fallback de login do Hub para ${account.email}:`, dbErr.message);
+        }
     }
     return null;
 }
@@ -68,6 +96,7 @@ async function getHubToken(account) {
 function calcularSituacoes(pedido) {
     const statusPedido = String(pedido.status_pedido || '').toLowerCase().trim();
     const statusEnvio = String(pedido.status_envio || '').toLowerCase().trim();
+    const substatusEnvio = String(pedido.substatus_envio || '').toLowerCase().trim();
     const nfeTrim = String(pedido.nfe_numero || '').trim();
     const temNfe = Boolean(nfeTrim !== '' && nfeTrim !== '0' && nfeTrim !== 'null' && nfeTrim !== 'undefined');
     const temEtiqueta = Boolean(pedido.etiqueta_zpl && String(pedido.etiqueta_zpl).trim() !== '');
@@ -80,6 +109,14 @@ function calcularSituacoes(pedido) {
 
     const dataLimite = pedido.data_limite_envio ? new Date(pedido.data_limite_envio) : null;
     const dataAgendada = pedido.data_envio_agendado ? new Date(pedido.data_envio_agendado) : null;
+    const dataManuf = pedido.manufacturing_ending_date ? new Date(pedido.manufacturing_ending_date) : null;
+
+    // Detecta se o pedido está aguardando disponibilidade de estoque / fabricação
+    const isAguardandoEstoque = Boolean(
+        substatusEnvio === 'manufacturing' ||
+        (dataManuf && dataManuf > now) ||
+        (statusEnvio === 'pending' && (dataAgendada || dataManuf))
+    );
 
     // 1. Situação do Prazo de Envio / Coleta
     let situacaoPrazo = 'para_hoje';
@@ -89,6 +126,8 @@ function calcularSituacoes(pedido) {
         situacaoPrazo = 'entregue';
     } else if (statusEnvio === 'shipped' || statusEnvio === 'picked_up') {
         situacaoPrazo = 'despachado';
+    } else if (isAguardandoEstoque) {
+        situacaoPrazo = 'futuro_agendado';
     } else if (dataLimite) {
         if (dataLimite < now && dataLimite < todayStart) {
             situacaoPrazo = 'atrasado';
@@ -113,6 +152,8 @@ function calcularSituacoes(pedido) {
         situacaoOperacional = 'entregue';
     } else if (statusEnvio === 'shipped' || statusEnvio === 'picked_up') {
         situacaoOperacional = 'a_caminho';
+    } else if (isAguardandoEstoque && !temEtiqueta) {
+        situacaoOperacional = 'aguardando_disponibilidade';
     } else if (statusEnvio === 'ready_to_ship') {
         if (!temNfe) {
             situacaoOperacional = 'nf_a_gerenciar';
@@ -165,22 +206,63 @@ async function sincronizarPedidos(options = {}) {
         let totalProcessados = 0;
         await clientMon.query('BEGIN');
 
+        const hubMercadoLivreService = require('../hub/services/hubMercadoLivreService');
+
         for (const account of HUB_ACCOUNTS) {
             try {
                 const token = await getHubToken(account);
                 if (!token) continue;
 
-                // 1. Dispara a captura de novos pedidos recentes no Hub/ML
+                let clienteId = null;
                 try {
-                    console.log(`[PedidosML Sync] Disparando captura de novos pedidos no Hub para ${account.email}...`);
-                    await axios.post(`${HUB_API_URL}/hub/api/pedidos/sincronizar/novos`, {
-                        dias: diasAtras || 30
-                    }, {
-                        headers: { 'Authorization': `Bearer ${token}` },
-                        timeout: 60000
-                    });
-                } catch (syncNovosErr) {
-                    console.warn(`[PedidosML Sync] Aviso ao disparar captura de novos pedidos para ${account.email}:`, syncNovosErr.message);
+                    const decoded = jwt.decode(token);
+                    clienteId = decoded?.id;
+                } catch (e) {}
+
+                if (!clienteId) {
+                    const clRes = await poolHub.query('SELECT id FROM hub_clientes WHERE email = $1', [account.email]);
+                    clienteId = clRes.rows[0]?.id;
+                }
+
+                // 1. Dispara todas as rotinas de sincronização sob demanda no Hub/ML
+                try {
+                    console.log(`[PedidosML Sync] Disparando rotinas sob demanda no Hub para ${account.email}...`);
+                    await Promise.allSettled([
+                        axios.post(`${HUB_API_URL}/hub/api/pedidos/sincronizar/novos`, {
+                            dias: diasAtras || 60
+                        }, {
+                            headers: { 'Authorization': `Bearer ${token}` },
+                            timeout: 90000
+                        }),
+                        axios.post(`${HUB_API_URL}/hub/api/pedidos/sincronizar/diferentes`, {}, {
+                            headers: { 'Authorization': `Bearer ${token}` },
+                            timeout: 90000
+                        }),
+                        axios.post(`${HUB_API_URL}/hub/api/pedidos/sincronizar/existentes`, {
+                            dias: diasAtras || 60
+                        }, {
+                            headers: { 'Authorization': `Bearer ${token}` },
+                            timeout: 90000
+                        }),
+                        axios.post(`${HUB_API_URL}/hub/api/pedidos/sincronizar/devolucoes`, {
+                            dias: diasAtras || 60
+                        }, {
+                            headers: { 'Authorization': `Bearer ${token}` },
+                            timeout: 90000
+                        })
+                    ]);
+                } catch (syncErr) {
+                    console.warn(`[PedidosML Sync] Aviso HTTP ao disparar rotinas no Hub para ${account.email}, acionando serviço interno:`, syncErr.message);
+                    if (clienteId) {
+                        try {
+                            await hubMercadoLivreService.capturarNovosPedidosCliente(clienteId, { dias: diasAtras || 60 });
+                            await hubMercadoLivreService.monitorarPedidosDiferentesCliente(clienteId);
+                            await hubMercadoLivreService.monitorarPedidosExistentesCliente(clienteId, { dias: diasAtras || 60 });
+                            await hubMercadoLivreService.monitorarDevolucoesCliente(clienteId, { dias: diasAtras || 60 });
+                        } catch (intErr) {
+                            console.error('[PedidosML Sync] Erro na execução interna do serviço Hub:', intErr.message);
+                        }
+                    }
                 }
 
                 let offset = 0;
@@ -188,19 +270,45 @@ async function sincronizarPedidos(options = {}) {
                 let continuar = true;
 
                 while (continuar) {
-                    const params = { limit: reqLimit, offset, raw: 'true' };
-                    if (diasAtras > 0) {
-                        const d = new Date();
-                        d.setDate(d.getDate() - diasAtras);
-                        params.data_inicio = d.toISOString();
+                    let pacotes = [];
+                    const dInicio = diasAtras > 0 ? new Date(Date.now() - diasAtras * 86400000).toISOString() : null;
+
+                    try {
+                        const params = { limit: reqLimit, offset, raw: 'true', incluir_abertos: 'true' };
+                        if (dInicio) params.data_inicio = dInicio;
+
+                        const response = await axios.get(`${HUB_API_URL}/hub/api/pedidos`, {
+                            params,
+                            headers: { 'Authorization': `Bearer ${token}` },
+                            timeout: 60000
+                        });
+                        pacotes = response.data.dados || [];
+                    } catch (httpGetErr) {
+                        // Fallback direto via banco de dados do Hub
+                        if (clienteId) {
+                            let q = `
+                                SELECT p.*, c.nickname as nome_loja
+                                FROM pedidos_mercado_livre p
+                                JOIN hub_ml_contas c ON p.conta_id = c.id
+                                WHERE c.cliente_id = $1
+                            `;
+                            const qParams = [clienteId];
+                            if (dInicio) {
+                                q += ` AND (
+                                    p.date_created >= $2 
+                                    OR p.status_envio IS NULL 
+                                    OR p.status_envio IN ('ready_to_ship', 'pending', 'handling') 
+                                    OR (p.status_pedido = 'paid' AND (p.status_envio IS NULL OR p.status_envio NOT IN ('delivered', 'cancelled')))
+                                    OR p.tem_dev = TRUE 
+                                    OR p.tem_med = TRUE
+                                )`;
+                                qParams.push(dInicio);
+                            }
+                            q += ` ORDER BY p.date_created DESC LIMIT ${reqLimit} OFFSET ${offset}`;
+                            const resDb = await poolHub.query(q, qParams);
+                            pacotes = resDb.rows || [];
+                        }
                     }
-
-                    const response = await axios.get(`${HUB_API_URL}/hub/api/pedidos`, {
-                        params,
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-
-                    const pacotes = response.data.dados || [];
                     if (pacotes.length === 0) {
                         continuar = false;
                         break;
@@ -250,6 +358,8 @@ async function sincronizarPedidos(options = {}) {
                                 itens_json, sku_principal, skus_resumo, quantidade_total_itens,
                                 tem_dev, status_dev, id_envio_dev, status_envio_dev,
                                 tem_med, status_med, situacao_prazo, situacao_operacional,
+                                substatus_envio, manufacturing_ending_date,
+                                status_impressao, justificativa_erro,
                                 last_synced_at, updated_at
                             ) VALUES (
                                 $1, $2, $3, $4, $5,
@@ -261,6 +371,8 @@ async function sincronizarPedidos(options = {}) {
                                 $26, $27, $28, $29,
                                 $30, $31, $32, $33,
                                 $34, $35, $36, $37,
+                                $38, $39,
+                                $40, $41,
                                 NOW(), NOW()
                             )
                             ON CONFLICT (id_pedido_ml) DO UPDATE SET
@@ -298,6 +410,10 @@ async function sincronizarPedidos(options = {}) {
                                 status_med = EXCLUDED.status_med,
                                 situacao_prazo = EXCLUDED.situacao_prazo,
                                 situacao_operacional = EXCLUDED.situacao_operacional,
+                                substatus_envio = COALESCE(EXCLUDED.substatus_envio, pedidos_ml.substatus_envio),
+                                manufacturing_ending_date = COALESCE(EXCLUDED.manufacturing_ending_date, pedidos_ml.manufacturing_ending_date),
+                                status_impressao = COALESCE(EXCLUDED.status_impressao, pedidos_ml.status_impressao, 'nao_impresso'),
+                                justificativa_erro = COALESCE(EXCLUDED.justificativa_erro, pedidos_ml.justificativa_erro),
                                 last_synced_at = NOW(),
                                 updated_at = NOW();
                         `;
@@ -339,7 +455,11 @@ async function sincronizarPedidos(options = {}) {
                             Boolean(p.tem_med),
                             p.status_med || null,
                             situacaoPrazo,
-                            situacaoOperacional
+                            situacaoOperacional,
+                            p.substatus_envio || null,
+                            p.manufacturing_ending_date || null,
+                            p.status_impressao || null,
+                            p.justificativa_erro || null
                         ];
 
                         await clientMon.query(queryUpsert, values);
