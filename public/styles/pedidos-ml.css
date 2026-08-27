@@ -842,3 +842,38 @@ th.sortable.filter-active::before {
     transform: scale(1.25);
     color: #ffffff;
 }
+
+/* === MODAL DE SINCRONIZAÇÃO === */
+.sync-pills-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.btn-sync-pill {
+    background: #23232b;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #e0e0e0;
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.btn-sync-pill:hover {
+    border-color: var(--accent-orange, #f07c00);
+    color: #ffffff;
+    background: #2c2c36;
+}
+
+.btn-sync-pill.active {
+    background: var(--accent-orange, #f07c00);
+    border-color: var(--accent-orange, #f07c00);
+    color: #ffffff;
+    font-weight: 600;
+    box-shadow: 0 0 12px rgba(240, 124, 0, 0.4);
+}

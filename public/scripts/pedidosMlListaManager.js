@@ -1514,31 +1514,137 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // Sincronizar Pedidos
+    // =============================================
+    // === SINCRONIZAÇÃO DE PEDIDOS (MODALSYSTEM) ===
+    // =============================================
     if (btnSincronizarPedidos) {
-        btnSincronizarPedidos.addEventListener('click', async () => {
-            btnSincronizarPedidos.disabled = true;
-            btnSincronizarPedidos.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>Sincronizando...`;
+        btnSincronizarPedidos.addEventListener('click', () => {
+            const htmlMessage = `
+                <div style="text-align: left; margin-top: 4px;">
+                    <p style="color: #cbd5e1; font-size: 0.88rem; margin-bottom: 12px; line-height: 1.4;">
+                        Escolha a quantidade de dias para buscar novos pedidos e monitorar o status dos existentes no Mercado Livre:
+                    </p>
 
-            try {
-                const res = await fetch('/api/pedidos-ml/sync', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ dias: 30 })
-                });
-                const data = await res.json();
-                if (!res.ok || (!data.sucesso && !data.success)) {
-                    throw new Error(data.error || data.mensagem || 'Falha na sincronização.');
+                    <div style="margin-bottom: 14px;">
+                        <label style="display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 6px; font-weight: 600;">
+                            Atalhos rápidos:
+                        </label>
+                        <div style="display: flex; flex-wrap: wrap; gap: 6px;" id="syncModalPills">
+                            <button type="button" class="btn-sync-pill" data-days="1">1 dia (Hoje)</button>
+                            <button type="button" class="btn-sync-pill" data-days="3">3 dias</button>
+                            <button type="button" class="btn-sync-pill active" data-days="7">7 dias (Padrão)</button>
+                            <button type="button" class="btn-sync-pill" data-days="15">15 dias</button>
+                            <button type="button" class="btn-sync-pill" data-days="30">30 dias</button>
+                            <button type="button" class="btn-sync-pill" data-days="60">60 dias</button>
+                            <button type="button" class="btn-sync-pill" data-days="90">90 dias (Máx)</button>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 14px;">
+                        <label for="modalInputDiasSync" style="display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 6px; font-weight: 600;">
+                            Ou digite a quantidade exata de dias (1 a 90):
+                        </label>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="number" id="modalInputDiasSync" value="7" min="1" max="90" class="form-control" style="width: 100px; font-size: 1.1rem; font-weight: bold; text-align: center; background: #1e1e24; color: #fff; border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; padding: 6px 8px;">
+                            <span style="color: #94a3b8; font-size: 0.88rem;">dias retroativos</span>
+                        </div>
+                    </div>
+
+                    <div style="background: rgba(240, 124, 0, 0.08); border: 1px solid rgba(240, 124, 0, 0.25); border-radius: 6px; padding: 10px 12px; font-size: 0.78rem; color: #e2e8f0; line-height: 1.4;">
+                        <i class="fas fa-lightbulb" style="color: var(--accent-orange, #f07c00); margin-right: 4px;"></i>
+                        <strong>Dica de Performance:</strong> Sincronizar de <strong>1 a 7 dias</strong> é muito rápido e ideal para o dia a dia. Períodos maiores (até 90 dias) são indicados para conferências completas.
+                    </div>
+                </div>
+            `;
+
+            ModalSystem.confirm(
+                htmlMessage,
+                'Sincronizar Pedidos Mercado Livre',
+                async () => {
+                    const input = document.getElementById('modalInputDiasSync');
+                    let dias = parseInt(input ? input.value : 7, 10);
+                    if (isNaN(dias) || dias < 1) dias = 7;
+                    if (dias > 90) dias = 90;
+
+                    ModalSystem.showLoading(`Sincronizando pedidos dos últimos ${dias} dias...`, 'Aguarde');
+
+                    if (btnSincronizarPedidos) {
+                        btnSincronizarPedidos.disabled = true;
+                        btnSincronizarPedidos.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>Sincronizando (${dias}d)...`;
+                    }
+
+                    try {
+                        const res = await fetch('/api/pedidos-ml/sync', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ dias })
+                        });
+                        const data = await res.json();
+                        ModalSystem.hideLoading();
+
+                        if (!res.ok || (!data.sucesso && !data.success)) {
+                            throw new Error(data.error || data.mensagem || 'Falha na sincronização.');
+                        }
+
+                        const qtd = data.metricas?.novos_inseridos || data.total_processados || 0;
+                        ModalSystem.alert(
+                            `Sincronização concluída com sucesso!<br><br><strong>${qtd} pedido(s)</strong> processados dos últimos <strong>${dias} dia(s)</strong>.`,
+                            'Sucesso!',
+                            () => {
+                                currentPage = 1;
+                                loadPedidos();
+                            },
+                            { isHtml: true }
+                        );
+                        loadPedidos();
+                    } catch (err) {
+                        ModalSystem.hideLoading();
+                        console.error('[PedidosML] Falha na sincronização:', err);
+                        ModalSystem.alert(`Erro ao sincronizar pedidos com o Hub:<br><br>${err.message}`, 'Erro na Sincronização', null, { isHtml: true });
+                    } finally {
+                        if (btnSincronizarPedidos) {
+                            btnSincronizarPedidos.disabled = false;
+                            btnSincronizarPedidos.innerHTML = `<i class="fas fa-sync me-2"></i>Sincronizar Pedidos`;
+                        }
+                    }
+                },
+                null,
+                { isHtml: true }
+            );
+
+            // Ajusta o texto do botão de confirmação do ModalSystem
+            const btnConfirm = document.getElementById('customModalBtnConfirm');
+            if (btnConfirm) btnConfirm.textContent = 'Iniciar Sincronização';
+
+            // Eventos interativos para as pílulas e o input dentro do ModalSystem
+            setTimeout(() => {
+                const pillsContainer = document.getElementById('syncModalPills');
+                const inputEl = document.getElementById('modalInputDiasSync');
+
+                if (pillsContainer && inputEl) {
+                    pillsContainer.querySelectorAll('.btn-sync-pill').forEach(pill => {
+                        pill.addEventListener('click', () => {
+                            pillsContainer.querySelectorAll('.btn-sync-pill').forEach(p => p.classList.remove('active'));
+                            pill.classList.add('active');
+                            inputEl.value = pill.dataset.days;
+                        });
+                    });
+
+                    inputEl.addEventListener('input', () => {
+                        let val = parseInt(inputEl.value, 10);
+                        if (val > 90) inputEl.value = 90;
+                        if (val < 1 && inputEl.value !== '') inputEl.value = 1;
+
+                        pillsContainer.querySelectorAll('.btn-sync-pill').forEach(pill => {
+                            if (pill.dataset.days === String(inputEl.value)) {
+                                pill.classList.add('active');
+                            } else {
+                                pill.classList.remove('active');
+                            }
+                        });
+                    });
                 }
-                showToast(`Sincronização concluída! ${data.metricas?.novos_inseridos || data.total_processados || 0} pedido(s) processados.`);
-                loadPedidos();
-            } catch (err) {
-                console.error('[PedidosML] Falha na sincronização:', err);
-                alert(`Erro ao sincronizar pedidos com o Hub: ${err.message}`);
-            } finally {
-                btnSincronizarPedidos.disabled = false;
-                btnSincronizarPedidos.innerHTML = `<i class="fas fa-sync me-2"></i>Sincronizar Pedidos`;
-            }
+            }, 50);
         });
     }
 

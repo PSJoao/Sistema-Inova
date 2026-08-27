@@ -193,8 +193,9 @@ function calcularSituacoes(pedido) {
  * @param {object} options - { diasAtras: 30, limit: 5000, pedidoId: null }
  */
 async function sincronizarPedidos(options = {}) {
-    const { diasAtras = 60, limit = 10000, pedidoId = null } = options;
-    console.log(`[PedidosML Sync] Iniciando sincronização (diasAtras: ${diasAtras}, pedidoId: ${pedidoId || 'TODOS'})...`);
+    const { diasAtras = 7, limit = 10000, pedidoId = null } = options;
+    const diasNum = Math.min(90, Math.max(1, parseInt(diasAtras, 10) || 7));
+    console.log(`[PedidosML Sync] Iniciando sincronização (${diasNum} dias atrás, pedidoId: ${pedidoId || 'TODOS'})...`);
 
     if (HUB_ACCOUNTS.length === 0) {
         console.warn('[PedidosML Sync] Nenhuma conta do Hub configurada. Abortando.');
@@ -217,7 +218,7 @@ async function sincronizarPedidos(options = {}) {
                 try {
                     const decoded = jwt.decode(token);
                     clienteId = decoded?.id;
-                } catch (e) {}
+                } catch (e) { }
 
                 if (!clienteId) {
                     const clRes = await poolHub.query('SELECT id FROM hub_clientes WHERE email = $1', [account.email]);
@@ -226,10 +227,10 @@ async function sincronizarPedidos(options = {}) {
 
                 // 1. Dispara todas as rotinas de sincronização sob demanda no Hub/ML
                 try {
-                    console.log(`[PedidosML Sync] Disparando rotinas sob demanda no Hub para ${account.email}...`);
+                    console.log(`[PedidosML Sync] Disparando rotinas sob demanda no Hub para ${account.email} (${diasNum} dias)...`);
                     await Promise.allSettled([
                         axios.post(`${HUB_API_URL}/hub/api/pedidos/sincronizar/novos`, {
-                            dias: diasAtras || 60
+                            dias: diasNum
                         }, {
                             headers: { 'Authorization': `Bearer ${token}` },
                             timeout: 90000
@@ -239,13 +240,13 @@ async function sincronizarPedidos(options = {}) {
                             timeout: 90000
                         }),
                         axios.post(`${HUB_API_URL}/hub/api/pedidos/sincronizar/existentes`, {
-                            dias: diasAtras || 60
+                            dias: diasNum
                         }, {
                             headers: { 'Authorization': `Bearer ${token}` },
                             timeout: 90000
                         }),
                         axios.post(`${HUB_API_URL}/hub/api/pedidos/sincronizar/devolucoes`, {
-                            dias: diasAtras || 60
+                            dias: diasNum
                         }, {
                             headers: { 'Authorization': `Bearer ${token}` },
                             timeout: 90000
@@ -255,10 +256,10 @@ async function sincronizarPedidos(options = {}) {
                     console.warn(`[PedidosML Sync] Aviso HTTP ao disparar rotinas no Hub para ${account.email}, acionando serviço interno:`, syncErr.message);
                     if (clienteId) {
                         try {
-                            await hubMercadoLivreService.capturarNovosPedidosCliente(clienteId, { dias: diasAtras || 60 });
+                            await hubMercadoLivreService.capturarNovosPedidosCliente(clienteId, { dias: diasNum });
                             await hubMercadoLivreService.monitorarPedidosDiferentesCliente(clienteId);
-                            await hubMercadoLivreService.monitorarPedidosExistentesCliente(clienteId, { dias: diasAtras || 60 });
-                            await hubMercadoLivreService.monitorarDevolucoesCliente(clienteId, { dias: diasAtras || 60 });
+                            await hubMercadoLivreService.monitorarPedidosExistentesCliente(clienteId, { dias: diasNum });
+                            await hubMercadoLivreService.monitorarDevolucoesCliente(clienteId, { dias: diasNum });
                         } catch (intErr) {
                             console.error('[PedidosML Sync] Erro na execução interna do serviço Hub:', intErr.message);
                         }
@@ -271,7 +272,7 @@ async function sincronizarPedidos(options = {}) {
 
                 while (continuar) {
                     let pacotes = [];
-                    const dInicio = diasAtras > 0 ? new Date(Date.now() - diasAtras * 86400000).toISOString() : null;
+                    const dInicio = diasNum > 0 ? new Date(Date.now() - diasNum * 86400000).toISOString() : null;
 
                     try {
                         const params = { limit: reqLimit, offset, raw: 'true', incluir_abertos: 'true' };
@@ -316,7 +317,7 @@ async function sincronizarPedidos(options = {}) {
 
                     for (const p of pacotes) {
                         if (pedidoId && String(p.id_pedido_ml) !== String(pedidoId)) continue;
-                        
+
                         let itens = p.itens_pedido;
                         if (typeof itens === 'string') {
                             try { itens = JSON.parse(itens); } catch (e) { itens = []; }

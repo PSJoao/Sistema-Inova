@@ -420,18 +420,23 @@ exports.getPedidosApi = async (req, res) => {
  */
 exports.sincronizarPedidosApi = async (req, res) => {
     try {
-        const { dias = 30 } = req.body;
-        console.log(`[PedidosML] Requisição manual de sincronização recebida (dias: ${dias}).`);
+        const { dias = 7 } = req.body || {};
+        let diasInt = parseInt(dias, 10);
+        if (isNaN(diasInt) || diasInt < 1) diasInt = 7;
+        if (diasInt > 90) diasInt = 90; // Limite máximo de 90 dias
+
+        console.log(`[PedidosML] Requisição manual de sincronização recebida (${diasInt} dias).`);
 
         const resultado = await pedidosMlSyncService.sincronizarPedidos({
-            diasAtras: parseInt(dias, 10) || 30
+            diasAtras: diasInt
         });
 
         res.status(200).json({
             sucesso: true,
             success: true,
-            mensagem: `Sincronização concluída com sucesso! ${resultado.total_processados} pedido(s) atualizados.`,
+            mensagem: `Sincronização concluída com sucesso! ${resultado.total_processados} pedido(s) processados dos últimos ${diasInt} dia(s).`,
             metricas: { novos_inseridos: resultado.total_processados },
+            dias_sincronizados: diasInt,
             ...resultado
         });
     } catch (error) {
