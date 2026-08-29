@@ -173,10 +173,20 @@ class HubMercadoLivreService {
                             novoPedido.data_limite_envio = pedidoData.shipping_option.estimated_handling_limit.date;
                         }
 
-                        if (pedidoData.shipping?.id) {
+                        let shipmentId = pedidoData.shipping?.id || null;
+                        if (!shipmentId && pedidoData.pack_id) {
+                            try {
+                                const packRes = await axios.get(`${ML_API_URL}/packs/${pedidoData.pack_id}`, {
+                                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                                });
+                                shipmentId = packRes.data?.shipment?.id || null;
+                            } catch (packErr) { }
+                        }
+
+                        if (shipmentId) {
                             try {
                                 await delay(200);
-                                const envioUrl = `${ML_API_URL}/shipments/${pedidoData.shipping.id}`;
+                                const envioUrl = `${ML_API_URL}/shipments/${shipmentId}`;
                                 const envioResponse = await axios.get(envioUrl, {
                                     headers: { 'Authorization': `Bearer ${accessToken}` }
                                 });
@@ -450,7 +460,7 @@ class HubMercadoLivreService {
                             date_created: dadosAtualizados.date_created,
                             status_pedido: dadosAtualizados.status,
                             data_limite_envio: null,
-                            id_envio_ml: null,
+                            id_envio_ml: pedido.id_envio_ml || null,
                             status_envio: null,
                             tipo_envio: pedido.tipo_envio || null,
                             etiqueta_zpl: pedido.etiqueta_zpl,
@@ -481,9 +491,20 @@ class HubMercadoLivreService {
                         pedidoAtualizado.itens_pedido = JSON.stringify(itensMapeados);
 
                         // Captura de Envio e Datas
-                        if (dadosAtualizados.shipping?.id) {
+                        let shipmentId = dadosAtualizados.shipping?.id || pedido.id_envio_ml || null;
+                        if (!shipmentId && (dadosAtualizados.pack_id || pedido.pack_id)) {
                             try {
-                                const envioUrl = `${ML_API_URL}/shipments/${dadosAtualizados.shipping.id}`;
+                                const pId = dadosAtualizados.pack_id || pedido.pack_id;
+                                const packRes = await axios.get(`${ML_API_URL}/packs/${pId}`, {
+                                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                                });
+                                shipmentId = packRes.data?.shipment?.id || null;
+                            } catch (packErr) { }
+                        }
+
+                        if (shipmentId) {
+                            try {
+                                const envioUrl = `${ML_API_URL}/shipments/${shipmentId}`;
                                 const envioRes = await axios.get(envioUrl, {
                                     headers: { 'Authorization': `Bearer ${accessToken}` }
                                 });
@@ -720,7 +741,7 @@ class HubMercadoLivreService {
                             date_created: dadosAtualizados.date_created,
                             status_pedido: dadosAtualizados.status,
                             data_limite_envio: null,
-                            id_envio_ml: null,
+                            id_envio_ml: pedido.id_envio_ml || null,
                             status_envio: null,
                             tipo_envio: pedido.tipo_envio || null,
                             etiqueta_zpl: pedido.etiqueta_zpl,
@@ -751,9 +772,20 @@ class HubMercadoLivreService {
                         pedidoAtualizado.itens_pedido = JSON.stringify(itensMapeados);
 
                         // Captura de Envio e Datas
-                        if (dadosAtualizados.shipping?.id) {
+                        let shipmentId = dadosAtualizados.shipping?.id || pedido.id_envio_ml || null;
+                        if (!shipmentId && (dadosAtualizados.pack_id || pedido.pack_id)) {
                             try {
-                                const envioUrl = `${ML_API_URL}/shipments/${dadosAtualizados.shipping.id}`;
+                                const pId = dadosAtualizados.pack_id || pedido.pack_id;
+                                const packRes = await axios.get(`${ML_API_URL}/packs/${pId}`, {
+                                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                                });
+                                shipmentId = packRes.data?.shipment?.id || null;
+                            } catch (packErr) { }
+                        }
+
+                        if (shipmentId) {
+                            try {
+                                const envioUrl = `${ML_API_URL}/shipments/${shipmentId}`;
                                 const envioRes = await axios.get(envioUrl, {
                                     headers: { 'Authorization': `Bearer ${accessToken}` }
                                 });
@@ -1332,6 +1364,7 @@ class HubMercadoLivreService {
             (conta_id, id_pedido_ml, date_created, status_pedido, data_limite_envio, id_envio_ml, status_envio, etiqueta_zpl, itens_pedido, comprador_nickname, data_envio_disponivel, data_envio_agendado, data_previsao_entrega, tem_dev, tem_med, status_dev, status_med, id_envio_dev, status_envio_dev, frete_envio, nfe_numero, chave_acesso, tipo_envio, pack_id, substatus_envio, manufacturing_ending_date, status_impressao, justificativa_erro)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
             ON CONFLICT (id_pedido_ml) DO UPDATE SET
+            id_envio_ml = COALESCE(EXCLUDED.id_envio_ml, pedidos_mercado_livre.id_envio_ml),
             status_pedido = EXCLUDED.status_pedido,
             status_envio = EXCLUDED.status_envio,
             data_limite_envio = EXCLUDED.data_limite_envio,
@@ -1664,13 +1697,24 @@ class HubMercadoLivreService {
                                 return;
                             }
 
+                            let shipmentId = envioData ? envioData.id : (dadosPedido.shipping?.id || null);
+                            if (!shipmentId && (dadosPedido.pack_id || envioData?.pack_id)) {
+                                try {
+                                    const pId = dadosPedido.pack_id || envioData?.pack_id;
+                                    const packRes = await axios.get(`${ML_API_URL}/packs/${pId}`, {
+                                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                                    });
+                                    shipmentId = packRes.data?.shipment?.id || null;
+                                } catch (packErr) { }
+                            }
+
                             const pedidoNovo = {
                                 conta_id: conta.id,
                                 id_pedido_ml: dadosPedido.id,
                                 date_created: dadosPedido.date_created,
                                 status_pedido: dadosPedido.status,
                                 data_limite_envio: null,
-                                id_envio_ml: envioData ? envioData.id : (dadosPedido.shipping?.id || null),
+                                id_envio_ml: shipmentId ? String(shipmentId) : null,
                                 status_envio: envioData ? this.resolverStatusEnvio(envioData) : null,
                                 tipo_envio: envioData ? (envioData.logistic_type || null) : null,
                                 etiqueta_zpl: null,
@@ -1972,28 +2016,39 @@ class HubMercadoLivreService {
             const novoStatusPedido = dadosML.status;
             let novoStatusEnvio = null;
             let novoTipoEnvio = null;
+            let novoShipmentId = dadosML.shipping?.id ? String(dadosML.shipping.id) : null;
+
+            if (!novoShipmentId && dadosML.pack_id) {
+                try {
+                    const packRes = await axios.get(`${ML_API_URL}/packs/${dadosML.pack_id}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+                    novoShipmentId = packRes.data?.shipment?.id ? String(packRes.data.shipment.id) : null;
+                } catch (e) { }
+            }
 
             // Se o pedido tiver dados de envio, buscamos o status atualizado do envio
-            if (dadosML.shipping && dadosML.shipping.id) {
-                const shipRes = await axios.get(`${ML_API_URL}/shipments/${dadosML.shipping.id}`, { headers: { Authorization: `Bearer ${accessToken}` } });
-                novoStatusEnvio = this.resolverStatusEnvio(shipRes.data);
-                novoTipoEnvio = shipRes.data.logistic_type || null;
+            if (novoShipmentId) {
+                try {
+                    const shipRes = await axios.get(`${ML_API_URL}/shipments/${novoShipmentId}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+                    novoStatusEnvio = this.resolverStatusEnvio(shipRes.data);
+                    novoTipoEnvio = shipRes.data.logistic_type || null;
+                } catch (e) { }
             }
 
             // 5. INTELIGÊNCIA: Só realiza o UPDATE no banco se houver uma real alteração nos campos alvo
-            if (pedidoBanco.status_pedido !== novoStatusPedido || pedidoBanco.status_envio !== novoStatusEnvio || pedidoBanco.tipo_envio !== novoTipoEnvio) {
-                console.log(`[HUB Webhook] Alteração real detectada no pedido ${orderId} | Status: ${pedidoBanco.status_pedido} -> ${novoStatusPedido} | Envio: ${pedidoBanco.status_envio} -> ${novoStatusEnvio}`);
+            if (pedidoBanco.status_pedido !== novoStatusPedido || pedidoBanco.status_envio !== novoStatusEnvio || pedidoBanco.tipo_envio !== novoTipoEnvio || (novoShipmentId && !pedidoBanco.id_envio_ml)) {
+                console.log(`[HUB Webhook] Alteração real detectada no pedido ${orderId} | Status: ${pedidoBanco.status_pedido} -> ${novoStatusPedido} | Envio: ${pedidoBanco.status_envio} -> ${novoStatusEnvio} | Shipment: ${novoShipmentId}`);
 
                 const updateQuery = `
                     UPDATE pedidos_mercado_livre
-                    SET status_pedido = $1, status_envio = $2, tipo_envio = COALESCE($3, tipo_envio), pack_id = COALESCE($4, pack_id), last_update = NOW()
-                    WHERE id_pedido_ml = $5
+                    SET status_pedido = $1, status_envio = $2, tipo_envio = COALESCE($3, tipo_envio), pack_id = COALESCE($4, pack_id), id_envio_ml = COALESCE($5, id_envio_ml), last_update = NOW()
+                    WHERE id_pedido_ml = $6
                 `;
                 await client.query(updateQuery, [
                     novoStatusPedido,
                     novoStatusEnvio,
                     novoTipoEnvio,
                     dadosML.pack_id ? String(dadosML.pack_id) : null,
+                    novoShipmentId,
                     String(orderId)
                 ]);
             }

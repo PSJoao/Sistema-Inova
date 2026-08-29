@@ -120,7 +120,8 @@ exports.showDetalhesAssistencia = async (req, res) => {
         const assistenciaQuery = `
             SELECT a.*, s.nome as solicitante_nome,
                    to_char(a.data_solicitacao, 'DD/MM/YYYY') as data_solicitacao_fmt,
-                   to_char(a.data_resolucao, 'DD/MM/YYYY HH24:MI:SS') as data_resolucao_fmt
+                   to_char(a.data_resolucao, 'DD/MM/YYYY HH24:MI:SS') as data_resolucao_fmt,
+                   to_char(a.data_acao, 'DD/MM/YYYY HH24:MI:SS') as data_acao_fmt
             FROM assistencias a
             LEFT JOIN solicitantes s ON a.solicitante_id = s.id
             WHERE a.id = $1;
@@ -392,8 +393,19 @@ exports.bulkResolveVolumesAPI = async (req, res) => {
             UPDATE assistencia_produtos
             SET status_volume = 'Resolvida'
             WHERE id = ANY($1::int[]) AND status_volume != 'Resolvida'
+            RETURNING assistencia_id
         `;
         const result = await client.query(updateQuery, [volumeIds]);
+
+        if (result.rows.length > 0) {
+            const assistenciaIds = [...new Set(result.rows.map(r => r.assistencia_id).filter(Boolean))];
+            if (assistenciaIds.length > 0) {
+                await client.query(
+                    `UPDATE assistencias SET data_acao = CURRENT_TIMESTAMP WHERE id = ANY($1::int[])`,
+                    [assistenciaIds]
+                );
+            }
+        }
 
         await client.query('COMMIT');
 
@@ -435,8 +447,8 @@ exports.createAssistencia = async (req, res) => {
             INSERT INTO assistencias (
                 descricao, solicitante_id, solicitante, data_solicitacao, periodo_solicitacao, nf_origem, nome_pedido, documento_cliente,
                 numero_pedido_venda, coluna_estoque, linha_estoque, observacoes, marcar_como_alerta,
-                fabrica, cor, situacao, fabrica_id
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id;
+                fabrica, cor, situacao, fabrica_id, data_acao
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, CURRENT_TIMESTAMP) RETURNING id;
         `;
         const assistenciaResult = await client.query(assistenciaQuery, [
             descricao, solicitante_id, solicitanteNome, data_solicitacao, periodo_solicitacao, nf_origem, nome_pedido, documento_cliente,
@@ -496,10 +508,10 @@ exports.bulkUpdateStatusAPI = async (req, res) => {
         let queryParams = [status, ids];
         
         if (status === 'Resolvida') {
-            query = `UPDATE assistencias SET situacao = $1, data_resolucao = CURRENT_TIMESTAMP WHERE id = ANY($2::int[])`;
+            query = `UPDATE assistencias SET situacao = $1, data_resolucao = CURRENT_TIMESTAMP, data_acao = CURRENT_TIMESTAMP WHERE id = ANY($2::int[])`;
         } else {
             // Caso queira usar para outros status no futuro
-            query = `UPDATE assistencias SET situacao = $1 WHERE id = ANY($2::int[])`;
+            query = `UPDATE assistencias SET situacao = $1, data_acao = CURRENT_TIMESTAMP WHERE id = ANY($2::int[])`;
         }
 
         const result = await pool.query(query, queryParams);
@@ -514,7 +526,7 @@ exports.resolveAssistencia = async (req, res) => {
     const { id } = req.params;
     try {
         const result = await pool.query(
-            `UPDATE assistencias SET situacao = 'Resolvida', data_resolucao = CURRENT_TIMESTAMP WHERE id = $1 AND situacao <> 'Resolvida'`,
+            `UPDATE assistencias SET situacao = 'Resolvida', data_resolucao = CURRENT_TIMESTAMP, data_acao = CURRENT_TIMESTAMP WHERE id = $1 AND situacao <> 'Resolvida'`,
             [id]
         );
         if (result.rowCount > 0) {
@@ -646,7 +658,8 @@ exports.updateAssistencia = async (req, res) => {
             UPDATE assistencias SET 
                 descricao = $1, solicitante_id = $2, solicitante = $3, data_solicitacao = $4, periodo_solicitacao = $5, nf_origem = $6, nome_pedido = $7, 
                 documento_cliente = $8, numero_pedido_venda = $9, coluna_estoque = $10, linha_estoque = $11, 
-                observacoes = $12, marcar_como_alerta = $13, fabrica = $14, cor = $15, situacao = $16, fabrica_id = $18
+                observacoes = $12, marcar_como_alerta = $13, fabrica = $14, cor = $15, situacao = $16, fabrica_id = $18,
+                data_acao = CURRENT_TIMESTAMP
             WHERE id = $17 AND situacao != 'Resolvida';
         `, [
             descricao, solicitante_id, solicitanteNome, data_solicitacao, periodo_solicitacao, nf_origem, nome_pedido, documento_cliente,
@@ -1090,6 +1103,7 @@ exports.updateSingleStatusAPI = async (req, res) => {
                 data_resolucao = CASE WHEN $2 = 'Resolvida' THEN CURRENT_TIMESTAMP ELSE data_resolucao END,
                 data_acao = CURRENT_TIMESTAMP
             WHERE id = $3
+            RETURNING to_char(data_acao, 'DD/MM/YYYY HH24:MI:SS') as data_acao_fmt
         `;
 
         const result = await pool.query(query, [status, status, id]);
@@ -1098,7 +1112,11 @@ exports.updateSingleStatusAPI = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Assistência não encontrada.' });
         }
 
-        res.json({ success: true, message: 'Status atualizado com sucesso.' });
+        res.json({ 
+            success: true, 
+            message: 'Status atualizado com sucesso.',
+            data_acao_fmt: result.rows[0].data_acao_fmt
+        });
 
     } catch (error) {
         console.error(`Erro ao atualizar status da assistência ${id}:`, error);
@@ -1120,11 +1138,20 @@ exports.updateVolumeStatusAPI = async (req, res) => {
             UPDATE assistencia_produtos 
             SET status_volume = $1
             WHERE id = $2
+            RETURNING assistencia_id
         `;
         const result = await pool.query(query, [status, produto_id]);
 
         if (result.rowCount === 0) {
             return res.status(404).json({ success: false, message: 'Volume (produto) não encontrado.' });
+        }
+
+        const assistenciaId = result.rows[0].assistencia_id;
+        if (assistenciaId) {
+            await pool.query(
+                `UPDATE assistencias SET data_acao = CURRENT_TIMESTAMP WHERE id = $1`,
+                [assistenciaId]
+            );
         }
 
         res.json({ success: true, message: 'Status do volume atualizado com sucesso.' });

@@ -688,44 +688,36 @@ class HubProdutosService {
                     idChunks.push(idsAnuncios.slice(i, i + chunkSize));
                 }
 
-                // 3. Busca e processa os detalhes em lotes controlados com respiro para evitar 429 Too Many Requests
-                const results = [];
-                const batchOfChunksSize = 3; // 3 chunks de 2 = 6 itens simultâneos
-                for (let i = 0; i < idChunks.length; i += batchOfChunksSize) {
-                    const currentChunksBatch = idChunks.slice(i, i + batchOfChunksSize);
-                    const batchResults = await Promise.all(currentChunksBatch.map(async (chunk) => {
-                        try {
-                            const idsBatch = chunk.join(',');
-                            const itemsUrl = `${ML_API_URL}/items?ids=${idsBatch}`;
-                            const itemsResponse = await axios.get(itemsUrl, {
-                                headers: { 'Authorization': `Bearer ${accessToken}` },
-                                timeout: 15000
-                            });
+                // 3. Busca e processa os detalhes de cada pedaço em paralelo (Velocidade total)
+                const chunkPromises = idChunks.map(async (chunk) => {
+                    try {
+                        const idsBatch = chunk.join(',');
+                        const itemsUrl = `${ML_API_URL}/items?ids=${idsBatch}`;
+                        const itemsResponse = await axios.get(itemsUrl, {
+                            headers: { 'Authorization': `Bearer ${accessToken}` },
+                            timeout: 15000
+                        });
 
-                            const itemsResults = itemsResponse.data || [];
+                        const itemsResults = itemsResponse.data || [];
 
-                            // Processa cada item do bloco
-                            return await Promise.all(itemsResults.map(async (res) => {
-                                if (res.code !== 200) {
-                                    console.error(`[HUB PRODUTOS] Erro ao detalhar anúncio:`, res.body);
-                                    return false;
-                                }
-                                const itemData = res.body;
-                                return await this.processarItemCompleto(itemData, conta, accessToken);
-                            }));
-                        } catch (errChunk) {
-                            console.error(`[HUB PRODUTOS] Erro ao buscar bloco ${chunk.join(',')}:`, errChunk.message);
-                            return [];
-                        }
-                    }));
+                        // Processa cada item do bloco
+                        const itemPromises = itemsResults.map(async (res) => {
+                            if (res.code !== 200) {
+                                console.error(`[HUB PRODUTOS] Erro ao detalhar anúncio:`, res.body);
+                                return false;
+                            }
+                            const itemData = res.body;
+                            return await this.processarItemCompleto(itemData, conta, accessToken);
+                        });
 
-                    results.push(...batchResults);
-
-                    if (i + batchOfChunksSize < idChunks.length) {
-                        await delay(200); // 200ms de respiro entre lotes de 6 anúncios
+                        return await Promise.all(itemPromises);
+                    } catch (errChunk) {
+                        console.error(`[HUB PRODUTOS] Erro ao buscar bloco ${chunk.join(',')}:`, errChunk.message);
+                        return [];
                     }
-                }
+                });
 
+                const results = await Promise.all(chunkPromises);
                 const qtdAnuncios = results.flat().filter(r => r === true).length;
 
                 console.log(`Fim da busca aprofundada! Anúncios inseridos com sucesso nesta leva: ${qtdAnuncios}`);
@@ -983,9 +975,9 @@ class HubProdutosService {
             const tarifaResult = await this.buscarTarifa(categoryId, precoEfetivo, logisticType, mode, listingTypeId, accessToken, idAnuncio);
             const { tarifa, taxa_fixa } = tarifaResult;
 
-            // Buscar Frete baseado no Preço Efetivo
+            // Buscar Frete baseado no Preço Efetivo (direto pelo item ou fallback de dimensões)
             let frete = 0;
-            if (altura && largura && comprimento && peso) {
+            if (idAnuncio || (altura && largura && comprimento && peso)) {
                 frete = await this.buscarFrete(sellerId, precoEfetivo, listingTypeId, mode, condition, logisticType, freeShipping, stateId, cityId, zipCode, altura, largura, comprimento, peso, accessToken, idAnuncio);
             }
 
@@ -1119,19 +1111,53 @@ class HubProdutosService {
     async buscarFrete(sellerId, price, listingTypeId, mode, condition, logisticType, freeShipping, stateId, cityId, zipCode, altura, largura, comprimento, peso, accessToken, idAnuncio, maxRetries = 2) {
         for (let tentativa = 1; tentativa <= maxRetries; tentativa++) {
             try {
-                const h = parseInt(altura) || 0;
-                const w = parseInt(largura) || 0;
-                const l = parseInt(comprimento) || 0;
-                const p = parseInt(peso) || 0;
-                const dimensionsStr = `${h}x${w}x${l},${p}`;
+                // 1. Tenta buscar o frete real do anúncio (com descontos de reputação, subsídios de frete grátis do ML e regras da conta)
+                if (idAnuncio) {
+                    try {
+                        const destZip = zipCode || '01001000';
+                        const itemShipUrl = `${ML_API_URL}/items/${idAnuncio}/shipping_options?zip_code=${destZip}`;
+                        const resItem = await axios.get(itemShipUrl, {
+                            headers: { 'Authorization': `Bearer ${accessToken}` },
+                            timeout: 10000
+                        });
 
-                const freteUrl = `${ML_API_URL}/users/${sellerId}/shipping_options/free?dimensions=${dimensionsStr}&item_price=${price}&listing_type_id=${listingTypeId}&mode=${mode}&condition=${condition}&logistic_type=${logisticType}&free_shipping=${freeShipping}&currency_id=BRL&state_id=${stateId}&city_id=${cityId}&zip_code=${zipCode}`;
+                        const options = resItem.data?.options || [];
+                        const recommended = options.find(o => o.display === 'recommended') || options.find(o => o.shipping_method_type === 'standard') || options[0];
 
-                const response = await axios.get(freteUrl, {
-                    headers: { 'Authorization': `Bearer ${accessToken}` },
-                    timeout: 10000
-                });
-                return response.data?.coverage?.all_country?.list_cost || 0;
+                        if (recommended && (recommended.list_cost != null || recommended.cost != null)) {
+                            const valorFrete = Number(recommended.list_cost || recommended.cost || 0);
+                            if (valorFrete > 0) {
+                                return valorFrete;
+                            }
+                        }
+                    } catch (errItem) {
+                        const statusItem = errItem.response?.status;
+                        if (statusItem === 429 && tentativa < maxRetries) {
+                            await delay(1500 * tentativa);
+                            continue;
+                        }
+                        // Se der erro diferente de 429 (ex: 404 para modos especiais), segue para o fallback genérico
+                    }
+                }
+
+                // 2. Fallback: Cálculo genérico pela tabela de frete do seller caso o item não retorne options
+                if (altura && largura && comprimento && peso) {
+                    const h = parseInt(altura) || 0;
+                    const w = parseInt(largura) || 0;
+                    const l = parseInt(comprimento) || 0;
+                    const p = parseInt(peso) || 0;
+                    const dimensionsStr = `${h}x${w}x${l},${p}`;
+
+                    const freteUrl = `${ML_API_URL}/users/${sellerId}/shipping_options/free?dimensions=${dimensionsStr}&item_price=${price}&listing_type_id=${listingTypeId}&mode=${mode}&condition=${condition}&logistic_type=${logisticType}&free_shipping=${freeShipping}&currency_id=BRL&state_id=${stateId}&city_id=${cityId}&zip_code=${zipCode}`;
+
+                    const response = await axios.get(freteUrl, {
+                        headers: { 'Authorization': `Bearer ${accessToken}` },
+                        timeout: 10000
+                    });
+                    return response.data?.coverage?.all_country?.list_cost || 0;
+                }
+
+                return 0;
             } catch (err) {
                 const status = err.response?.status;
                 if (status === 429 && tentativa < maxRetries) {

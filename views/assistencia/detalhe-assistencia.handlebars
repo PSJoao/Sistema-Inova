@@ -124,6 +124,11 @@
                             <p class="mb-0" style="padding-top: 20px;"><strong>Data Resolução:</strong> {{assistencia.data_resolucao_fmt}}</p>
                         </div>
                     {{/if}}
+                    {{#if assistencia.data_acao_fmt}}
+                        <div class="action-info" style="padding-top: 10px;">
+                            <p class="mb-0 text-muted" style="font-size: 0.9rem;"><strong>Última Ação:</strong> {{assistencia.data_acao_fmt}}</p>
+                        </div>
+                    {{/if}}
                 </div>
             </div>
 

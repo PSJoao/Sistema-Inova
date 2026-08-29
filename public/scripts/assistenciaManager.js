@@ -169,7 +169,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <input type="checkbox" class="form-check-input row-checkbox" data-id="${assist.id}" ${isChecked ? 'checked' : ''}>
             </div>
             <div class="status-cell"><span class="status-badge status-${assist.situacao.toLowerCase().replace(/\s+/g, '-')}">${assist.situacao}</span></div>
-            <div>${assist.data_acao_fmt || 'N/A'}</div>
+            <div class="data-acao-cell">${assist.data_acao_fmt || 'N/A'}</div>
             <div>${assist.nf_origem || 'N/A'}</div>
             <div>${assist.nome_pedido}</div>
             <div class="col-obs ${assist.marcar_como_alerta ? 'alert-cell' : ''}">
@@ -399,6 +399,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             statusBadge.textContent = newStatus;
                             statusBadge.className = `status-badge status-${newStatus.toLowerCase().replace(/\s+/g, '-')}`;
                             selectEl.dataset.currentStatus = newStatus; // Atualiza o status atual no elemento
+
+                            const dataAcaoCell = row.querySelector('.data-acao-cell');
+                            if (dataAcaoCell && result.data_acao_fmt) {
+                                dataAcaoCell.textContent = result.data_acao_fmt;
+                            }
 
                         } catch (error) {
                             console.error('Erro ao atualizar status:', error);
