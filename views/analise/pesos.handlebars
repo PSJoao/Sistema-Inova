@@ -1,0 +1,94 @@
+{{!-- views/analise/pesos.handlebars --}}
+<link rel="stylesheet" href="/public/styles/estoque.css">
+<link rel="stylesheet" href="/public/styles/catalog-group.css">
+<link rel="stylesheet" href="/public/styles/analise-compras.css">
+
+<div class="content-card">
+    {{!-- Cabeçalho da Página no Padrão Inova --}}
+    <div class="page-header-actions">
+        <h1 class="page-title">{{title}}</h1>
+
+        <div style="display: flex; justify-content: end; gap: 10px; flex-wrap: wrap; align-items: center;">
+            <a href="/analise-compras/pedidos" class="btn btn-outline-accent" style="display: inline-flex; align-items: center;">
+                <i class="fas fa-clipboard-list me-2"></i>Controle de Pedidos
+            </a>
+            <a href="/analise-compras" class="btn btn-outline-accent" style="display: inline-flex; align-items: center;">
+                <i class="fas fa-chart-pie me-2"></i>Análise de Compras
+            </a>
+            <button id="btnAbrirModalUpload" class="btn btn-outline-accent" style="display: inline-flex; align-items: center;">
+                <i class="fas fa-file-excel me-2"></i>Subir Planilha
+            </button>
+            <button id="btnAdicionarLinhaSku" class="btn btn-accent" style="display: inline-flex; align-items: center;">
+                <i class="fas fa-plus me-2"></i>Adicionar SKU
+            </button>
+        </div>
+    </div>
+
+    {{!-- Barra de Filtros --}}
+    <div class="estoque-filters-bar">
+        {{!-- Busca Rápida por SKU --}}
+        <div class="estoque-filter-group" style="flex-grow: 1; min-width: 320px;">
+            <label for="buscaGeral">Busca Rápida</label>
+            <div class="search-input-group">
+                <input type="text" id="buscaGeral" class="form-control" placeholder="Buscar por SKU (ex: E-8494-1)...">
+            </div>
+        </div>
+
+        {{!-- Ordenação --}}
+        <div class="estoque-filter-group" style="min-width: 180px;">
+            <label for="selectOrdenacaoPesos">Ordenar por</label>
+            <select id="selectOrdenacaoPesos" class="form-control">
+                <option value="sku_asc" selected>SKU (A-Z)</option>
+                <option value="sku_desc">SKU (Z-A)</option>
+                <option value="peso_desc">Maior Peso</option>
+                <option value="peso_asc">Menor Peso</option>
+            </select>
+        </div>
+
+        {{!-- Limite de Linhas --}}
+        <div class="estoque-filter-group" style="min-width: 100px;">
+            <label for="filtroLimite">Mostrar</label>
+            <select id="filtroLimite" class="form-control">
+                <option value="20">20</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+                <option value="todos">Todos</option>
+            </select>
+        </div>
+    </div>
+
+    {{!-- Container da Tabela no Estilo Idêntico à Análise de Compras --}}
+    <div class="table-responsive mt-3" style="max-height: calc(100vh - 180px); overflow: auto;">
+        <table class="table" id="tabela-estoque" style="width: 100%; table-layout: fixed;">
+            <thead style="position: sticky; top: 0; z-index: 10; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
+                <tr>
+                    <th class="sortable text-center" data-column="sku" style="width: 45%;">SKU da Estrutura</th>
+                    <th class="sortable text-center" data-column="peso" style="width: 40%;">Peso Unitário (KG)</th>
+                    <th class="text-center" style="width: 15%;">Ações</th>
+                </tr>
+            </thead>
+            <tbody id="table-body">
+                <tr>
+                    <td colspan="3" class="text-center py-4 text-muted">
+                        <div class="modal-spinner" style="display: inline-block;"></div> Carregando pesos dos produtos...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    {{!-- Estado Vazio no Padrão do Sistema --}}
+    <div id="empty-state" class="estoque-empty-state" style="display: none;">
+        <i class="fas fa-boxes"></i>
+        <p id="empty-state-title">Nenhum SKU com peso cadastrado.</p>
+        <p id="empty-state-sub" style="font-size: 0.85rem;">Faça o upload de uma planilha Excel ou adicione SKUs diretamente na tabela.</p>
+    </div>
+
+    {{!-- Paginação --}}
+    <div id="pagination-container" class="estoque-pagination"></div>
+</div>
+
+{{#section "scripts"}}
+<script src="/public/scripts/pesosComprasManager.js"></script>
+{{/section}}

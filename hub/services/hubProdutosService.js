@@ -8,6 +8,14 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 class HubProdutosService {
     constructor() {
         this._syncManualEmAndamento = false;
+        this._isSincronizando = false;
+    }
+
+    /**
+     * Retorna se alguma rotina de sincronização de anúncios/promoções está ativa.
+     */
+    isSincronizando() {
+        return !!(this._isSincronizando || this._syncManualEmAndamento);
     }
 
     // =====================================================
@@ -353,11 +361,12 @@ class HubProdutosService {
      * Possui trava para evitar execuções simultâneas.
      */
     async sincronizarAnunciosManuais(sellerIds) {
-        if (this._syncManualEmAndamento) {
+        if (this._syncManualEmAndamento || this._isSincronizando) {
             throw new Error('SYNC_EM_ANDAMENTO');
         }
 
         this._syncManualEmAndamento = true;
+        this._isSincronizando = true;
         console.log(`[HUB PRODUTOS] Sincronização manual iniciada para sellers: ${sellerIds.join(', ')}`);
 
         try {
@@ -394,6 +403,7 @@ class HubProdutosService {
             throw error;
         } finally {
             this._syncManualEmAndamento = false;
+            this._isSincronizando = false;
         }
     }
 
@@ -404,6 +414,7 @@ class HubProdutosService {
         const cleanIds = Array.from(new Set(itemIds.map(id => String(id).trim().toUpperCase()))).filter(id => id.startsWith('MLB') || id.length >= 8);
         if (cleanIds.length === 0) return 0;
 
+        this._isSincronizando = true;
         try {
             const contasResult = await poolHub.query('SELECT * FROM hub_ml_contas WHERE ativo = TRUE OR id IN (6, 7)');
 
@@ -429,7 +440,8 @@ class HubProdutosService {
                         const idsBatch = chunk.join(',');
                         const itemsUrl = `${ML_API_URL}/items?ids=${idsBatch}`;
                         const itemsResponse = await axios.get(itemsUrl, {
-                            headers: { 'Authorization': `Bearer ${accessToken}` }
+                            headers: { 'Authorization': `Bearer ${accessToken}` },
+                            timeout: 15000
                         });
 
                         const itemsResults = itemsResponse.data || [];
@@ -459,6 +471,8 @@ class HubProdutosService {
         } catch (error) {
             console.error('[HUB PRODUTOS] Erro ao sincronizar anúncios específicos:', error.message);
             return 0;
+        } finally {
+            this._isSincronizando = false;
         }
     }
 
@@ -484,6 +498,7 @@ class HubProdutosService {
         }
 
         console.log(`[HUB PRODUTOS PROMOS] Iniciando sincronização dedicada de promoções para ${cleanIds.length} anúncio(s)...`);
+        this._isSincronizando = true;
 
         try {
             // Busca todas as contas ML ativas
@@ -595,10 +610,18 @@ class HubProdutosService {
         } catch (error) {
             console.error('[HUB PRODUTOS PROMOS] Erro crítico na sincronização de promoções:', error.message);
             throw error;
+        } finally {
+            this._isSincronizando = false;
         }
     }
 
     async sincronizarAnuncios() {
+        if (this._isSincronizando) {
+            console.log('[HUB PRODUTOS] Sincronização de anúncios já em andamento. Pulando.');
+            return;
+        }
+
+        this._isSincronizando = true;
         console.log('[HUB PRODUTOS] Iniciando sincronização de anúncios...');
         try {
             // Busca contas ativas no banco principal do HUB
@@ -609,6 +632,8 @@ class HubProdutosService {
             }
         } catch (error) {
             console.error('[HUB PRODUTOS] Erro crítico na sincronização:', error);
+        } finally {
+            this._isSincronizando = false;
         }
     }
 
@@ -663,31 +688,43 @@ class HubProdutosService {
                     idChunks.push(idsAnuncios.slice(i, i + chunkSize));
                 }
 
-                // 3. Busca e processa os detalhes de todos os blocos concorrentemente
-                const results = await Promise.all(idChunks.map(async (chunk) => {
-                    try {
-                        const idsBatch = chunk.join(',');
-                        const itemsUrl = `${ML_API_URL}/items?ids=${idsBatch}`;
-                        const itemsResponse = await axios.get(itemsUrl, {
-                            headers: { 'Authorization': `Bearer ${accessToken}` }
-                        });
+                // 3. Busca e processa os detalhes em lotes controlados com respiro para evitar 429 Too Many Requests
+                const results = [];
+                const batchOfChunksSize = 3; // 3 chunks de 2 = 6 itens simultâneos
+                for (let i = 0; i < idChunks.length; i += batchOfChunksSize) {
+                    const currentChunksBatch = idChunks.slice(i, i + batchOfChunksSize);
+                    const batchResults = await Promise.all(currentChunksBatch.map(async (chunk) => {
+                        try {
+                            const idsBatch = chunk.join(',');
+                            const itemsUrl = `${ML_API_URL}/items?ids=${idsBatch}`;
+                            const itemsResponse = await axios.get(itemsUrl, {
+                                headers: { 'Authorization': `Bearer ${accessToken}` },
+                                timeout: 15000
+                            });
 
-                        const itemsResults = itemsResponse.data || [];
+                            const itemsResults = itemsResponse.data || [];
 
-                        // Processa cada item do bloco
-                        return await Promise.all(itemsResults.map(async (res) => {
-                            if (res.code !== 200) {
-                                console.error(`[HUB PRODUTOS] Erro ao detalhar anúncio:`, res.body);
-                                return false;
-                            }
-                            const itemData = res.body;
-                            return await this.processarItemCompleto(itemData, conta, accessToken);
-                        }));
-                    } catch (errChunk) {
-                        console.error(`[HUB PRODUTOS] Erro ao buscar bloco ${chunk.join(',')}:`, errChunk.message);
-                        return [];
+                            // Processa cada item do bloco
+                            return await Promise.all(itemsResults.map(async (res) => {
+                                if (res.code !== 200) {
+                                    console.error(`[HUB PRODUTOS] Erro ao detalhar anúncio:`, res.body);
+                                    return false;
+                                }
+                                const itemData = res.body;
+                                return await this.processarItemCompleto(itemData, conta, accessToken);
+                            }));
+                        } catch (errChunk) {
+                            console.error(`[HUB PRODUTOS] Erro ao buscar bloco ${chunk.join(',')}:`, errChunk.message);
+                            return [];
+                        }
+                    }));
+
+                    results.push(...batchResults);
+
+                    if (i + batchOfChunksSize < idChunks.length) {
+                        await delay(200); // 200ms de respiro entre lotes de 6 anúncios
                     }
-                }));
+                }
 
                 const qtdAnuncios = results.flat().filter(r => r === true).length;
 
@@ -1049,143 +1086,192 @@ class HubProdutosService {
         }
     }
 
-    async buscarTarifa(categoryId, price, logisticType, mode, listingTypeId, accessToken, idAnuncio) {
-        try {
-            const tarifaUrl = `${ML_API_URL}/sites/MLB/listing_prices?category_id=${categoryId}&price=${price}&logistic_type=${logisticType}&shipping_modes=${mode}&listing_type_id=${listingTypeId}`;
-            const response = await axios.get(tarifaUrl, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
-            });
+    async buscarTarifa(categoryId, price, logisticType, mode, listingTypeId, accessToken, idAnuncio, maxRetries = 2) {
+        for (let tentativa = 1; tentativa <= maxRetries; tentativa++) {
+            try {
+                const tarifaUrl = `${ML_API_URL}/sites/MLB/listing_prices?category_id=${categoryId}&price=${price}&logistic_type=${logisticType}&shipping_modes=${mode}&listing_type_id=${listingTypeId}`;
+                const response = await axios.get(tarifaUrl, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` },
+                    timeout: 10000
+                });
 
-            let dataObj = response.data;
-            if (Array.isArray(dataObj)) {
-                dataObj = dataObj.find(item => item.listing_type_id === listingTypeId) || dataObj[0] || {};
-            }
-
-            return {
-                tarifa: dataObj.sale_fee_details?.percentage_fee || 0,
-                taxa_fixa: dataObj.sale_fee_details?.fixed_fee || 0
-            };
-        } catch (err) {
-            console.warn(`[HUB PRODUTOS] Não foi possível obter tarifa para ${idAnuncio}`);
-            return { tarifa: 0, taxa_fixa: 0 };
-        }
-    }
-
-    async buscarFrete(sellerId, price, listingTypeId, mode, condition, logisticType, freeShipping, stateId, cityId, zipCode, altura, largura, comprimento, peso, accessToken, idAnuncio) {
-        try {
-            const h = parseInt(altura) || 0;
-            const w = parseInt(largura) || 0;
-            const l = parseInt(comprimento) || 0;
-            const p = parseInt(peso) || 0;
-            const dimensionsStr = `${h}x${w}x${l},${p}`;
-
-            const freteUrl = `${ML_API_URL}/users/${sellerId}/shipping_options/free?dimensions=${dimensionsStr}&item_price=${price}&listing_type_id=${listingTypeId}&mode=${mode}&condition=${condition}&logistic_type=${logisticType}&free_shipping=${freeShipping}&currency_id=BRL&state_id=${stateId}&city_id=${cityId}&zip_code=${zipCode}`;
-
-            const response = await axios.get(freteUrl, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
-            });
-            return response.data?.coverage?.all_country?.list_cost || 0;
-        } catch (err) {
-            console.warn(`[HUB PRODUTOS] Não foi possível obter frete para ${idAnuncio}:`, err.response?.data?.message || err.message);
-            return 0;
-        }
-    }
-
-    async buscarAds(idAnuncio, accessToken) {
-        try {
-            const adsUrl = `${ML_API_URL}/advertising/MLB/product_ads/ads/${idAnuncio}`;
-            const response = await axios.get(adsUrl, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
-            });
-            return {
-                tem_publicidade: true,
-                preco_publicidade: response.data.metrics_summary?.cost || 0,
-                cliques_publicidade: response.data.metrics_summary?.clicks || 0
-            };
-        } catch (err) {
-            return {
-                tem_publicidade: false,
-                preco_publicidade: null,
-                cliques_publicidade: null
-            };
-        }
-    }
-
-    async buscarCatalogWinner(idAnuncio, accessToken) {
-        try {
-            const url = `${ML_API_URL}/items/${idAnuncio}/price_to_win?siteId=MLB&version=v2`;
-            const response = await axios.get(url, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
-            });
-            // O retorno contém status como 'winning', 'losing' ou 'tied'.
-            if (response.data && (response.data.status === 'winning' || response.data.status === 'tied' || response.data.competitors_sharing_first_place > 0)) {
-                return true;
-            }
-            return false;
-        } catch (err) {
-            console.warn(`[HUB PRODUTOS] Erro ao buscar price_to_win do anúncio ${idAnuncio}:`, err.response?.data?.message || err.message);
-            return false;
-        }
-    }
-
-    async buscarPrecoCampanha(idAnuncio, accessToken) {
-        try {
-            // 1. Descobrir as promoções do anúncio (com app_version=v2, mas sem o user_id)
-            const urlPromos = `${ML_API_URL}/seller-promotions/items/${idAnuncio}?app_version=v2`;
-            const resPromos = await axios.get(urlPromos, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
-            });
-
-            if (!resPromos.data || !Array.isArray(resPromos.data) || resPromos.data.length === 0) {
-                return { precoCampanha: null, promocoes: [] };
-            }
-
-            const allPromos = resPromos.data;
-
-            // 2. Filtrar apenas as promoções ativas/iniciadas
-            const promosAtivas = allPromos.filter(p => p.status === 'started' || p.status === 'active');
-
-            let menorPreco = null;
-            for (const promo of promosAtivas) {
-                if (promo.price && (menorPreco === null || promo.price < menorPreco)) {
-                    menorPreco = promo.price;
+                let dataObj = response.data;
+                if (Array.isArray(dataObj)) {
+                    dataObj = dataObj.find(item => item.listing_type_id === listingTypeId) || dataObj[0] || {};
                 }
-            }
-
-            return { precoCampanha: menorPreco, promocoes: allPromos };
-
-        } catch (err) {
-            console.warn(`[HUB PRODUTOS] Erro ao buscar preço de campanha para o anúncio ${idAnuncio}:`, err.response?.data?.message || err.message);
-            return { precoCampanha: null, promocoes: [] };
-        }
-    }
-
-    async buscarDataUltimaVenda(sellerId, idAnuncio, accessToken) {
-        if (!sellerId || !idAnuncio) return { dataUltimaVenda: null, diasSemVender: null };
-
-        try {
-            const url = `${ML_API_URL}/orders/search?seller=${sellerId}&q=${idAnuncio}&sort=date_desc&limit=1`;
-            const response = await axios.get(url, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
-            });
-
-            const results = response.data?.results || [];
-            if (results.length > 0 && results[0].date_created) {
-                const dateStr = results[0].date_created;
-                const lastSaleDate = new Date(dateStr);
-                const now = new Date();
-                const diffMs = now.getTime() - lastSaleDate.getTime();
-                const diffDays = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
 
                 return {
-                    dataUltimaVenda: dateStr,
-                    diasSemVender: diffDays
+                    tarifa: dataObj.sale_fee_details?.percentage_fee || 0,
+                    taxa_fixa: dataObj.sale_fee_details?.fixed_fee || 0
+                };
+            } catch (err) {
+                const status = err.response?.status;
+                if (status === 429 && tentativa < maxRetries) {
+                    await delay(1500 * tentativa);
+                    continue;
+                }
+                console.warn(`[HUB PRODUTOS] Não foi possível obter tarifa para ${idAnuncio}`);
+                return { tarifa: 0, taxa_fixa: 0 };
+            }
+        }
+    }
+
+    async buscarFrete(sellerId, price, listingTypeId, mode, condition, logisticType, freeShipping, stateId, cityId, zipCode, altura, largura, comprimento, peso, accessToken, idAnuncio, maxRetries = 2) {
+        for (let tentativa = 1; tentativa <= maxRetries; tentativa++) {
+            try {
+                const h = parseInt(altura) || 0;
+                const w = parseInt(largura) || 0;
+                const l = parseInt(comprimento) || 0;
+                const p = parseInt(peso) || 0;
+                const dimensionsStr = `${h}x${w}x${l},${p}`;
+
+                const freteUrl = `${ML_API_URL}/users/${sellerId}/shipping_options/free?dimensions=${dimensionsStr}&item_price=${price}&listing_type_id=${listingTypeId}&mode=${mode}&condition=${condition}&logistic_type=${logisticType}&free_shipping=${freeShipping}&currency_id=BRL&state_id=${stateId}&city_id=${cityId}&zip_code=${zipCode}`;
+
+                const response = await axios.get(freteUrl, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` },
+                    timeout: 10000
+                });
+                return response.data?.coverage?.all_country?.list_cost || 0;
+            } catch (err) {
+                const status = err.response?.status;
+                if (status === 429 && tentativa < maxRetries) {
+                    await delay(1500 * tentativa);
+                    continue;
+                }
+                console.warn(`[HUB PRODUTOS] Não foi possível obter frete para ${idAnuncio}:`, err.response?.data?.message || err.message);
+                return 0;
+            }
+        }
+    }
+
+    async buscarAds(idAnuncio, accessToken, maxRetries = 2) {
+        for (let tentativa = 1; tentativa <= maxRetries; tentativa++) {
+            try {
+                const adsUrl = `${ML_API_URL}/advertising/MLB/product_ads/ads/${idAnuncio}`;
+                const response = await axios.get(adsUrl, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` },
+                    timeout: 10000
+                });
+                return {
+                    tem_publicidade: true,
+                    preco_publicidade: response.data.metrics_summary?.cost || 0,
+                    cliques_publicidade: response.data.metrics_summary?.clicks || 0
+                };
+            } catch (err) {
+                const status = err.response?.status;
+                if (status === 429 && tentativa < maxRetries) {
+                    await delay(1500 * tentativa);
+                    continue;
+                }
+                return {
+                    tem_publicidade: false,
+                    preco_publicidade: null,
+                    cliques_publicidade: null
                 };
             }
-            return { dataUltimaVenda: null, diasSemVender: null };
-        } catch (err) {
-            console.warn(`[HUB PRODUTOS] Não foi possível buscar data da última venda para o anúncio ${idAnuncio}:`, err.message);
-            return { dataUltimaVenda: null, diasSemVender: null };
+        }
+    }
+
+    async buscarCatalogWinner(idAnuncio, accessToken, maxRetries = 2) {
+        for (let tentativa = 1; tentativa <= maxRetries; tentativa++) {
+            try {
+                const url = `${ML_API_URL}/items/${idAnuncio}/price_to_win?siteId=MLB&version=v2`;
+                const response = await axios.get(url, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` },
+                    timeout: 10000
+                });
+                // O retorno contém status como 'winning', 'losing' ou 'tied'.
+                if (response.data && (response.data.status === 'winning' || response.data.status === 'tied' || response.data.competitors_sharing_first_place > 0)) {
+                    return true;
+                }
+                return false;
+            } catch (err) {
+                const status = err.response?.status;
+                if (status === 429 && tentativa < maxRetries) {
+                    await delay(1500 * tentativa);
+                    continue;
+                }
+                console.warn(`[HUB PRODUTOS] Erro ao buscar price_to_win do anúncio ${idAnuncio}:`, err.response?.data?.message || err.message);
+                return false;
+            }
+        }
+    }
+
+    async buscarPrecoCampanha(idAnuncio, accessToken, maxRetries = 2) {
+        for (let tentativa = 1; tentativa <= maxRetries; tentativa++) {
+            try {
+                // 1. Descobrir as promoções do anúncio (com app_version=v2, mas sem o user_id)
+                const urlPromos = `${ML_API_URL}/seller-promotions/items/${idAnuncio}?app_version=v2`;
+                const resPromos = await axios.get(urlPromos, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` },
+                    timeout: 10000
+                });
+
+                if (!resPromos.data || !Array.isArray(resPromos.data) || resPromos.data.length === 0) {
+                    return { precoCampanha: null, promocoes: [] };
+                }
+
+                const allPromos = resPromos.data;
+
+                // 2. Filtrar apenas as promoções ativas/iniciadas
+                const promosAtivas = allPromos.filter(p => p.status === 'started' || p.status === 'active');
+
+                let menorPreco = null;
+                for (const promo of promosAtivas) {
+                    if (promo.price && (menorPreco === null || promo.price < menorPreco)) {
+                        menorPreco = promo.price;
+                    }
+                }
+
+                return { precoCampanha: menorPreco, promocoes: allPromos };
+
+            } catch (err) {
+                const status = err.response?.status;
+                if (status === 429 && tentativa < maxRetries) {
+                    console.warn(`[HUB PRODUTOS] Rate limit (429) em buscarPrecoCampanha para ${idAnuncio}. Aguardando 1.5s antes da tentativa ${tentativa + 1}/${maxRetries}...`);
+                    await delay(1500 * tentativa);
+                    continue;
+                }
+                console.warn(`[HUB PRODUTOS] Erro ao buscar preço de campanha para o anúncio ${idAnuncio}:`, err.response?.data?.message || err.message);
+                return { precoCampanha: null, promocoes: [] };
+            }
+        }
+    }
+
+    async buscarDataUltimaVenda(sellerId, idAnuncio, accessToken, maxRetries = 2) {
+        if (!sellerId || !idAnuncio) return { dataUltimaVenda: null, diasSemVender: null };
+
+        for (let tentativa = 1; tentativa <= maxRetries; tentativa++) {
+            try {
+                const url = `${ML_API_URL}/orders/search?seller=${sellerId}&q=${idAnuncio}&sort=date_desc&limit=1`;
+                const response = await axios.get(url, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` },
+                    timeout: 10000
+                });
+
+                const results = response.data?.results || [];
+                if (results.length > 0 && results[0].date_created) {
+                    const dateStr = results[0].date_created;
+                    const lastSaleDate = new Date(dateStr);
+                    const now = new Date();
+                    const diffMs = now.getTime() - lastSaleDate.getTime();
+                    const diffDays = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+
+                    return {
+                        dataUltimaVenda: dateStr,
+                        diasSemVender: diffDays
+                    };
+                }
+                return { dataUltimaVenda: null, diasSemVender: null };
+            } catch (err) {
+                const status = err.response?.status;
+                if (status === 429 && tentativa < maxRetries) {
+                    await delay(1500 * tentativa);
+                    continue;
+                }
+                console.warn(`[HUB PRODUTOS] Não foi possível buscar data da última venda para o anúncio ${idAnuncio}:`, err.message);
+                return { dataUltimaVenda: null, diasSemVender: null };
+            }
         }
     }
 

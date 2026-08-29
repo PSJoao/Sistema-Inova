@@ -403,6 +403,16 @@ exports.getProdutoPorId = async (req, res) => {
 };
 
 exports.monitoramentoInstantaneo = async (req, res) => {
+    if (hubProdutosService.isSincronizando && hubProdutosService.isSincronizando()) {
+        console.log('[HUB API] Monitoramento instantâneo pausado pois há sincronização de anúncios em andamento.');
+        return res.status(200).json({
+            sucesso: true,
+            pausado: true,
+            mensagem: 'Sincronização de anúncios em andamento no Hub. Monitoramento instantâneo pausado.',
+            dados: []
+        });
+    }
+
     const clienteId = req.user.id;
     const { ids, pedidos } = req.query;
 

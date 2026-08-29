@@ -127,6 +127,7 @@ app.use((req, res, next) => {
         res.locals.permit_produtos_estoque_dev = isAdmin || modulos.includes('produtos_estoque_dev');
         res.locals.permit_produtos_bipagem_pecas = isAdmin || modulos.includes('produtos_bipagem_pecas');
         res.locals.permit_produtos_anuncios = isAdmin || modulos.includes('produtos_gerenciar');
+        res.locals.permit_produtos_analise_compras = isAdmin || modulos.includes('produtos_analise_compras');
 
         // Expedição
         res.locals.permit_expedicao_ordenador = isAdmin || modulos.includes('expedicao_ordenador');
@@ -149,7 +150,7 @@ app.use((req, res, next) => {
         // Permissões gerais de visualização de módulos (exibição de cards inteiros)
         res.locals.permit_monitoramento = res.locals.permit_monitoramento_madeira_lucas || res.locals.permit_monitoramento_madeira_eliane || res.locals.permit_monitoramento_viavarejo;
         res.locals.permit_faturamento = res.locals.permit_faturamento_gerenciar_emissoes || res.locals.permit_faturamento_gerar_etiquetas || res.locals.permit_faturamento_automatico || res.locals.permit_faturamento_gerenciar_pedidos || res.locals.permit_faturamento_assistencias || res.locals.permit_faturamento_historico_notas;
-        res.locals.permit_produtos = res.locals.permit_produtos_gerenciar || res.locals.permit_produtos_tipos || res.locals.permit_produtos_sincronizar || res.locals.permit_produtos_estoque_dev || res.locals.permit_produtos_bipagem_pecas || res.locals.permit_produtos_anuncios;
+        res.locals.permit_produtos = res.locals.permit_produtos_gerenciar || res.locals.permit_produtos_tipos || res.locals.permit_produtos_sincronizar || res.locals.permit_produtos_estoque_dev || res.locals.permit_produtos_bipagem_pecas || res.locals.permit_produtos_anuncios || res.locals.permit_produtos_analise_compras;
         res.locals.permit_expedicao = res.locals.permit_expedicao_ordenador || res.locals.permit_expedicao_gondolas || res.locals.permit_expedicao_rel_tarde || res.locals.permit_expedicao_bipagem_produtos || res.locals.permit_expedicao_dashboard || res.locals.permit_expedicao_bipagem_exp || res.locals.permit_expedicao_massa;
         res.locals.permit_conferencia = res.locals.permit_conferencia_bipagem || res.locals.permit_conferencia_codigos || res.locals.permit_conferencia_ml_batch;
         res.locals.permit_logistica = res.locals.permit_logistica_relacoes || res.locals.permit_logistica_rastreio;
@@ -165,6 +166,7 @@ app.use((req, res, next) => {
         res.locals.permit_monitoramento = false;
         res.locals.permit_faturamento = false;
         res.locals.permit_produtos = false;
+        res.locals.permit_produtos_analise_compras = false;
         res.locals.permit_expedicao = false;
         res.locals.permit_conferencia = false;
         res.locals.permit_logistica = false;
@@ -295,16 +297,15 @@ cron.schedule('*/1 * * * *', async () => {
 let isHubProdutosSyncRunning = false;
 
 // Agendamento para Sincronizar os Produtos do Hub
-// A expressão '0 22 * * *' faz rodar todos os dias às 22:00.
-// Se quiser mudar, ex: '0 */4 * * *' (a cada 4 horas), ou '0 0 * * 0' (todo domingo).
-/*cron.schedule('0 22 * * *', async () => {
+// Executa nos horários programados: 6h, 9h, 14h e 16h
+cron.schedule('0 6,9,14,16 * * *', async () => {
     if (isHubProdutosSyncRunning) {
         console.log(`[HUB Produtos Cron] Sincronização de anúncios já em andamento. Pulando este ciclo...`);
         return; 
     }
 
     isHubProdutosSyncRunning = true;
-    console.log('[HUB Produtos Cron] Iniciando ciclo de sincronização de anúncios e tarifas...');
+    console.log('[HUB Produtos Cron] Iniciando ciclo de sincronização de anúncios e tarifas (6h, 9h, 14h, 16h)...');
 
     try {
         await hubProdutosService.sincronizarAnuncios();
@@ -319,7 +320,7 @@ let isHubProdutosSyncRunning = false;
 }, {
     scheduled: true,
     timezone: "America/Sao_Paulo"
-});*/
+});
 
 /*cron.schedule('0 3 * * *', async () => {
     console.log(`[CRON Limpeza] Iniciando verificação de PDFs antigos em ${PDF_STORAGE_DIR_CLEANUP}...`);

@@ -130,6 +130,12 @@
                 <li><a href="/pedidos-ml"><i class="fas fa-shopping-bag fa-fw"></i> Pedidos Mercado Livre</a></li>
                 {{/if}}
 
+                {{#if permit_produtos_analise_compras}}
+                <li><a href="/analise-compras"><i class="fas fa-chart-pie fa-fw"></i> Análise de Compras</a></li>
+                <li><a href="/analise-compras/pedidos"><i class="fas fa-clipboard-list fa-fw"></i> Controle de Pedidos</a></li>
+                <li><a href="/analise-compras/pesos"><i class="fas fa-weight-hanging fa-fw"></i> Controle de Pesos</a></li>
+                {{/if}}
+
                 {{#if permit_produtos_tipos}}
                 <li><a href="/tipos"><i class="fas fa-file-export fa-fw"></i> Gerenciar Tipos de Produtos</a></li>
                 {{/if}}

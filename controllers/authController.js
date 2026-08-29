@@ -417,6 +417,7 @@ exports.renderEditUser = async (req, res) => {
       has_produtos_sincronizar: modulos.includes('produtos_sincronizar'),
       has_produtos_estoque_dev: modulos.includes('produtos_estoque_dev'),
       has_produtos_bipagem_pecas: modulos.includes('produtos_bipagem_pecas'),
+      has_produtos_analise_compras: modulos.includes('produtos_analise_compras'),
 
       has_expedicao_ordenador: modulos.includes('expedicao_ordenador'),
       has_expedicao_gondolas: modulos.includes('expedicao_gondolas'),

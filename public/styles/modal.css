@@ -126,3 +126,11 @@
 .modal-spinner + #customModalMessage {
     /* margin-top: 10px; */ /* Já coberto pelo margin-bottom do spinner */
 }
+
+/* Modificador para modais com conteúdo complexo (formulários, tabelas, etc.) */
+.custom-modal.modal-wide {
+    max-width: 780px;
+}
+.custom-modal.modal-wide .custom-modal-body {
+    max-height: 75vh;
+}

@@ -95,6 +95,12 @@
         <a href="/pedidos-ml" class="btn btn-accent btn-card"><i class="fas fa-shopping-bag"></i> Pedidos ML</a>
         {{/if}}
 
+        {{#if permit_produtos_analise_compras}}
+        <a href="/analise-compras" class="btn btn-accent btn-card"><i class="fas fa-chart-pie"></i> Análise de Compras</a>
+        <a href="/analise-compras/pedidos" class="btn btn-accent btn-card"><i class="fas fa-clipboard-list"></i> Controle de Pedidos</a>
+        <a href="/analise-compras/pesos" class="btn btn-accent btn-card"><i class="fas fa-weight-hanging"></i> Controle de Pesos</a>
+        {{/if}}
+
         {{#if permit_produtos_tipos}}
         <a href="/tipos" class="btn btn-accent btn-card"><i class="fas fa-file-export"></i> Gerenciar Tipos</a>
         {{/if}}

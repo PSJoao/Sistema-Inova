@@ -1,0 +1,111 @@
+{{!--
+views/analise/importar-vendas.handlebars
+Página dedicada para upload e processamento simultâneo dos 4 relatórios de vendas Excel.
+--}}
+<link rel="stylesheet" href="/public/styles/estoque.css">
+<link rel="stylesheet" href="/public/styles/analise-compras.css">
+
+<div class="content-card">
+    {{!-- Cabeçalho da Página --}}
+    <div class="page-header-actions">
+        <h1 class="page-title">Importar Relatórios de Vendas</h1>
+        <div>
+            <a href="/analise-compras" class="btn btn-outline-accent"
+                style="display: inline-flex; align-items: center;">
+                <i class="fas fa-arrow-left me-2"></i>Voltar para Análise
+            </a>
+        </div>
+    </div>
+
+    <div class="upload-vendas-container mt-3">
+        {{!-- Caixa de Instruções e Regras de Negócio --}}
+        <div class="upload-info-box">
+            <h4><i class="fas fa-info-circle"></i> Regras para Importação de Vendas</h4>
+            <p>
+                Para alimentar com precisão os cálculos de média móvel, projeção e sugestão de compras do sistema, é
+                obrigatório enviar <strong>exatamente os 4 arquivos simultaneamente</strong>.
+            </p>
+            <ul>
+                <li><strong>Estrutura dos Arquivos Excel (.xlsx, .xls, .csv):</strong>
+                    <ul>
+                        <li><strong style="color: var(--accent-orange, #f07c00);">Coluna A:</strong> Código da
+                            estrutura.</li>
+                        <li><strong style="color: var(--accent-orange, #f07c00);">Coluna F:</strong> Quantidade de
+                            Saídas.</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+
+        {{!-- Formulário de Upload dos 4 Períodos --}}
+        <form id="formUploadVendas" enctype="multipart/form-data">
+            <div class="upload-grid">
+                {{!-- 3 Dias --}}
+                <div class="upload-periodo-card" data-periodo="3">
+                    <span class="upload-periodo-badge">Últimos 3 Dias</span>
+                    <i class="fas fa-file-upload upload-card-icon"></i>
+                    <div class="upload-placeholder-text">Clique ou arraste o arquivo de <strong>3 dias</strong></div>
+                    <div class="upload-file-name"></div>
+                    <div class="upload-file-size"></div>
+                    <input type="file" class="input-venda-file" data-periodo="3" accept=".xlsx,.xls,.csv"
+                        style="display: none;" required>
+                </div>
+
+                {{!-- 7 Dias --}}
+                <div class="upload-periodo-card" data-periodo="7">
+                    <span class="upload-periodo-badge">Últimos 7 Dias</span>
+                    <i class="fas fa-file-upload upload-card-icon"></i>
+                    <div class="upload-placeholder-text">Clique ou arraste o arquivo de <strong>7 dias</strong></div>
+                    <div class="upload-file-name"></div>
+                    <div class="upload-file-size"></div>
+                    <input type="file" class="input-venda-file" data-periodo="7" accept=".xlsx,.xls,.csv"
+                        style="display: none;" required>
+                </div>
+
+                {{!-- 15 Dias --}}
+                <div class="upload-periodo-card" data-periodo="15">
+                    <span class="upload-periodo-badge">Últimos 15 Dias</span>
+                    <i class="fas fa-file-upload upload-card-icon"></i>
+                    <div class="upload-placeholder-text">Clique ou arraste o arquivo de <strong>15 dias</strong></div>
+                    <div class="upload-file-name"></div>
+                    <div class="upload-file-size"></div>
+                    <input type="file" class="input-venda-file" data-periodo="15" accept=".xlsx,.xls,.csv"
+                        style="display: none;" required>
+                </div>
+
+                {{!-- 30 Dias --}}
+                <div class="upload-periodo-card" data-periodo="30">
+                    <span class="upload-periodo-badge">Últimos 30 Dias</span>
+                    <i class="fas fa-file-upload upload-card-icon"></i>
+                    <div class="upload-placeholder-text">Clique ou arraste o arquivo de <strong>30 dias</strong></div>
+                    <div class="upload-file-name"></div>
+                    <div class="upload-file-size"></div>
+                    <input type="file" class="input-venda-file" data-periodo="30" accept=".xlsx,.xls,.csv"
+                        style="display: none;" required>
+                </div>
+            </div>
+
+            {{!-- Status / Feedback Message --}}
+            <div id="uploadFeedbackBox"
+                style="display: none; padding: 14px; border-radius: 8px; margin-bottom: 20px; text-align: center; font-size: 0.9rem;">
+                <div id="uploadSpinner" class="modal-spinner" style="display: none; margin: 0 auto 10px auto;"></div>
+                <div id="uploadStatusMsg" style="font-weight: 600;"></div>
+            </div>
+
+            {{!-- Ações --}}
+            <div class="upload-actions-bar">
+                <button type="button" id="btnLimparArquivos" class="btn btn-outline-accent" style="display: none;">
+                    <i class="fas fa-trash-alt me-2"></i>Limpar Seleção
+                </button>
+                <button type="submit" id="btnProcessarVendas" class="btn btn-accent"
+                    style="font-size: 1rem; padding: 10px 24px;" disabled>
+                    <i class="fas fa-cloud-upload-alt me-2"></i>Processar e Importar Vendas
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{{#section "scripts"}}
+<script src="/public/scripts/importarVendasManager.js"></script>
+{{/section}}

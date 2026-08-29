@@ -520,6 +520,12 @@ async function executarMonitoramentoPorLote(pedidos, token) {
     try {
         clientMon = await poolMon.connect();
         for (let i = 0; i < pedidos.length; i += 20) {
+            const hubProdutosService = require('../hub/services/hubProdutosService');
+            if (hubProdutosService.isSincronizando && hubProdutosService.isSincronizando()) {
+                console.log('[HubPedidos] Sincronização de anúncios iniciada no Hub. Interrompendo lote restante de pedidos para evitar conflito de requisições.');
+                break;
+            }
+
             const lote = pedidos.slice(i, i + 20);
             const ids = lote.map(p => p.id_envio_ml || p.pack_id).filter(Boolean);
             const pedidosIds = lote.map(p => p.numero_loja || p.pack_id).filter(Boolean);
@@ -545,18 +551,53 @@ async function executarMonitoramentoPorLote(pedidos, token) {
                     const idEnvioStr = item.id_envio_ml ? String(item.id_envio_ml) : null;
                     const packIdStr = item.pack_id ? String(item.pack_id) : null;
 
-                    const updateRes = await clientMon.query(
-                        `UPDATE cached_etiquetas_ml 
-                         SET status_ml = $1,
-                             id_envio_ml = COALESCE(id_envio_ml, $2::text),
-                             pack_id = COALESCE(pack_id, $3::text)
-                         WHERE numero_loja = $4::text
-                            OR ($2::text IS NOT NULL AND (id_envio_ml = $2::text OR pack_id = $2::text))
-                            OR ($3::text IS NOT NULL AND (numero_loja = $3::text OR pack_id = $3::text))`,
-                        [statusTraduzido, idEnvioStr, packIdStr, idPedidoStr]
+                    // Procura o pedido correspondente no lote atual em memória
+                    const matched = lote.find(p => 
+                        (idPedidoStr && (p.numero_loja === idPedidoStr || p.pack_id === idPedidoStr)) ||
+                        (idEnvioStr && (p.id_envio_ml === idEnvioStr || p.pack_id === idEnvioStr)) ||
+                        (packIdStr && (p.pack_id === packIdStr || p.numero_loja === packIdStr))
                     );
-                    atualizados += updateRes.rowCount;
+
+                    if (matched && matched.id) {
+                        // Atualização direta e instantânea pela Primary Key (id)
+                        const updateRes = await clientMon.query(
+                            `UPDATE cached_etiquetas_ml 
+                             SET status_ml = $1,
+                                 id_envio_ml = COALESCE(id_envio_ml, $2::text),
+                                 pack_id = COALESCE(pack_id, $3::text),
+                                 last_processed_at = timestamp_virtual_expedicao()
+                             WHERE id = $4`,
+                            [statusTraduzido, idEnvioStr, packIdStr, matched.id]
+                        );
+                        atualizados += updateRes.rowCount;
+                    } else {
+                        // Fallback com condições de índice
+                        const updateRes = await clientMon.query(
+                            `UPDATE cached_etiquetas_ml 
+                             SET status_ml = $1,
+                                 id_envio_ml = COALESCE(id_envio_ml, $2::text),
+                                 pack_id = COALESCE(pack_id, $3::text),
+                                 last_processed_at = timestamp_virtual_expedicao()
+                             WHERE numero_loja = $4::text
+                                OR ($2::text IS NOT NULL AND (id_envio_ml = $2::text OR pack_id = $2::text))
+                                OR ($3::text IS NOT NULL AND (numero_loja = $3::text OR pack_id = $3::text))`,
+                            [statusTraduzido, idEnvioStr, packIdStr, idPedidoStr]
+                        );
+                        atualizados += updateRes.rowCount;
+                    }
                 }
+
+                // Atualiza last_processed_at para todos os pedidos do lote para garantir rotação uniforme
+                const loteIds = lote.map(p => p.id).filter(Boolean);
+                if (loteIds.length > 0) {
+                    await clientMon.query(
+                        `UPDATE cached_etiquetas_ml 
+                         SET last_processed_at = timestamp_virtual_expedicao() 
+                         WHERE id = ANY($1::int[])`,
+                        [loteIds]
+                    );
+                }
+
                 totalAtualizados += atualizados;
             } catch (err) {
                 console.error(`[HubPedidos] Erro no lote ${i}-${i + 20}:`, err.message);
@@ -617,6 +658,12 @@ async function monitorarPorConta(pedidos) {
 }
 
 async function monitorarPadrao() {
+    const hubProdutosService = require('../hub/services/hubProdutosService');
+    if (hubProdutosService.isSincronizando && hubProdutosService.isSincronizando()) {
+        console.log('[HubPedidos] Sincronização de anúncios em andamento no Hub. Pausando monitoramento instantâneo de pedidos neste ciclo.');
+        return;
+    }
+
     if (isMonitorandoPadrao) return;
     isMonitorandoPadrao = true;
     console.log('[HubPedidos] Monitoramento Padrão iniciado.');
@@ -632,11 +679,15 @@ async function monitorarPadrao() {
                     m.id_envio_ml, 
                     m.pack_id, 
                     m.numero_loja,
-                    COALESCE(n.bling_account, p.bling_account) as bling_account
+                    n.bling_account
                 FROM cached_etiquetas_ml m
                 LEFT JOIN cached_nfe n ON m.nfe_numero = n.nfe_numero
-                LEFT JOIN cached_pedido_venda p ON m.numero_loja = p.numero_loja OR m.pack_id = p.numero_loja
-                WHERE m.status != 'cancelado' AND m.status != 'impresso'
+                WHERE m.status != 'cancelado' 
+                  AND m.status != 'impresso'
+                  AND (m.status_ml IS NULL OR m.status_ml NOT IN ('Entregue', 'Cancelado'))
+                  AND m.created_at >= NOW() - INTERVAL '30 days'
+                ORDER BY m.last_processed_at ASC NULLS FIRST
+                LIMIT 200
             `);
             console.log(`[HubPedidos] Monitoramento Padrão: ${res.rows.length} pedidos encontrados.`);
             if (res.rows.length > 0) {
@@ -653,6 +704,12 @@ async function monitorarPadrao() {
 }
 
 async function monitorarAprofundado() {
+    const hubProdutosService = require('../hub/services/hubProdutosService');
+    if (hubProdutosService.isSincronizando && hubProdutosService.isSincronizando()) {
+        console.log('[HubPedidos] Sincronização de anúncios em andamento no Hub. Pausando monitoramento aprofundado de pedidos neste ciclo.');
+        return;
+    }
+
     console.log('[HubPedidos] Iniciando Monitoramento Aprofundado (120 dias)...');
     try {
         let clientMon;
@@ -665,11 +722,12 @@ async function monitorarAprofundado() {
                     m.id_envio_ml, 
                     m.pack_id, 
                     m.numero_loja,
-                    COALESCE(n.bling_account, p.bling_account) as bling_account
+                    n.bling_account
                 FROM cached_etiquetas_ml m
                 LEFT JOIN cached_nfe n ON m.nfe_numero = n.nfe_numero
-                LEFT JOIN cached_pedido_venda p ON m.numero_loja = p.numero_loja OR m.pack_id = p.numero_loja
                 WHERE m.created_at >= NOW() - INTERVAL '120 days'
+                  AND (m.status_ml IS NULL OR m.status_ml NOT IN ('Entregue', 'Cancelado'))
+                ORDER BY m.last_processed_at ASC NULLS FIRST
             `);
             console.log(`[HubPedidos] Monitoramento Aprofundado: ${res.rows.length} pedidos encontrados.`);
             if (res.rows.length > 0) {

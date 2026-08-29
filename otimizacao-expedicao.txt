@@ -82,6 +82,14 @@ ON cached_pedido_venda USING gin (numero gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_cached_pedido_venda_loja_trgm 
 ON cached_pedido_venda USING gin (numero_loja gin_trgm_ops);
 
+-- Índice B-Tree exato por número da loja no pedido (para JOINs rápidos)
+CREATE INDEX IF NOT EXISTS idx_cached_pedido_venda_numero_loja_btree 
+ON cached_pedido_venda (numero_loja);
+
+-- Índice B-Tree por id_envio_ml no monitoramento
+CREATE INDEX IF NOT EXISTS idx_cached_etiquetas_ml_id_envio 
+ON cached_etiquetas_ml (id_envio_ml);
+
 -- ============================================
 -- 4. MATERIALIZED VIEW — Pedidos de Venda por NFe (Substitui subquery pesada)
 -- ============================================
